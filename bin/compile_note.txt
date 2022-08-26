@@ -1,0 +1,5 @@
+vcfpop.ubuntu		Compiled by GCC 10 on ubuntu 18.04
+vcfpop.vs2019.exe	Compile by Visual Studio 2019 on Windows 10 21H2
+vcfpop.vs2019.clang.exe	Compile by Visual Studio 2019 with clang on Windows 10 21H2
+vcfpop.mac.amd64	Compiled by GCC 10 on Mac OS X 10.13
+vcfpop.mac.arm64	Compiled by llvm clang on Mac OS X 12.2

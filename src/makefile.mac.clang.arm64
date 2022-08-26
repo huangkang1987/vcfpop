@@ -1,0 +1,154 @@
+INCLUDE 	= -I.
+
+CC      	= /opt/homebrew/Cellar/llvm/14.0.6_1/bin/clang++
+
+FLAGS   	= -fpermissive -std=c++20 -O3 -w -static -m64 -fopenmp -DNDEBUG -DENABLE_RELATEDNESS -mfpu=neon
+
+HEADER  	= vcfpop.h
+
+OBJ     	= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathNEO.o mathSSE.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureNEO.o structureSSE.o structureAVX.o structure512.o ad.o menu.o 
+
+BIN_PATH	= ../bin/
+
+TARGET	= vcfpop
+
+vcfpop: $(OBJ)
+	$(CC) $(INCLUDE) $(OBJ) -m64 -fopenmp -march=native -DNDEBUG -DENABLE_RELATEDNESS -pthread -L/opt/homebrew/Cellar/zlib/1.2.12/lib -lm -lpthread -ldl -lz -o vcfpop
+
+vcfpop.o: vcfpop.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c vcfpop.cpp $(FLAGS)
+
+dre.o: dre.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c dre.cpp $(FLAGS)
+
+ml.o: ml.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c ml.cpp $(FLAGS)
+
+ml2.o: ml2.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c ml2.cpp $(FLAGS)
+
+mlbin.o: mlbin.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c mlbin.cpp $(FLAGS)
+
+mom.o: mom.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c mom.cpp $(FLAGS)
+
+mom2.o: mom2.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c mom2.cpp $(FLAGS)
+
+global.o: global.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c global.cpp $(FLAGS)
+
+hash.o: hash.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c hash.cpp $(FLAGS)
+
+math2.o: math2.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c math2.cpp $(FLAGS)
+
+mathNEO.o: mathNEO.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c mathNEO.cpp $(FLAGS)
+
+mathSSE.o: mathSSE.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c mathSSE.cpp $(FLAGS)
+
+mathAVX.o: mathAVX.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c mathAVX.cpp $(FLAGS)
+
+math512.o: math512.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c math512.cpp $(FLAGS) 
+
+parameters.o: parameters.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c parameters.cpp $(FLAGS)
+
+misc.o: misc.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c misc.cpp $(FLAGS)
+
+file.o: file.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c file.cpp $(FLAGS)
+
+string2.o: string2.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c string2.cpp $(FLAGS)
+
+statistics.o: statistics.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c statistics.cpp $(FLAGS)
+
+matrix.o: matrix.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c matrix.cpp $(FLAGS)
+
+spa.o: spa.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c spa.cpp $(FLAGS)
+
+ploidyinfer.o: ploidyinfer.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c ploidyinfer.cpp $(FLAGS)
+
+function.o: function.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c function.cpp $(FLAGS)
+
+load.o: load.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c load.cpp $(FLAGS)
+
+filter.o: filter.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c filter.cpp $(FLAGS)
+
+diversity.o: diversity.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c diversity.cpp $(FLAGS)
+
+haplotype.o: haplotype.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c haplotype.cpp $(FLAGS)
+
+conversion.o: conversion.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c conversion.cpp $(FLAGS)
+
+indstat.o: indstat.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c indstat.cpp $(FLAGS)
+
+dist.o: dist.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c dist.cpp $(FLAGS)
+
+pcoa.o: pcoa.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c pcoa.cpp $(FLAGS)
+
+clustering.o: clustering.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c clustering.cpp $(FLAGS)
+
+diff.o: diff.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c diff.cpp $(FLAGS)
+
+kinship.o: kinship.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c kinship.cpp $(FLAGS)
+
+relatedness.o: relatedness.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c relatedness.cpp $(FLAGS)
+
+amova.o: amova.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c amova.cpp $(FLAGS)
+
+popas.o: popas.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c popas.cpp $(FLAGS)
+
+structure.o: structure.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c structure.cpp $(FLAGS)
+
+structureNEO.o: structureNEO.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c structureNEO.cpp $(FLAGS)
+
+structureSSE.o: structureSSE.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c structureSSE.cpp $(FLAGS)
+
+structureAVX.o: structureAVX.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c structureAVX.cpp $(FLAGS)
+
+structure512.o: structure512.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c structure512.cpp $(FLAGS) 
+
+ad.o: ad.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c ad.cpp $(FLAGS)
+
+menu.o: menu.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c menu.cpp $(FLAGS)
+	
+install: $(TARGET)
+	cp $(TARGET) $(BIN_PATH)
+	
+clean:
+	rm -rf $(TARGET) $(OBJ)
