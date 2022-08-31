@@ -1,5 +1,6 @@
 -g_output=polygene\out
 -g_decimal=6
+-g_eval=yes
 -g_seed=1
 -g_progress=80
 -g_nthread=8

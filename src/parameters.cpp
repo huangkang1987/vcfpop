@@ -722,7 +722,7 @@ TARGET void SetParameters(bool isparfile)
 				GetRangeParLong(argv[i], haplotype_length_b, haplotype_length_min, haplotype_length_max, 1ll, 10000000000ll);
 			else if (!LwrLineCmp("-haplotype_variants=", argv[i]))
 				GetRangeParInteger(argv[i], haplotype_variants_b, haplotype_variants_min, haplotype_variants_max, 1, 1000000000);
-			else if (!LwrLineCmp("-haplotype_interval_val=", argv[i]))
+			else if (!LwrLineCmp("-haplotype_interval=", argv[i]))
 				GetParLong(argv[i], haplotype_interval_b, haplotype_interval_val, 0ll, 1000000000ll);
 			else if (!LwrLineCmp("-haplotype_alleles=", argv[i]))
 				GetRangeParInteger(argv[i], haplotype_alleles_b, haplotype_alleles_min, haplotype_alleles_max, 2, 65535);

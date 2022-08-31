@@ -463,8 +463,8 @@ THREAD(CreateHaplotypeLocus)
 		UnLock(GLOCK2);
 
 		//7. Set i and j to the next applicable variant according to -haplotype_interval, and do to Step 2.
-		st = ed = ed + haplotype_interval_val + 1;
-		PROGRESS_VALUE += haplotype_interval_val + 1;
+		int64 nextpos = (int64)GetLocPos(ed) + haplotype_interval_val;
+		while ((int64)GetLocPos(st) <= nextpos) st++;
 		goto step2;
 	}
 }

@@ -17,6 +17,7 @@
 -haplotype
 -haplotype_variants=[2,3]
 -haplotype_alleles=[2,10]
+-haplotype_interval=10000
 
 -xconvert
 -convert_format=polyrelatedness
