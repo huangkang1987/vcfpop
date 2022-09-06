@@ -426,7 +426,7 @@ THREAD(CreateHaplotypeLocus)
 			PROGRESS_VALUE += st - ed;
 			ed = st;
 		}
-		if (ed > contig_ed) continue;
+		if (ed >= contig_ed) continue;
 
 		//3. Calculate the values of several parameters (the length of each haplotype, the number of variants, the number of alleles and the number of genotypes). 
 		int64 clen = GetLocPos(ed) - GetLocPos(st) + 1;
@@ -464,7 +464,7 @@ THREAD(CreateHaplotypeLocus)
 
 		//7. Set i and j to the next applicable variant according to -haplotype_interval, and do to Step 2.
 		int64 nextpos = (int64)GetLocPos(ed) + haplotype_interval_val;
-		while ((int64)GetLocPos(st) <= nextpos) st++;
+		while (st < nloc && (int64)GetLocPos(st) <= nextpos) st++;
 		goto step2;
 	}
 }

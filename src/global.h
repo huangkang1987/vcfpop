@@ -10,8 +10,8 @@
 #endif
 
 //#define genoid bits2[3]
-#define VERSION						("1.03")
-#define DATE						("2022-08-25")
+#define VERSION						("1.04")
+#define DATE						("2022-09-06")
 
 #define N_FUNC						(17)						//Number of main options
 #define N_MAX_OPTION				(35)						//Maximum options

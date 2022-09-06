@@ -1841,9 +1841,9 @@ THREAD(LoadBCF)
 			SetVal(writep, bufdp.data, bufjdp - bufdp.data);   writep += bufjdp - bufdp.data;
 			SetVal(writep, bufad.data, bufjad - bufad.data);   writep += bufjad - bufad.data;
 
+			nloc++;
 			if (&locus[nloc] > (LOCUS*)locus_list.tail_addr)
 				locus_list.Alloc((byte*)&locus[nloc]);
-			nloc++;
 
 			PROGRESS_TOTAL++;
 			PROGRESS_CEND++;
@@ -2237,9 +2237,9 @@ THREAD(LoadVCFGuard)
 			}
 			*writebuf++ = '\0';
 
+			nloc++;
 			if (&locus[nloc] > (LOCUS*)locus_list.tail_addr)
 				locus_list.Alloc((byte*)&locus[nloc]);
-			nloc++;
 
 			PROGRESS_TOTAL++;
 			PROGRESS_CEND++;

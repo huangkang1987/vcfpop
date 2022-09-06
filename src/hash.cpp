@@ -23,60 +23,44 @@ TARGET HASH HashGenotype(ushort* allele, int ploidy)
 	switch (ploidy)
 	{
 	case 1:
-		crc1 = crc32_u64(crc1, (uint64) * (ushort*)allele);
-		crc2 = crc32_u64(crc2, (uint64) * (ushort*)allele);
+		crc1 = crc32_u64(crc1, (uint64)*(ushort*)allele);
+		crc2 = crc32_u64(crc2, (uint64)*(ushort*)allele);
 		break;
 	case 2:
-		crc1 = crc32_u64(crc1, (uint64) * (uint*)allele);
-		crc2 = crc32_u64(crc2, (uint64) * (uint*)allele);
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )allele);
+		crc2 = crc32_u64(crc2, (uint64)*(uint*  )allele);
 		break;
 	case 3:
-		crc1 = crc32_u64(crc1, (uint64) * (uint64*)allele & 0xFFFFFFFFFFFFull);
-		crc2 = crc32_u64(crc2, (uint64) * (uint64*)allele & 0xFFFFFFFFFFFFull);
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )allele | ((uint64)allele[2] << 32));
+		crc2 = crc32_u64(crc2, (uint64)*(uint*  )allele | ((uint64)allele[2] << 32));
 		break;
 	case 4:
-		crc1 = crc32_u64(crc1, (uint64) * (uint64*)allele);
-		crc2 = crc32_u64(crc2, (uint64) * (uint64*)allele);
+		crc1 = crc32_u64(crc1, (uint64)*(uint64*)allele);
+		crc2 = crc32_u64(crc2, (uint64)*(uint64*)allele);
 		break;
 	case 5:
-		crc1 = crc32_u64(crc32_u64(crc1, (uint64) * (uint64*)allele),
-			(uint64) * (ushort*)(allele + 4));
-		crc2 = crc32_u64(crc32_u64(crc2, (uint64) * (uint64*)allele),
-			(uint64) * (ushort*)(allele + 4));
+		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(ushort*)(allele + 4));
+		crc2 = crc32_u64(crc32_u64(crc2, (uint64)*(uint64*)allele), (uint64)*(ushort*)(allele + 4));
 		break;
 	case 6:
-		crc1 = crc32_u64(crc32_u64(crc1, (uint64) * (uint64*)allele),
-			(uint64) * (uint*)(allele + 4));
-		crc2 = crc32_u64(crc32_u64(crc2, (uint64) * (uint64*)allele),
-			(uint64) * (uint*)(allele + 4));
+		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint*  )(allele + 4));
+		crc2 = crc32_u64(crc32_u64(crc2, (uint64)*(uint64*)allele), (uint64)*(uint*  )(allele + 4));
 		break;
 	case 7:
-		crc1 = crc32_u64(crc32_u64(crc1, (uint64) * (uint64*)allele),
-			(uint64) * (uint64*)(allele + 4) & 0xFFFFFFFFFFFFull);
-		crc2 = crc32_u64(crc32_u64(crc2, (uint64) * (uint64*)allele),
-			(uint64) * (uint64*)(allele + 4) & 0xFFFFFFFFFFFFull);
+		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint*  )(allele + 4) | ((uint64)allele[6] << 32));
+		crc2 = crc32_u64(crc32_u64(crc2, (uint64)*(uint64*)allele), (uint64)*(uint*  )(allele + 4) | ((uint64)allele[6] << 32));
 		break;
 	case 8:
-		crc1 = crc32_u64(crc32_u64(crc1, (uint64) * (uint64*)allele),
-			(uint64) * (uint64*)(allele + 4));
-		crc2 = crc32_u64(crc32_u64(crc2, (uint64) * (uint64*)allele),
-			(uint64) * (uint64*)(allele + 4));
+		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint64*)(allele + 4));
+		crc2 = crc32_u64(crc32_u64(crc2, (uint64)*(uint64*)allele), (uint64)*(uint64*)(allele + 4));
 		break;
 	case 9:
-		crc1 = crc32_u64(crc32_u64(crc32_u64(crc1, (uint64) * (uint64*)allele),
-			(uint64) * (uint64*)(allele + 4)),
-			(uint64) * (ushort*)(allele + 8));
-		crc2 = crc32_u64(crc32_u64(crc32_u64(crc2, (uint64) * (uint64*)allele),
-			(uint64) * (uint64*)(allele + 4)),
-			(uint64) * (ushort*)(allele + 8));
+		crc1 = crc32_u64(crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint64*)(allele + 4)), (uint64)*(ushort*)(allele + 8));
+		crc2 = crc32_u64(crc32_u64(crc32_u64(crc2, (uint64)*(uint64*)allele), (uint64)*(uint64*)(allele + 4)), (uint64)*(ushort*)(allele + 8));
 		break;
 	case 10:
-		crc1 = crc32_u64(crc32_u64(crc32_u64(crc1, (uint64) * (uint64*)allele),
-			(uint64) * (uint64*)(allele + 4)),
-			(uint64) * (uint*)(allele + 8));
-		crc2 = crc32_u64(crc32_u64(crc32_u64(crc2, (uint64) * (uint64*)allele),
-			(uint64) * (uint64*)(allele + 4)),
-			(uint64) * (uint*)(allele + 8));
+		crc1 = crc32_u64(crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint64*)(allele + 4)), (uint64)*(uint*)(allele + 8));
+		crc2 = crc32_u64(crc32_u64(crc32_u64(crc2, (uint64)*(uint64*)allele), (uint64)*(uint64*)(allele + 4)), (uint64)*(uint*)(allele + 8));
 		break;
 	default: break;
 	}
@@ -97,32 +81,32 @@ TARGET HASH HashString(char* str, int len)
 	switch (len)
 	{
 	case 1:
-		crc1 = crc32_u64(crc1, (uint64) * (byte*)str);
-		crc2 = crc32_u64(crc2, (uint64) * (byte*)str);
+		crc1 = crc32_u64(crc1, (uint64)*(byte  *)str);
+		crc2 = crc32_u64(crc2, (uint64)*(byte  *)str);
 		break;
 	case 2:
-		crc1 = crc32_u64(crc1, (uint64) * (ushort*)str);
-		crc2 = crc32_u64(crc2, (uint64) * (ushort*)str);
+		crc1 = crc32_u64(crc1, (uint64)*(ushort*)str);
+		crc2 = crc32_u64(crc2, (uint64)*(ushort*)str);
 		break;
 	case 3:
-		crc1 = crc32_u64(crc1, ((uint64)(*(ushort*)str) << 8) | (uint64) * (byte*)(str + 2));
-		crc2 = crc32_u64(crc2, ((uint64)(*(ushort*)str) << 8) | (uint64) * (byte*)(str + 2));
+		crc1 = crc32_u64(crc1, (uint64)*(ushort*)str | ((uint64)*(byte*  )(str + 2) << 16));
+		crc2 = crc32_u64(crc2, (uint64)*(ushort*)str | ((uint64)*(byte*  )(str + 2) << 16));
 		break;
 	case 4:
-		crc1 = crc32_u64(crc1, (uint64) * (uint*)str);
-		crc2 = crc32_u64(crc2, (uint64) * (uint*)str);
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )str);
+		crc2 = crc32_u64(crc2, (uint64)*(uint*  )str);
 		break;
 	case 5:
-		crc1 = crc32_u64(crc1, ((uint64)(*(uint*)str) << 8) | (uint64) * (byte*)(str + 4));
-		crc2 = crc32_u64(crc2, ((uint64)(*(uint*)str) << 8) | (uint64) * (byte*)(str + 4));
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )str | ((uint64)*(byte*  )(str + 4) << 32));
+		crc2 = crc32_u64(crc2, (uint64)*(uint*  )str | ((uint64)*(byte*  )(str + 4) << 32));
 		break;
 	case 6:
-		crc1 = crc32_u64(crc1, ((uint64)(*(uint*)str) << 16) | (uint64) * (ushort*)(str + 4));
-		crc2 = crc32_u64(crc2, ((uint64)(*(uint*)str) << 16) | (uint64) * (ushort*)(str + 4));
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )str | ((uint64)*(ushort*)(str + 4) << 32));
+		crc2 = crc32_u64(crc2, (uint64)*(uint*  )str | ((uint64)*(ushort*)(str + 4) << 32));
 		break;
 	case 7:
-		crc1 = crc32_u64(crc1, ((uint64)(*(uint*)str) << 24) | ((uint64)(*(ushort*)(str + 4)) << 8) | (uint64)(*(byte*)(str + 6)));
-		crc2 = crc32_u64(crc2, ((uint64)(*(uint*)str) << 24) | ((uint64)(*(ushort*)(str + 4)) << 8) | (uint64)(*(byte*)(str + 6)));
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )str | (((uint64)*(uint* )(str + 3) >> 8) << 32));
+		crc2 = crc32_u64(crc2, (uint64)*(uint*  )str | (((uint64)*(uint* )(str + 3) >> 8) << 32));
 		break;
 	default:
 		break;
@@ -156,39 +140,31 @@ TARGET HASH HashGenotype(ushort* allele, int ploidy)
 		crc1 = crc32_u64(crc1, (uint64)*(ushort*)allele);
 		break;
 	case 2:
-		crc1 = crc32_u64(crc1, (uint64)*(uint*)allele);
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )allele);
 		break;
 	case 3:
-		crc1 = crc32_u64(crc1, (uint64)*(uint64*)allele & 0xFFFFFFFFFFFFull);
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )allele | ((uint64)allele[2] << 32));
 		break;
 	case 4:
 		crc1 = crc32_u64(crc1, (uint64)*(uint64*)allele);
 		break;
 	case 5:
-		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele),
-			(uint64)*(ushort*)(allele + 4));
+		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(ushort*)(allele + 4));
 		break;
 	case 6:
-		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele),
-			(uint64)*(uint*)(allele + 4));
+		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint*  )(allele + 4));
 		break;
 	case 7:
-		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele),
-			(uint64)*(uint64*)(allele + 4) & 0xFFFFFFFFFFFFull);
+		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint*  )(allele + 4) | ((uint64)allele[6] << 32));
 		break;
 	case 8:
-		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele),
-			(uint64)*(uint64*)(allele + 4));
+		crc1 = crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint64*)(allele + 4));
 		break;
 	case 9:
-		crc1 = crc32_u64(crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), 
-			(uint64)*(uint64*)(allele + 4)),
-			(uint64)*(ushort*)(allele + 8));
+		crc1 = crc32_u64(crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint64*)(allele + 4)), (uint64)*(ushort*)(allele + 8));
 		break;
 	case 10:
-		crc1 = crc32_u64(crc32_u64(crc32_u64(crc1, (uint64) * (uint64*)allele),
-			(uint64)*(uint64*)(allele + 4)),
-			(uint64)*(uint*)(allele + 8));
+		crc1 = crc32_u64(crc32_u64(crc32_u64(crc1, (uint64)*(uint64*)allele), (uint64)*(uint64*)(allele + 4)), (uint64)*(uint*  )(allele + 8));
 		break;
 	default: break;
 	}
@@ -207,25 +183,25 @@ TARGET HASH HashString(char* str, int len)
 	switch (len)
 	{
 	case 1:
-		crc1 = crc32_u64(crc1, (uint64)*(byte*)str);
+		crc1 = crc32_u64(crc1, (uint64)*(byte  *)str);
 		break;
 	case 2:
 		crc1 = crc32_u64(crc1, (uint64)*(ushort*)str);
 		break;
 	case 3:
-		crc1 = crc32_u64(crc1, ((uint64)(*(ushort*)str) << 8) | (uint64)*(byte*)(str + 2));
+		crc1 = crc32_u64(crc1, (uint64)*(ushort*)str | ((uint64)*(byte*  )(str + 2) << 16));
 		break;
 	case 4:
-		crc1 = crc32_u64(crc1, (uint64)*(uint*)str);
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )str);
 		break;
 	case 5:
-		crc1 = crc32_u64(crc1, ((uint64)(*(uint*)str) << 8) | (uint64)*(byte*)(str + 4));
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )str | ((uint64)*(byte*  )(str + 4) << 32));
 		break;
 	case 6:
-		crc1 = crc32_u64(crc1, ((uint64)(*(uint*)str) << 16) | (uint64)*(ushort*)(str + 4));
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )str | ((uint64)*(ushort*)(str + 4) << 32));
 		break;
 	case 7:
-		crc1 = crc32_u64(crc1, ((uint64)(*(uint*)str) << 24) | ((uint64)(*(ushort*)(str + 4)) << 8) | (uint64)(*(byte*)(str + 6)));
+		crc1 = crc32_u64(crc1, (uint64)*(uint*  )str | (((uint64)*(uint* )(str + 3) >> 8) << 32));
 		break;
 	default:
 		break;
@@ -268,7 +244,7 @@ TARGET void InitCryptTable()
 			dwHih = (seed & 0xFFFF) << 16;
 			seed = (seed * 125 + 3) % 0x2AAAAB;
 			dwLow = (seed & 0xFFFF);
-			cryptTable[index2] = (dwHih | dwLow);
+			cryptTable[index2] = dwHih | dwLow;
 		}
 	}
 }
@@ -276,7 +252,7 @@ TARGET void InitCryptTable()
 /* Get IBS model of a genotype */
 TARGET int GetSingleIBS(int* x, int ploidy)
 {
-	int n = 0, t[8], tt;
+	int n = 0, t[8], tt = 0;
 	for (int i = 0; i < ploidy; )
 	{
 		int j = i + 1;
@@ -284,13 +260,15 @@ TARGET int GetSingleIBS(int* x, int ploidy)
 		t[n++] = j - i;
 		i = j;
 	}
+
 	for (int i = 0; i < n; ++i)
 		for (int j = i + 1; j < n; ++j)
 			if (t[j] < t[i])
 				Swap(t[i], t[j]);
-	tt = 0;
+
 	for (int i = 0; i < n; ++i)
 		tt = tt * 10 + t[i];
+
 	return tt;
 }
 

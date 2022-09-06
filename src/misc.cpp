@@ -711,14 +711,14 @@ TARGET byte* MEMORY::Alloc(int size)
 				byte exp = 0;
 				if (slots[i].compare_exchange_strong(exp, 1))
 				{
-					base_addr = 0x100000000000ull + (byte*)(i * 0x40000000000ull); // 4 TiB
+					base_addr = (byte*)(0x200000000000ull + i * 0x40000000000ull); // 4 TiB
 					break;
 				}
 			}
 		}
 		else
 		{
-			slots[((uint64)base_addr - 0x100000000000ull) / 0x40000000000ull] = 0; // 4 TiB
+			slots[((uint64)base_addr - 0x200000000000ull) / 0x40000000000ull] = 0; // 4 TiB
 			size = 0;
 			blocksize = 0;
 			base_addr = tail_addr = head_addr = NULL;

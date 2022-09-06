@@ -1,11 +1,11 @@
 /*
- vcfpop v1.03
+ vcfpop v1.04
  -- Perform population genetics analyses based on NGS data for haploids, diploids and polyploids.
 
  Author      Huang Kang
  Affiliation Northwest University
  Email       huangkang@nwu.edu.cn
- Update      2022/08/25
+ Update      2022/09/06
  */
 
 #include "vcfpop.h"
