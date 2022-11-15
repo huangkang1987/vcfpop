@@ -2,7 +2,7 @@
 -g_seed=0
 -g_output=willowherb1G\out
 -g_decimal=5
--g_nthread=8
+-g_nthread=16
 -g_rscript="C:\Program Files\R\R-4.0.2\bin\x64\Rscript.exe"
 -g_eval=yes
 
@@ -74,7 +74,6 @@
 -cluster_level=pop
 
 -structure
--structure_decompress=yes
 -structure_admix=no
 -structure_locpriori=no
 -structure_f=no
@@ -85,6 +84,7 @@
 -structure_nreps=10000
 -structure_nthinning=20
 -structure_nruns=1
+-structure_nstream=4
 
 
 -g_indtab="W2471	MX	Hexaploids

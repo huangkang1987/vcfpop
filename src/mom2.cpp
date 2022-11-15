@@ -5,7 +5,11 @@
 #include "mom2.h"
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign8(int refmode, double* e, double* f, int* xx)
+template TARGET void MOMRelatednessAssign8<double>(int refmode, double* e, double* f, int* xx);
+template TARGET void MOMRelatednessAssign8<float >(int refmode, double* e, float* f, int* xx);
+
+template<typename REAL>
+TARGET void MOMRelatednessAssign8(int refmode, double* e, REAL* f, int* xx)
 {
 #ifdef ENABLE_RELATEDNESS
 	double pi = 0, pj = 0, pk = 0, pl = 0, pm = 0, pn = 0, po = 0, pp = 0, px;

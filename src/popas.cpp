@@ -3,11 +3,19 @@
 #pragma once
 #include "vcfpop.h"
 
+template TARGET void CalcAssignment<double>();
+template TARGET void CalcAssignment<float >();
+template TARGET void IND<double>::AssignmentHeader(FILE* fout);
+template TARGET void IND<float >::AssignmentHeader(FILE* fout);
+template TARGET void IND<double>::PrintAssignment(FILE* fout);
+template TARGET void IND<float >::PrintAssignment(FILE* fout);
+
 #define extern 
 
 #undef extern 
 
 /* Calculate population assignment */
+template<typename REAL>
 TARGET void CalcAssignment()
 {
 	if (!popas) return;
@@ -17,8 +25,8 @@ TARGET void CalcAssignment()
 	OpenResFile("-popas", "Population assignment");
 	OpenTempFiles(g_nthread_val, ".popas");
 
-	IND::AssignmentHeader(FRES);
-	RunThreads(&PopulationAssignmentThread, NULL, NULL, nind, nind,
+	IND<REAL>::AssignmentHeader(FRES);
+	RunThreads(&PopulationAssignmentThread<REAL>, NULL, NULL, nind, nind,
 		"\nPerforming population assignment:\n", g_nthread_val, true);
 
 	JoinTempFiles(g_nthread_val);
@@ -31,7 +39,7 @@ TARGET void CalcAssignment()
 }
 
 /* Calculate population assignment using multiple threads */
-THREAD(PopulationAssignmentThread)
+THREAD2(PopulationAssignmentThread)
 {
 	//load ind
 	double nsec = nind / (double)g_nthread_val + 1e-8;
@@ -45,7 +53,8 @@ THREAD(PopulationAssignmentThread)
 }
 
 /* Write header row for population assignment */
-TARGET void IND::AssignmentHeader(FILE* fout)
+template<typename REAL>
+TARGET void IND<REAL>::AssignmentHeader(FILE* fout)
 {
 	fprintf(fout, "%s%sInd%cPop", g_linebreak_val, g_linebreak_val, g_delimiter_val);
 	for (int rl = 0; rl < lreg; ++rl)
@@ -55,7 +64,7 @@ TARGET void IND::AssignmentHeader(FILE* fout)
 	for (int rl = -1; rl <= lreg; ++rl)
 	{
 		if (popas_level_val[rl == -1 ? 1 : 2] == 0) continue;
-		POP** grps = rl == -1 ? apops : aregs[rl];
+		POP<REAL>** grps = rl == -1 ? apops : aregs[rl];
 		int ngrp = rl == -1 ? npop : nreg[rl];
 
 		//level: pop reg
@@ -72,13 +81,14 @@ TARGET void IND::AssignmentHeader(FILE* fout)
 }
 
 /* Write result row for population assignment */
-TARGET void IND::PrintAssignment(FILE* fout)
+template<typename REAL>
+TARGET void IND<REAL>::PrintAssignment(FILE* fout)
 {
 	int64 ntype = 0, nhaplo = 0, nmiss = 0;
 	int ms = npop;
 	byte minv = 100, maxv = 0;
 
-	VLA_NEW(lnPg, double, ms);
+	VLA_NEW(lnPg, REAL, ms);
 	SetZero(lnPg, ms);
 
 	for (int64 l = 0; l < nloc; ++l)
@@ -102,7 +112,7 @@ TARGET void IND::PrintAssignment(FILE* fout)
 		g_linebreak_val, name,
 		g_delimiter_val, apops[popid]->name);
 
-	POP* tr = lreg >= 0 ? aregs[0][apops[popid]->rid] : NULL;
+	POP<REAL>* tr = lreg >= 0 ? aregs[0][apops[popid]->rid] : NULL;
 	for (int rl = 0; rl < lreg; ++rl)
 	{
 		fprintf(fout, "%c%s", g_delimiter_val, tr->name);
@@ -118,7 +128,7 @@ TARGET void IND::PrintAssignment(FILE* fout)
 	for (int rl = -1; rl <= lreg; ++rl)
 	{
 		if (popas_level_val[rl == -1 ? 1 : 2] == 0) continue;
-		POP** grps = rl == -1 ? apops : aregs[rl];
+		POP<REAL>** grps = rl == -1 ? apops : aregs[rl];
 		int ngrp = rl == -1 ? npop : nreg[rl];
 
 		for (int m2 = 1; m2 <= N_DRE_MODEL; ++m2)

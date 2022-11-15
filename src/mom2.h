@@ -4,4 +4,6 @@
 #include "vcfpop.h"
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign8(int refmode, double* e, double* f, int* xx);
+
+template<typename REAL>
+TARGET void MOMRelatednessAssign8(int refmode, double* e, REAL* f, int* xx);

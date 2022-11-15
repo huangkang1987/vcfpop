@@ -1,9 +1,10 @@
 -g_output=polygene\out
 -g_decimal=6
 -g_eval=yes
+-g_nthread=16
+-g_gpu=none
 -g_seed=1
 -g_progress=80
--g_nthread=8
 -g_indtext="pop1:#1-#30 pop2:#31-#60 pop3:#61-#90 pop4:#91-#120 #REG reg1:#1-#2 reg2:#3-#4"
 
 -g_input=data.polygene.txt
@@ -73,7 +74,6 @@ Huang2014,Huang2015,Ritland1996_modified,Loiselle1995_modified,Ritland1996,Loise
 -cluster_estimator=Nei1972,Cavalli-Sforza1967
 
 -structure
--structure_decompress=yes
 -structure_admix=yes
 -structure_locpriori=yes
 -structure_f=yes
@@ -92,3 +92,4 @@ Huang2014,Huang2015,Ritland1996_modified,Loiselle1995_modified,Ritland1996,Loise
 -structure_nreps=10000
 -structure_nthinning=10
 -structure_nruns=4
+-structure_nstream=4

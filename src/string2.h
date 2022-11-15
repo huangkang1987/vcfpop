@@ -185,3 +185,12 @@ TARGET void WriteReal(char*& fout, double val);
 
 /* Append a real number to a string */
 TARGET void AppendReal(char* sout, double val);
+
+/* Print a real number to a file */
+TARGET void WriteReal(FILE* fout, float val);
+
+/* Print a real number to a string */
+TARGET void WriteReal(char*& fout, float val);
+
+/* Append a real number to a string */
+TARGET void AppendReal(char* sout, float val);

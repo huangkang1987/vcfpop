@@ -4,4 +4,5 @@
 #include "vcfpop.h"
 
 /* Assign genotype pair pattern for polyploid maximum-likelihood relatedness estimation */
-TARGET void MLRelatednessAssign(int sumploidy, double* f, int* a, double* c, int IBS);
+template<typename REAL>
+TARGET void MLRelatednessAssign(int sumploidy, REAL* f, int* a, double* c, int IBS);

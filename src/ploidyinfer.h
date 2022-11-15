@@ -3,20 +3,24 @@
 #pragma once
 #include "vcfpop.h"
 
+template<typename REAL> struct SPF;
+
 #pragma pack(push, 1)
 
-#pragma pack(pop)
-
+template<typename REAL>
 struct SPF
 {
 	//Used in ploidy infer
 	int count;
-	double val1[N_MAX_PLOIDY + 1];	//
-	double val2[N_MAX_PLOIDY + 1];	//
+	REAL val1[N_MAX_PLOIDY + 1];	//
+	REAL val2[N_MAX_PLOIDY + 1];	//
 };
 
+#pragma pack(pop)
+
 /* Calculate individual ploidy inference */
+template<typename REAL>
 TARGET void CalcPloidyInference();
 
 /* Calculate ploidy inference using multiple threads */
-THREADH(PloidyInferenceThread);
+THREAD2H(PloidyInferenceThread);

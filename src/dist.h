@@ -5,18 +5,23 @@
 
 #pragma pack(push, 1)
 
+template<typename REAL> struct INDGD;
+template<typename REAL> struct GDIST;
+
+template<typename REAL>
 struct INDGD
 {
-	double ABtype;							//Number of loci both genotyped
-	double Jx1, Jx2, Jxy;					//Nei1972; Nei1974;
-	double Cavalli1967;						//Cavalli1967
-	double t1, t2;							//Reynolds1983;
-	double Nei1983;							//Nei1983
-	double Euclidean;						//Euclidean
-	double Goldstein1995;					//Goldstein1995
-	double Roger1972;						//Roger1972
+	REAL ABtype;							//Number of loci both genotyped
+	REAL Jx1, Jx2, Jxy;					//Nei1972; Nei1974;
+	REAL Cavalli1967;						//Cavalli1967
+	REAL t1, t2;							//Reynolds1983;
+	REAL Nei1983;							//Nei1983
+	REAL Euclidean;						//Euclidean
+	REAL Goldstein1995;					//Goldstein1995
+	REAL Roger1972;						//Roger1972
 };
 
+template<typename REAL>
 struct GDIST
 {
 	double Nei1972;							//Genetic distance estimates
@@ -64,33 +69,35 @@ struct GDIST
 	TARGET void MatrixPrintCell(int k);
 
 	/* Use population/region allele frequency as the missing data */
-	TARGET static void GetMissingFreq(GENOTYPE& gt, int64 l, double* p, int k);
+	TARGET static void GetMissingFreq(GENOTYPE& gt, int64 l, REAL* p, int k);
 
 	/* Calculate genetic distance between genotypes and save in gdtab */
 	TARGET static void CacheIndGD();
 
 	/* Calculate genetic distance between two individuals */
-	TARGET void CalcGD(IND* a, IND* b, double* p1, double* p2);
+	TARGET void CalcGD(IND<REAL>* a, IND<REAL>* b, REAL* p1, REAL* p2);
 
 	/* Calculate genetic distance between two populations/regions */
-	TARGET void CalcGD(POP* a, POP* b, double* buf);
+	TARGET void CalcGD(POP<REAL>* a, POP<REAL>* b, double* buf);
 };
 
 #pragma pack(pop)
-
-extern GDIST* gdist_buf;							//Circle buffer for genetic distance estimation, NBUF
-extern int gdist_type;								//1 between inds, 2 between pops, 3 + between regions
-extern int gdindex[N_GD_ESTIMATOR + 1];				//Index of ith used estimator
-extern INDGD** gd_tab;								//Hash table saves the genetic distance between genotypes
+extern int gdist_type;												//1 between inds, 2 between pops, 3 + between regions
+extern int gdindex[N_GD_ESTIMATOR + 1];								//Index of ith used estimator
+#define gdist_buf (*(GDIST<REAL>**)&gdist_buf_)
+extern void* gdist_buf_;
+#define gd_tab (*(INDGD<REAL>***)&gd_tab_)
+extern void* gd_tab_;
 
 /* Calculate genetic distance */
+template<typename REAL>
 TARGET void CalcDist();
 
 /* Write column format genetic distance results in a guard thread */
-THREADH(GeneticDistanceGuard1);
+THREAD2H(GeneticDistanceGuard1);
 
 /* Write matrix format genetic distance results in a guard thread */
-THREADH(GeneticDistanceGuard2);
+THREAD2H(GeneticDistanceGuard2);
 
 /* Calculate genetic distance using multiple threads */
-THREADH(GeneticDistanceThread);
+THREAD2H(GeneticDistanceThread);

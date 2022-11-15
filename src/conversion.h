@@ -15,64 +15,73 @@ extern char** convert_buf;							//Circle buffer for file conversion, NBUF
 extern int64 convert_linesize;						//Max length of each line in converted file
 
 /* Convert into other genotype formats */
+template<typename REAL>
 TARGET void ConvertFile();
 
 /* Write convert genepop genotypes in a guard thread */
-THREADH(ConvertGenepopGuard);
+THREAD2H(ConvertGenepopGuard);
 
 /* Write convert arlequin genotypes in a guard thread */
-THREADH(ConvertArlequinGuard);
+THREAD2H(ConvertArlequinGuard);
 
 /* Write convert genotypes in a guard thread */
-THREADH(ConvertGuard);
+THREAD2H(ConvertGuard);
 
 /* Convert genotype string */
 TARGET void PrepareGenotypeString(int format);
 
 /* Convert into genepop format */
+template<typename REAL>
 TARGET void ConvertGenepop(int ntot, bool& isfirst);
 
 /* Convert individual genotypes into genepop format in multiple threads */
-THREADH(ConvertGenepopInd);
+THREAD2H(ConvertGenepopInd);
 
 /* Convert into spagedi format */
+template<typename REAL>
 TARGET void ConvertSpagedi(int ntot, bool& isfirst);
 
 /* Convert individual genotypes into spagedi format in multiple threads */
-THREADH(ConvertSpagediInd);
+THREAD2H(ConvertSpagediInd);
 
 /* Convert into cervus format */
+template<typename REAL>
 TARGET void ConvertCervus(int ntot, bool& isfirst);
 
 /* Convert individual genotypes into cervus format in multiple threads */
-THREADH(ConvertCervusInd);
+THREAD2H(ConvertCervusInd);
 
 /* Convert into arlequin format */
+template<typename REAL>
 TARGET void ConvertArlequin(int ntot, bool& isfirst);
 
 /* Convert individual genotypes into arlequin format in multiple threads */
-THREADH(ConvertArlequinInd);
+THREAD2H(ConvertArlequinInd);
 
 /* Convert into structure format */
+template<typename REAL>
 TARGET void ConvertStructure(int ntot, bool& isfirst);
 
 /* Convert individual genotypes into structure format in multiple threads */
-THREADH(ConvertStructureInd);
+THREAD2H(ConvertStructureInd);
 
 /* Convert into polygene format */
+template<typename REAL>
 TARGET void ConvertPolygene(int ntot, bool& isfirst);
 
 /* Convert individual genotypes into polygene format in multiple threads */
-THREADH(ConvertPolygeneInd);
+THREAD2H(ConvertPolygeneInd);
 
 /* Convert into polyrelatedness format */
+template<typename REAL>
 TARGET void ConvertPolyRelatedness(int ntot, bool& isfirst);
 
 /* Convert individual genotypes into polyrelatedness format in multiple threads */
-THREADH(ConvertPolyRelatednessInd);
+THREAD2H(ConvertPolyRelatednessInd);
 
 /* Convert into genodive format */
+template<typename REAL>
 TARGET void ConvertGenoDive(int ntot, bool& isfirst);
 
 /* Convert individual genotypes into genodive format in multiple threads */
-THREADH(ConvertGenoDiveInd);
+THREAD2H(ConvertGenoDiveInd);

@@ -2,6 +2,56 @@
 
 #include "vcfpop.h"
 
+/* Map a file into memory */
+TARGET byte* FileMapping::MapingReadOnlyFile(char* filename)
+{
+#ifdef _WIN64
+	hFile = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+
+	if (hFile == INVALID_HANDLE_VALUE)
+		Exit("fail to map file %s into memory.", filename);
+
+	DWORD size_low, size_high;
+	size_low = GetFileSize(hFile, &size_high);
+
+	hMapFile = CreateFileMapping(hFile, NULL, PAGE_READONLY, size_high, size_low, NULL);
+
+	if (hMapFile == INVALID_HANDLE_VALUE)
+		Exit("fail to map file %s into memory.", filename);
+
+	addr = (byte*)MapViewOfFile(hMapFile, FILE_MAP_READ, 0, 0, 0);
+
+	return addr;
+#else
+	size = GetFileLen(filename);
+
+	hFile = open(filename, O_RDONLY);
+
+	if (hFile == -1)
+		Exit("fail to map file %s into memory.", filename);
+
+	addr = (byte*)mmap(NULL, size, PROT_READ, MAP_SHARED, hFile, 0);
+
+	if (addr == MAP_FAILED)
+		Exit("fail to map file %s into memory.", filename);
+
+	return addr;
+#endif
+}
+
+/* UnMap a file into memory */
+TARGET void FileMapping::UnMapingReadOnlyFile()
+{
+#ifdef _WIN64
+	UnmapViewOfFile(addr);
+	CloseHandle(hMapFile);
+	CloseHandle(hFile);
+#else
+	munmap(addr, size);
+	close(hFile);
+#endif
+}
+
 /* Get file size */
 TARGET int64 GetFileLen(char* file)
 {
@@ -219,9 +269,9 @@ TARGET FILE* FOpen(char* buf, const char* type, const char* fmt ...)
 TARGET void OpenResFile(const char* _spec, const char* title)
 {
 	char* spec = (char*)_spec;
-	time_t tt1;
-	time(&tt1);
-	FRES_TIME = localtime(&tt1);
+	time_t time1;
+	time(&time1);
+	FRES_TIME = localtime(&time1);
 	FRES = FOpen(FRES_NAME, "wb", "%s.%s.txt", g_output_val.c_str(), spec + 1);
 	setvbuf(FRES, FRES_BUF, _IOFBF, LINE_BUFFER);
 	const char* prefix = title[0] == '#' ? "#" : "";
@@ -255,6 +305,21 @@ TARGET void OpenTempFiles(uint n, const char* spec, byte flag[])
 			g_tmpdir_val.c_str(), FRES_TIME->tm_year + 1900, FRES_TIME->tm_mon + 1, FRES_TIME->tm_mday, FRES_TIME->tm_hour, FRES_TIME->tm_min, FRES_TIME->tm_sec, spec, i + 1, ".tmp");
 		setvbuf(TEMP_FILES[i], TEMP_BUFS[i], _IOFBF, LINE_BUFFER);
 	}
+}
+
+/* Close and Remove temp files */
+TARGET void RemoveTempFiles(uint n)
+{
+	for (uint i = 0; i < n; ++i)
+	{
+		fclose(TEMP_FILES[i]);
+		remove(TEMP_NAMES[i]);
+		delete[] TEMP_NAMES[i];
+		delete[] TEMP_BUFS[i];
+	}
+	delete[] TEMP_BUFS;
+	delete[] TEMP_NAMES;
+	delete[] TEMP_FILES;
 }
 
 /* Merge and close temp files */

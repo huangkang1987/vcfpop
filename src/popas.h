@@ -8,7 +8,8 @@
 #pragma pack(pop)
 
 /* Calculate population assignment */
+template<typename REAL>
 TARGET void CalcAssignment();
 
 /* Calculate population assignment using multiple threads */
-THREADH(PopulationAssignmentThread);
+THREAD2H(PopulationAssignmentThread);

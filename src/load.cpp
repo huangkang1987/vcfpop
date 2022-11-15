@@ -3,21 +3,56 @@
 #pragma once
 #include "vcfpop.h"
 
+template TARGET void CheckGenotypeId<double>();
+template TARGET void CheckGenotypeId<float >();
+template TARGET void AssignIndSub<double>(int indid, int popid, int& namelen, int& nind2);
+template TARGET void AssignIndSub<float >(int indid, int popid, int& namelen, int& nind2);
+template TARGET void AssignInds<double>();
+template TARGET void AssignInds<float >();
+template TARGET void LoadFile<double>();
+template TARGET void LoadFile<float >();
+template struct IND<double>;
+template struct IND<float >;
+
+template TARGET void IND<double>::genepop(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<float >::genepop(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<double>::spagedi(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<float >::spagedi(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<double>::cervus(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<float >::cervus(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<double>::arlequin(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<float >::arlequin(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<double>::structure(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<float >::structure(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<double>::polygene(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<float >::polygene(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<double>::polyrelatedness(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<float >::polyrelatedness(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<double>::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<float >::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<double>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpstr, char*& adstr, int vlen, int asize, int gqlen, int dplen, int adlen, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt);
+template TARGET void IND<float >::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpstr, char*& adstr, int vlen, int asize, int gqlen, int dplen, int adlen, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt);
+template TARGET void IND<double>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt);
+template TARGET void IND<float >::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt);
+template TARGET char* IND<double>::GetTagValue(char* re, int tagid);
+template TARGET char* IND<float >::GetTagValue(char* re, int tagid);
+
 #define extern 
 extern int genotype_digit;
 extern int genotype_extracol;
 extern int genotype_missing;
 extern int genotype_ambiguous;
+extern bool load_complete;
 
 extern INCBUFFER* load_buf;							//Circle buffer for loading vcf/bcf files, NBUF
 extern char* vcf_header;							//Vcf header row
 #undef extern 
 
 /* Check Genotype index is correct */
+template<typename REAL>
 TARGET void CheckGenotypeId()
 {
 	return;
-#ifdef _DEBUG
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		int ngeno = (useslocus ? slocus[l] : locus[l]).ngeno;
@@ -30,14 +65,14 @@ TARGET void CheckGenotypeId()
 				Exit("\nError, genotype id mismatch.");
 		}
 	}
-#endif
 }
 
 /* Assign individual indid to population popid */
+template<typename REAL>
 TARGET void AssignIndSub(int indid, int popid, int& namelen, int& nind2)
 {
 	if (ainds[indid]->popid != 0)
-		Exit("\nError: populations %s and %s have the same individual %s.", pop[ainds[indid]->popid].name, pop[popid].name, ainds[indid]->name);
+		Exit("\nError: populations %s and %s have the same individual %s.", pop<REAL>[ainds[indid]->popid].name, pop<REAL>[popid].name, ainds[indid]->name);
 
 	ainds[indid]->popid = (ushort)popid;
 	namelen += (int)strlen(ainds[indid]->name) + 1;
@@ -45,6 +80,7 @@ TARGET void AssignIndSub(int indid, int popid, int& namelen, int& nind2)
 }
 
 /* Assign individuals to their populations */
+template<typename REAL>
 TARGET void AssignInds()
 {
 	//Assign all individuals to defpop initially and prepare name to indid hash table
@@ -59,29 +95,29 @@ TARGET void AssignInds()
 	}
 
 	//Parse indtext
-	for (int pp = pop.size - 1; pp >= 0; --pp)
+	for (int pp = pop<REAL>.size - 1; pp >= 0; --pp)
 	{
 		int nind2 = 0;
 		int namelen = 0;
-		for (int j2 = 0; j2 < pop[pp].nind; ++j2)
+		for (int j2 = 0; j2 < pop<REAL>[pp].nind; ++j2)
 		{
 			int v1 = 0, v2 = 0;
-			ParseTwoNumber(pop[pp].names[j2], v1, v2);
+			ParseTwoNumber(pop<REAL>[pp].names[j2], v1, v2);
 
 			//id format
 			if (v1 == -1 && v2 == -1)
 			{
-				HASH ha = HashString(pop[pp].names[j2]);
+				HASH ha = HashString(pop<REAL>[pp].names[j2]);
 				if (!name2id.ContainsKey(ha))
-					Exit("\nError: individiual %s in population %s is not in the genotype data.", pop[pp].names[j2], pop[pp].name);
+					Exit("\nError: individiual %s in population %s is not in the genotype data.", pop<REAL>[pp].names[j2], pop<REAL>[pp].name);
 
-				AssignIndSub(name2id[ha], pp, namelen, nind2);
+				AssignIndSub<REAL>(name2id[ha], pp, namelen, nind2);
 			}
 
 			//#1 or id format
 			else if (v2 == -1)
 			{
-				HASH ha = HashString(pop[pp].names[j2]);
+				HASH ha = HashString(pop<REAL>[pp].names[j2]);
 				int indid = -1;
 				if (name2id.ContainsKey(ha))
 					indid = name2id[ha];
@@ -89,26 +125,26 @@ TARGET void AssignInds()
 					indid = v1 - 1;
 
 				if (indid >= 0 && indid < nind)
-					AssignIndSub(indid, pp, namelen, nind2);
+					AssignIndSub<REAL>(indid, pp, namelen, nind2);
 				else
-					Exit("\nError: can not found individual %s for population %s.", pop[pp].names[j2], pop[pp].name);
+					Exit("\nError: can not found individual %s for population %s.", pop<REAL>[pp].names[j2], pop<REAL>[pp].name);
 			}
 
 			//#1-#2 format
 			else
 			{
 				if (v1 <= 0 || v1 > nind)
-					Exit("\nError: the first number of indtext %s for population %s exceeds range.", pop[pp].names[j2], pop[pp].name);
+					Exit("\nError: the first number of indtext %s for population %s exceeds range.", pop<REAL>[pp].names[j2], pop<REAL>[pp].name);
 				if (v2 <= 0 || v2 > nind)
-					Exit("\nError: the second number of indtext %s for population %s exceeds range.", pop[pp].names[j2], pop[pp].name);
+					Exit("\nError: the second number of indtext %s for population %s exceeds range.", pop<REAL>[pp].names[j2], pop<REAL>[pp].name);
 
 				int vmin = Min(v1, v2), vmax = Max(v1, v2);
 				for (int i = vmin - 1; i <= vmax - 1; ++i)
-					AssignIndSub(i, pp, namelen, nind2);
+					AssignIndSub<REAL>(i, pp, namelen, nind2);
 			}
 		}
 
-		if (pop[pp].nind == 0) for (int i = 0; i < nind; ++i)
+		if (pop<REAL>[pp].nind == 0) for (int i = 0; i < nind; ++i)
 			if (ainds[i]->popid == pp)
 			{
 				ainds[i]->popid = (ushort)pp;
@@ -117,15 +153,16 @@ TARGET void AssignInds()
 			}
 
 		//Allocate individuals names
-		delete[] pop[pp].names;
-		pop[pp].names = NULL;
-		pop[pp].nind = 0;
+		delete[] pop<REAL>[pp].names;
+		pop<REAL>[pp].names = NULL;
+		pop<REAL>[pp].nind = 0;
 	}
 
-	//pop[i].inds will be allocated and copy individuals after filtered in function AssignVInds
+	//pop<REAL>[i].inds will be allocated and copy individuals after filtered in function AssignVInds
 }
 
 /* Load data from input files */
+template<typename REAL>
 TARGET void LoadFile()
 {
 	EvaluationBegin();
@@ -228,7 +265,7 @@ TARGET void LoadFile()
 		vcf_header[title_len + 1] = '\0';
 		nind = CountChar(vcf_header, '\t');
 		char* title = vcf_header + 1;
-		ainds = new IND*[nind];
+		ainds = new IND<REAL>*[nind];
 
 		//construct geno_bucket
 			geno_bucket.CreateBucket();
@@ -239,22 +276,23 @@ TARGET void LoadFile()
 		do
 		{
 			individual_memory->Alloc(ainds[indc], 1);
-			new(ainds[indc]) IND(title, indc);
+			new(ainds[indc]) IND<REAL>(title, indc);
 			indc++;
 		} while (*title);
 		delete[] vcf_header; vcf_header = (char*)"\0";
 		load_buf = new INCBUFFER[NBUF];
 
-		AssignInds();
+		AssignInds<REAL>();
 
 		progress1 = 0;
 
 		PROGRESS_VALUE = 0; PROGRESS_TOTAL = nloc; PROGRESS_NOUTPUTED2 = PROGRESS_NOUTPUTED; PROGRESS_NOUTPUTED = 0;
-		
+
+		load_complete = false;
 		if (abs(g_format_val) == VCF)
-			RunThreads(&LoadVCF, &LoadVCFGuard, NULL, TOTLEN_COMPRESS, TOTLEN_COMPRESS, "\nLoading VCF:\n", g_nthread_val, true, g_progress_val);
+			RunThreads(&LoadVCF<REAL>, &LoadVCFGuard<REAL>, NULL, TOTLEN_COMPRESS, TOTLEN_COMPRESS, "\nLoading VCF:\n", g_nthread_val, true, g_progress_val);
 		else
-			RunThreads(&LoadBCF, &LoadBCFGuard, NULL, TOTLEN_COMPRESS, TOTLEN_COMPRESS, "\nLoading BCF:\n", g_nthread_val, true, g_progress_val);
+			RunThreads(&LoadBCF<REAL>, &LoadBCFGuard<REAL>, NULL, TOTLEN_COMPRESS, TOTLEN_COMPRESS, "\nLoading BCF:\n", g_nthread_val, true, g_progress_val);
 
 		locus = new LOCUS[nloc];
 		SetVal(locus, (LOCUS*)locus_list.base_addr, nloc);
@@ -267,8 +305,8 @@ TARGET void LoadFile()
 		{
 			ad++;
 			progress1 = progress2 = 0;
-			allele_freq_offset = new LOCN[nloc];
-			genotype_count_offset = new LOCN[nloc];
+			allele_freq_offset = new uint64[nloc];
+			genotype_count_offset = new uint64[nloc];
 			SetFF(allele_freq_offset, nloc);
 			SetFF(genotype_count_offset, nloc);
 			KT = GT = maxK = maxG = 0;
@@ -284,19 +322,20 @@ TARGET void LoadFile()
 			}
 
 			// use allele frequency only 
-			for (uint i = 0; i < pop.size; ++i)
+			for (uint i = 0; i < pop<REAL>.size; ++i)
 			{
-				pop[i].AllocFreq();
-				delete[] pop[i].loc_stat1;
-				delete[] pop[i].genocount;
-				pop[i].genocount = NULL;
-				pop[i].loc_stat1 = NULL;
+				pop<REAL>[i].AllocFreq();
+				delete[] pop<REAL>[i].loc_stat1;
+				delete[] pop<REAL>[i].genocount;
+				pop<REAL>[i].genocount = NULL;
+				pop<REAL>[i].loc_stat1 = NULL;
 			}
 
+			load_complete = false;
 			if (abs(g_format_val) == VCF)
-				RunThreads(&LoadVCF, &LoadVCFGuard, NULL, TOTLEN_COMPRESS, TOTLEN_COMPRESS, "\nLoading VCF:\n", g_nthread_val, true, g_progress_val);
+				RunThreads(&LoadVCF<REAL>, &LoadVCFGuard<REAL>, NULL, TOTLEN_COMPRESS, TOTLEN_COMPRESS, "\nLoading VCF:\n", g_nthread_val, true, g_progress_val);
 			else
-				RunThreads(&LoadBCF, &LoadBCFGuard, NULL, TOTLEN_COMPRESS, TOTLEN_COMPRESS, "\nLoading BCF:\n", g_nthread_val, true, g_progress_val);
+				RunThreads(&LoadBCF<REAL>, &LoadBCFGuard<REAL>, NULL, TOTLEN_COMPRESS, TOTLEN_COMPRESS, "\nLoading BCF:\n", g_nthread_val, true, g_progress_val);
 
 			delete[] allele_freq_offset;
 			delete[] genotype_count_offset;
@@ -308,36 +347,55 @@ TARGET void LoadFile()
 	//non-vcf format: genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive
 	else
 	{
+		if (g_format_val < 0)
+		{
+			TOTLEN_DECOMPRESS = 0;
+			byte* buf = new byte[1024 * 1024];
+			for (int i = 0; i < g_input_row; ++i)
+			{
+				for (int j = 0; j < g_input_col; ++j)
+				{
+					int64 offset = FTell(FILE_INFO[i][j].handle);
+					while (!FEof(FILE_INFO[i][j].handle))
+						FRead(buf, 1, 1024 * 1024, FILE_INFO[i][j].handle);
+					FILE_INFO[i][j].decompressed_len = FTell(FILE_INFO[i][j].handle);
+					TOTLEN_DECOMPRESS += FILE_INFO[i][j].decompressed_len;
+					FSeek(FILE_INFO[i][j].handle, offset, SEEK_SET);
+				}
+			}
+			delete[] buf;
+		}
+
 		if (ad) Exit("\nError: non-vcf and non-bcf format are incompatible with allelic depth (-ad) option.\n");
 		if (haplotype) Exit("\nError: Cannot extract haplotype for non-vcf and non-bcf format.\n");
 		switch (abs(g_format_val))
 		{
 		case GENEPOP:
-			RunThreads(&LoadGenepop, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading genepop file:\n", 1, true);
+			RunThreads(&LoadGenepop<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading genepop file:\n", 1, true);
 			break;
 		case SPAGEDI:
-			RunThreads(&LoadSpagedi, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading spagedi file:\n", 1, true);
+			RunThreads(&LoadSpagedi<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading spagedi file:\n", 1, true);
 			break;
 		case CERVUS:
-			RunThreads(&LoadCervus, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading cervus file:\n", 1, true);
+			RunThreads(&LoadCervus<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading cervus file:\n", 1, true);
 			break;
 		case ARLEQUIN:
-			RunThreads(&LoadArlequin, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading structure file:\n", 1, true);
+			RunThreads(&LoadArlequin<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading structure file:\n", 1, true);
 			break;
 		case STRUCTURE:
-			RunThreads(&LoadStructure, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading structure file:\n", 1, true);
+			RunThreads(&LoadStructure<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading structure file:\n", 1, true);
 			break;
 		case POLYGENE:
-			RunThreads(&LoadPolyGene, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading polygene file:\n", 1, true);
+			RunThreads(&LoadPolyGene<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading polygene file:\n", 1, true);
 			break;
 		case POLYRELATEDNESS:
-			RunThreads(&LoadPolyRelatedness, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading polyrelatedness file:\n", 1, true);
+			RunThreads(&LoadPolyRelatedness<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading polyrelatedness file:\n", 1, true);
 			break;
 		case GENODIVE:
-			RunThreads(&LoadGenoDive, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading genodive file:\n", 1, true);
+			RunThreads(&LoadGenoDive<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading genodive file:\n", 1, true);
 			break;
 		}
-		AssignInds();
+		AssignInds<REAL>();
 	}
 
 	// Close input files
@@ -352,7 +410,7 @@ TARGET void LoadFile()
 			}
 		}
 
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 
 	//compress locus into slocus
 	MEMORY* nlocus_memory = new MEMORY[g_nthread_val];
@@ -373,7 +431,7 @@ TARGET void LoadFile()
 	locus_memory = nlocus_memory;
 	useslocus = true;
 
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 	EvaluationEnd("Load input file");
 }
 
@@ -387,7 +445,7 @@ TARGET void CreateGenoIndexTable(GENO_WRITER* wt)
 }
 
 /* load from Genepop input format */
-THREAD(LoadGenepop)
+THREAD2(LoadGenepop)
 {
 	//load genepop
 	INCBUFFER buf;
@@ -424,7 +482,7 @@ THREAD(LoadGenepop)
 	if (nind == 0)
 		Exit("\nError: there are no individuals in this file.\n");
 
-	ainds = new IND * [nind];
+	ainds = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -450,7 +508,7 @@ THREAD(LoadGenepop)
 			if (LwrLineCmp("pop", buf.data) == 0) continue;
 			if (j != 0) individual_memory->Alloc(ainds[i], 1);
 			/*   2   */
-			new(ainds[i]) IND(buf.data, j, i, gtab, gatab, wt);
+			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : FILE_INFO[0][0].decompressed_len);
 		}
@@ -485,7 +543,7 @@ THREAD(LoadGenepop)
 }
 
 /* load from Spagedi input format */
-THREAD(LoadSpagedi)
+THREAD2(LoadSpagedi)
 {
 	//load spagedi
 	INCBUFFER buf;
@@ -530,7 +588,7 @@ THREAD(LoadSpagedi)
 
 	FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
 
-	ainds = new IND * [nind];
+	ainds = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -555,7 +613,7 @@ THREAD(LoadSpagedi)
 			if (LwrLineCmp("end", buf.data) == 0) break;
 			if (j != 0) individual_memory->Alloc(ainds[i], 1);
 			/*   2   */
-			new(ainds[i]) IND(buf.data, j, i, gtab, gatab, wt);
+			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -591,7 +649,7 @@ THREAD(LoadSpagedi)
 }
 
 /* load from Cervus input format */
-THREAD(LoadCervus)
+THREAD2(LoadCervus)
 {
 	//load cervus
 	INCBUFFER buf;
@@ -622,7 +680,7 @@ THREAD(LoadCervus)
 
 	FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
 
-	ainds = new IND * [nind];
+	ainds = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -646,7 +704,7 @@ THREAD(LoadCervus)
 			if (buf.Gets(FILE_INFO[0][0].handle) <= 3)  continue;
 			if (j != 0) individual_memory->Alloc(ainds[i], 1);
 			/*   2   */
-			new(ainds[i]) IND(buf.data, j, i, gtab, gatab, wt);
+			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -685,7 +743,7 @@ THREAD(LoadCervus)
 }
 
 /* load from Arlequin input format */
-THREAD(LoadArlequin)
+THREAD2(LoadArlequin)
 {
 	//load structure
 	INCBUFFER buf;
@@ -745,7 +803,7 @@ THREAD(LoadArlequin)
 	if (nind == 0)
 		Exit("\nError: there are no individuals in this file.\n");
 
-	ainds = new IND * [nind];
+	ainds = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -785,7 +843,7 @@ THREAD(LoadArlequin)
 				if (buf.Gets(FILE_INFO[0][0].handle, bufp) == 0) break;
 				if (j != 0) individual_memory->Alloc(ainds[i], 1);
 				/*   2   */
-				new(ainds[i]) IND(buf.data, j, i, gtab, gatab, wt);
+				new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 				i++;
 				PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 			}
@@ -816,7 +874,7 @@ THREAD(LoadArlequin)
 }
 
 /* load from Structure input format */
-THREAD(LoadStructure)
+THREAD2(LoadStructure)
 {
 	//load structure
 	INCBUFFER buf;
@@ -893,7 +951,7 @@ THREAD(LoadStructure)
 	if (nind == 0)
 		Exit("\nError: there are no individuals in this file.\n");
 
-	ainds = new IND * [nind];
+	ainds = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -954,7 +1012,7 @@ THREAD(LoadStructure)
 			//end line
 			if (j != 0) individual_memory->Alloc(ainds[i], 1);
 			/*   2   */
-			new(ainds[i]) IND(bufp, j, i, gtab, gatab, wt);
+			new(ainds[i]) IND<REAL>(bufp, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -996,7 +1054,7 @@ THREAD(LoadStructure)
 }
 
 /* load from PolyGene input format */
-THREAD(LoadPolyGene)
+THREAD2(LoadPolyGene)
 {
 	INCBUFFER buf;
 
@@ -1023,7 +1081,8 @@ THREAD(LoadPolyGene)
 		Exit("\nError: there are no individuals in this file.\n");
 
 	FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
-	ainds = new IND * [nind];
+
+	ainds = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -1048,7 +1107,7 @@ THREAD(LoadPolyGene)
 			buf.Gets(FILE_INFO[0][0].handle);
 			if (j != 0) individual_memory->Alloc(ainds[i], 1);
 			/*   2   */
-			new(ainds[i]) IND(buf.data, j, i, gtab, gatab, wt);
+			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -1082,7 +1141,7 @@ THREAD(LoadPolyGene)
 }
 
 /* load from PolyRelatedness input format */
-THREAD(LoadPolyRelatedness)
+THREAD2(LoadPolyRelatedness)
 {
 	//load polyrelatedness
 	INCBUFFER buf;
@@ -1147,7 +1206,7 @@ THREAD(LoadPolyRelatedness)
 	if (nind == 0)
 		Exit("\nError: there are no individuals in this file.\n");
 
-	ainds = new IND * [nind];
+	ainds = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -1173,7 +1232,7 @@ THREAD(LoadPolyRelatedness)
 			if (LwrLineCmp("//end of file", buf.data) == 0) break;
 			if (j != 0) individual_memory->Alloc(ainds[i], 1);
 			/*   2   */
-			new(ainds[i]) IND(buf.data, j, i, gtab, gatab, wt);
+			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -1208,7 +1267,7 @@ THREAD(LoadPolyRelatedness)
 }
 
 /* load from Genodive input format */
-THREAD(LoadGenoDive)
+THREAD2(LoadGenoDive)
 {
 	INCBUFFER buf;
 
@@ -1259,7 +1318,7 @@ THREAD(LoadGenoDive)
 	}
 
 	int64 ind_pos = FTell(FILE_INFO[0][0].handle); //backup position
-	ainds = new IND * [nind];
+	ainds = new IND<REAL>* [nind];
 
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
@@ -1285,7 +1344,7 @@ THREAD(LoadGenoDive)
 			buf.Gets(FILE_INFO[0][0].handle);
 			if (j != 0) individual_memory->Alloc(ainds[i], 1);
 			/*   2   */
-			new(ainds[i]) IND(buf.data, j, i, gtab, gatab, wt);
+			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -1386,18 +1445,18 @@ TARGET void IndexAlleleLength()
 }
 
 /* Process lines from memory */
-THREAD(LoadBCF)
+THREAD2(LoadBCF)
 {
 	TABLE<HASH, uint> gfid(false, NULL);
 	int64& pval = *(int64*)&PROGRESS_VALUE;
 	int64& cend = *(int64*)&PROGRESS_CEND;
 
-	for (int64 ii = 0; pval != cend; ii++)
+	for (int64 ii = 0; !load_complete || pval != cend; ii++)
 	{
 		while (ii >= progress1)
 		{
 			Sleep(SLEEP_TIME_TINY);
-			if (pval == cend) return;
+			if (pval == cend && load_complete) return;
 		}
 
 		int64 avail_val = ii * 4 + 2;
@@ -1547,7 +1606,7 @@ THREAD(LoadBCF)
 				//add allele depth
 				ad_bucket.AddOffsetAD((uint64)CeilLog2((int)locus[ii].maxdepth + 1), ii, locus[ii].k);
 
-				IND::SetAlleleDepth(ii, depth2, nind * locus[ii].k, 0u);
+				IND<REAL>::SetAlleleDepth(ii, depth2, nind * locus[ii].k, 0u);
 				delete[] depth2;
 			}
 
@@ -1560,7 +1619,7 @@ THREAD(LoadBCF)
 }
 
 /* Read lines from BCF file */
- THREAD(LoadBCFGuard)
+ THREAD2(LoadBCFGuard)
 {
 	int64& ii = progress1 = 0;
 	VLA_NEW(next_line, int64, g_input_col);
@@ -1588,7 +1647,7 @@ THREAD(LoadBCF)
 
 			state_lock[ii % NBUF] = ii * 4 + 1;
 
-			float qual = 1e38;
+			float qual = FLT_MAX;
 			bool pass = true;
 			char* bufj = buf.data, * bufjgt = bufgt.data, * bufjgq = bufgq.data, * bufjdp = bufdp.data, * bufjad = bufad.data;
 			uint64 byteflag = 0;
@@ -1867,30 +1926,37 @@ THREAD(LoadBCF)
 		}
 	}
 
+	TOTLEN_DECOMPRESS = 0;
 	for (int i = 0; i < g_input_row; ++i)
 		for (int j = 0; j < g_input_col; ++j)
+		{
+			FILE_INFO[i][j].decompressed_len = FTell(FILE_INFO[i][j].handle);
+			TOTLEN_DECOMPRESS += FILE_INFO[i][j].decompressed_len;
 			FSeek(FILE_INFO[i][j].handle, original_position[i * g_input_col + j], SEEK_SET);
+		}
 
 	VLA_DELETE(next_line);
 	VLA_DELETE(original_position);
 	VLA_DELETE(previous_offset);
 	VLA_DELETE(jloc);
+	load_complete = true;
 }
 
 /* Process lines from memory */
-THREAD(LoadVCF)
+THREAD2(LoadVCF)
 {
 	TABLE<HASH, uint> gfid(false, NULL);
 	bool fmt_filter[1024] = { 0 };
 	int64& pval = *(int64*)&PROGRESS_VALUE;
 	int64& cend = *(int64*)&PROGRESS_CEND;
+	MEMORY& memory = locus_memory[threadid];
 
-	for (int64 ii = 0; pval != cend; ii++)
+	for (int64 ii = 0; !load_complete || pval != cend; ii++)
 	{
 		while (ii >= progress1)
 		{
 			Sleep(SLEEP_TIME_TINY);
-			if (pval == cend) return;
+			if (pval == cend && load_complete) return;
 		}
 
 		int64 avail_val = ii * 4 + 2;
@@ -1905,7 +1971,7 @@ THREAD(LoadVCF)
 
 			char* str = line.data;
 			char* src1 = str;
-			char* src2 = StrNextIdx(src1, '\t', 7, res - (src1 - str)) + 1;	//INFO
+			char* src2 = StrNextIdx(src1, '\t', 7, res - (src1 - str)) + 1;	    //INFO
 			char* dst = src2;
 			src1 = StrNextIdx(src2, '\t', 1, res - (src2 - str)) + 1;			//FORMAT
 			src2 = StrNextIdx(src1, '\t', 1, res - (src1 - str));				//GENOTYPES
@@ -1976,7 +2042,7 @@ THREAD(LoadVCF)
 						{
 							// genotype
 							int len = (int)(src1 - genostr);
-							int v = CountChars(genostr, "/|", len) + 1;
+							int v = CountPloidy(genostr, len);
 							if (v <= 0 || v > N_MAX_PLOIDY)
 								Exit("\nError: ploidy level greater than %d in individual %s at %d-th locus.\n", N_MAX_PLOIDY, ainds[count]->name, ii + 1);
 
@@ -2040,11 +2106,11 @@ THREAD(LoadVCF)
 			*dst++ = '\0';
 
 			OFFSET off = geno_bucket.AddOffsetGT(CeilLog2((int64)gfid.size), ii);
-
+            
 			//alloc in one piece
 			GENOTYPE* gtab = NULL;  ushort* gatab;
 			if (ad != 2)
-				new(&locus[ii]) LOCUS(locus_memory[threadid], str, (uint64)byteflag, gfid.size, gtab, gatab);
+				new(&locus[ii]) LOCUS(memory, str, (uint64)byteflag, gfid.size, gtab, gatab);
 			else
 				str = StrNextIdx(str, '\t', 9) + 1;
 
@@ -2056,17 +2122,17 @@ THREAD(LoadVCF)
 			for (int v = 1; v <= N_MAX_PLOIDY; ++v)
 				if (usedploidy[v])
 					gftab[missing_hash[v]] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]);
-
+				
 			//geno_bucket.offset[ii] = off;
 			GENO_WRITER wt(ii);
 			for (int j = 0; j < nind; ++j)
 				ainds[j]->AddVCFGenotype(str, ii, depth, gfid, gtab, gatab, wt);
 			wt.FinishWrite();
-
+			
 			if (ploidyinfer)
 			{
 				ad_bucket.AddOffsetAD((uint64)CeilLog2((int)locus[ii].maxdepth + 1), ii, locus[ii].k);
-				IND::SetAlleleDepth(ii, depth2, nind * locus[ii].k, 0u);
+				IND<REAL>::SetAlleleDepth(ii, depth2, nind * locus[ii].k, 0u);
 				delete[] depth2;
 			}
 
@@ -2079,7 +2145,7 @@ THREAD(LoadVCF)
 }
 
 /* Read lines from VCF file */
-THREAD(LoadVCFGuard)
+THREAD2(LoadVCFGuard)
 {
 	int64& ii = progress1 = 0;
 
@@ -2216,6 +2282,7 @@ THREAD(LoadVCFGuard)
 							FILE_INFO[i][0].name.c_str(), FILE_INFO[i][j].name.c_str(), ii + 1, first_line, first_fmt, fmt);
 					}
 				}
+
 				writelen += vbuf[j].geno_len;
 			}
 
@@ -2232,7 +2299,7 @@ THREAD(LoadVCFGuard)
 			char* writebuf = line.data;
 			for (int j = 0; j < g_input_col; ++j)
 			{
-				SetVal(writebuf, vbuf[j].geno_pos, vbuf[j].geno_len);
+				memcpy(writebuf, vbuf[j].geno_pos, vbuf[j].geno_len);
 				writebuf += vbuf[j].geno_len;
 			}
 			*writebuf++ = '\0';
@@ -2249,12 +2316,18 @@ THREAD(LoadVCFGuard)
 		}
 	}
 
+	TOTLEN_DECOMPRESS = 0;
 	for (int i = 0; i < g_input_row; ++i)
 		for (int j = 0; j < g_input_col; ++j)
+		{
+			FILE_INFO[i][j].decompressed_len = FTell(FILE_INFO[i][j].handle);
+			TOTLEN_DECOMPRESS += FILE_INFO[i][j].decompressed_len;
 			FSeek(FILE_INFO[i][j].handle, original_position[i * g_input_col + j], SEEK_SET);
+		}
 
 	VLA_DELETE(vbuf);
 	VLA_DELETE(original_position);
+	load_complete = true;
 }
 
 /* Replace missing genotype with vmin */
@@ -2334,7 +2407,8 @@ TARGET void ReplaceMissingGenotypes()
 }
 
 /* Create individual from genepop */
-TARGET void IND::genepop(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+template<typename REAL>
+TARGET void IND<REAL>::genepop(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 {
 	//two rounds, first round obtain the number of genotypes
 	name = t;
@@ -2433,7 +2507,8 @@ TARGET void IND::genepop(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab,
 }
 
 /* Create individual from spagedi */
-TARGET void IND::spagedi(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+template<typename REAL>
+TARGET void IND<REAL>::spagedi(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 {
 	name = t;
 	char* genstr = NULL;
@@ -2521,7 +2596,8 @@ TARGET void IND::spagedi(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab,
 }
 
 /* Create individual from cervus */
-TARGET void IND::cervus(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+template<typename REAL>
+TARGET void IND<REAL>::cervus(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 {
 	int extracol = genotype_extracol;
 	name = t;
@@ -2602,7 +2678,8 @@ TARGET void IND::cervus(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, 
 }
 
 /* Create individual from arlequin */
-TARGET void IND::arlequin(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+template<typename REAL>
+TARGET void IND<REAL>::arlequin(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 {
 	ReplaceChar(t, '\t', ' ');
 	while (*t == ' ') t++;
@@ -2697,7 +2774,8 @@ TARGET void IND::arlequin(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab
 }
 
 /* Create individual from structure */
-TARGET void IND::structure(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+template<typename REAL>
+TARGET void IND<REAL>::structure(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 {
 	name = t;
 
@@ -2787,7 +2865,8 @@ TARGET void IND::structure(char* t, bool iscount, GENOTYPE** gtab, ushort** gata
 }
 
 /* Create individual from polygene */
-TARGET void IND::polygene(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+template<typename REAL>
+TARGET void IND<REAL>::polygene(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 {
 	name = t;
 	char* genstr = NULL;
@@ -2874,7 +2953,8 @@ TARGET void IND::polygene(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab
 }
 
 /* Create individual from polyrelatedness */
-TARGET void IND::polyrelatedness(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+template<typename REAL>
+TARGET void IND<REAL>::polyrelatedness(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 {
 	name = t;
 	char* genstr = NULL;
@@ -2958,7 +3038,8 @@ TARGET void IND::polyrelatedness(char* t, bool iscount, GENOTYPE** gtab, ushort*
 }
 
 /* Create individual from genodive */
-TARGET void IND::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+template<typename REAL>
+TARGET void IND<REAL>::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 {
 	//2nd column
 	name = StrNextChar(StrNextSpace(StrNextChar(t)));
@@ -3051,7 +3132,8 @@ TARGET void IND::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab
 }
 
 /* Read and set genotype from bcf input */
-TARGET void IND::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpstr, char*& adstr, int vlen, int asize, int gqlen, int dplen, int adlen, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt)
+template<typename REAL>
+TARGET void IND<REAL>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpstr, char*& adstr, int vlen, int asize, int gqlen, int dplen, int adlen, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt)
 {
 	LOCUS& loc = locus[l];
 	TABLE<HASH, GENOTYPE*>& gftab = loc.gftab;
@@ -3105,7 +3187,7 @@ TARGET void IND::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpst
 
 	if (ad == 2 && gid != mid && locus[l].adid != 0xFFFF)
 	{
-		double* fre = pop[popid].GetFreq(l);
+		REAL* fre = pop<REAL>[popid].GetFreq(l);
 		for (int j = 0; j < locus[l].k; ++j)
 			fre[j] += ReadBinInteger(adstr, adlen);
 	}
@@ -3125,7 +3207,8 @@ TARGET void IND::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpst
 }
 
 /* Read and set alleles from vcf input */
-TARGET void IND::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt)
+template<typename REAL>
+TARGET void IND<REAL>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt)
 {
 	LOCUS& loc = locus[l];
 	TABLE<HASH, GENOTYPE*>& gftab = loc.gftab;
@@ -3149,9 +3232,9 @@ TARGET void IND::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<HASH, 
 
 	//convert hash
 	char* genostr = GetTagValue(linebegin, gtid);
-	int v = CountChars(genostr, "/|") + 1;
+	int v = CountPloidy(genostr);
 	if (v > N_MAX_PLOIDY) Exit("\nError: ploidy level greater than %d in individual %s at locus %s_%s.\n", N_MAX_PLOIDY, name, loc.GetChrom(), loc.GetName());
-
+	
 	//if perform haplotype extraction, exclude unphased genotype as missing
 	if (haplotype && ContainsChar(genostr, '/'))
 	{
@@ -3196,7 +3279,7 @@ TARGET void IND::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<HASH, 
 
 	if (ad == 2 && gid != mid && locus[l].adid != 0xFFFF && locus[l].adid < fmtc)
 	{
-		double* fre = pop[popid].GetFreq(l);
+		REAL* fre = pop<REAL>[popid].GetFreq(l);
 		char* adval = GetTagValue(linebegin, locus[l].adid) - 1;
 		for (int j = 0; j < locus[l].k; ++j)
 			fre[j] += ReadInteger(++adval);
@@ -3221,10 +3304,57 @@ TARGET void IND::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<HASH, 
 }
 
 /* Get tag value */
-TARGET char* IND::GetTagValue(char* re, int tagid)
+template<typename REAL>
+TARGET char* IND<REAL>::GetTagValue(char* re, int tagid)
 {
 	if (tagid == -1) return 0;
 	for (int i = 0; i < tagid; ++i)
 		while (*re++);
+	return re;
+}
+
+/* Count ploidy level from VCF genotype string */
+__forceinline TARGET int CountPloidy(char* str)
+{
+	int count = 1;
+	for (int i = 1; str[i + 1]; ++i)
+		count += (str[i] == '|') | (str[i] == '/');
+	return count;
+}
+
+/* Count ploidy level from VCF genotype string */
+__forceinline TARGET int CountPloidy(char* str, int len)
+{
+	int re = 1;
+	switch (len)
+	{
+	case  0: return 0;
+	default :
+	{
+		for (int i = 1; i < len - 1; ++i)
+			re += (str[i] == '|') | (str[i] == '/');
+		return re;
+	}
+	case 20: re += (str[18] == '|') | (str[18] == '/');
+	case 19: re += (str[17] == '|') | (str[17] == '/');
+	case 18: re += (str[16] == '|') | (str[16] == '/');
+	case 17: re += (str[15] == '|') | (str[15] == '/');
+	case 16: re += (str[14] == '|') | (str[14] == '/');
+	case 15: re += (str[13] == '|') | (str[13] == '/');
+	case 14: re += (str[12] == '|') | (str[12] == '/');
+	case 13: re += (str[11] == '|') | (str[11] == '/');
+	case 12: re += (str[10] == '|') | (str[10] == '/');
+	case 11: re += (str[ 9] == '|') | (str[ 9] == '/');
+	case 10: re += (str[ 8] == '|') | (str[ 8] == '/');
+	case  9: re += (str[ 7] == '|') | (str[ 7] == '/');
+	case  8: re += (str[ 6] == '|') | (str[ 6] == '/');
+	case  7: re += (str[ 5] == '|') | (str[ 5] == '/');
+	case  6: re += (str[ 4] == '|') | (str[ 4] == '/');
+	case  5: re += (str[ 3] == '|') | (str[ 3] == '/');
+	case  4: re += (str[ 2] == '|') | (str[ 2] == '/');
+	case  3: re += (str[ 1] == '|') | (str[ 1] == '/');
+	case  2: ;
+	case  1: ;
+	}
 	return re;
 }

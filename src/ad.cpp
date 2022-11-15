@@ -6,9 +6,17 @@
 #define extern 
 #undef extern 
 
+template struct IND<double>;
+template struct IND<float >;
+
+template TARGET void IND<double>::SetAlleleDepth(int64 l, uint* depth, int K, int indid);
+template TARGET void IND<float >::SetAlleleDepth(int64 l, uint* depth, int K, int indid);
+template TARGET void IND<double>::GetAlleleDepth(int64 l, uint* depth);
+template TARGET void IND<float >::GetAlleleDepth(int64 l, uint* depth);
 
 /* Set allele sequencing depth, for ad, TEST */
-TARGET void IND::SetAlleleDepth(int64 l, uint* depth, int K, int indid)
+template<typename REAL>
+TARGET void IND<REAL>::SetAlleleDepth(int64 l, uint* depth, int K, int indid)
 {
 	uint size = (uint)ad_bucket.offset[l].size, mask = ((1u << size) - 1u);
 	uint64 offset = size * K * indid;
@@ -27,7 +35,8 @@ TARGET void IND::SetAlleleDepth(int64 l, uint* depth, int K, int indid)
 }
 
 /* Set allele sequencing depth, for ad, TEST */
-TARGET void IND::SetAlleleDepth(int64 l, uint* depth, int K)
+template<typename REAL>
+TARGET void IND<REAL>::SetAlleleDepth(int64 l, uint* depth, int K)
 {
 	uint size = (uint)ad_bucket.offset[l].size, mask = ((1u << size) - 1u);
 	uint64 offset = size * K * indid;
@@ -46,7 +55,8 @@ TARGET void IND::SetAlleleDepth(int64 l, uint* depth, int K)
 }
 
 /* Set allele sequencing depth, for ad, TEST */
-TARGET void IND::SetAlleleDepth(int64 l, uint* depth, int K, OFFSET* _offset, byte* bucket)
+template<typename REAL>
+TARGET void IND<REAL>::SetAlleleDepth(int64 l, uint* depth, int K, OFFSET* _offset, byte* bucket)
 {
 	uint size = (uint)_offset[l].size;
 	uint mask = ((1u << size) - 1u);
@@ -66,7 +76,8 @@ TARGET void IND::SetAlleleDepth(int64 l, uint* depth, int K, OFFSET* _offset, by
 }
 
 /* Set allele sequencing depth, for ad, TEST */
-TARGET void IND::GetAlleleDepth(int64 l, uint* depth)
+template<typename REAL>
+TARGET void IND<REAL>::GetAlleleDepth(int64 l, uint* depth)
 {
 	uint K = GetLoc(l).k;
 	uint size = (uint)ad_bucket.offset[l].size;

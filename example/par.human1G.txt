@@ -3,7 +3,7 @@
 -g_eval=yes
 -g_seed=1
 -g_progress=80
--g_nthread=8
+-g_nthread=16
 -g_indtext="pop1:#1-#500#npop2:#501-#1000 pop3:#1001-#1500 pop4:#1501-#2000 pop5:#2001-#2504 #REG reg1:#1-#2 reg2:#3-#5"
 
 -g_input=data.human1G.vcf.gz
@@ -78,7 +78,6 @@
 -cluster_level=ind,pop
 
 -structure
--structure_decompress=yes
 -structure_admix=no
 -structure_locpriori=no
 -structure_f=no
@@ -89,3 +88,4 @@
 -structure_nreps=10000
 -structure_nthinning=20
 -structure_nruns=1
+-structure_nstream=4

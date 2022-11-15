@@ -9,17 +9,30 @@ TARGET double MaxDiag(double* a, int m, int n);
 /* Matrix multiplication G = C * D * C */
 TARGET void MatrixMul2(double* side, double* mid, int N, double* res);
 
+/* Matrix multiplication G = C * D * C */
+TARGET void MatrixMul2(float* side, float* mid, int N, float* res);
+
 /* Eigen value decomposition for PCoA */
 TARGET void EigenValueDecomp(double* mat, int N, double*& U, double*& V, int& maxp, int* idx);
 
+/* Eigen value decomposition for PCoA */
+TARGET void EigenValueDecomp(float* mat, int N, float*& U, float*& V, int& maxp, int* idx);
+
+template<typename REAL>
 TARGET void MatrixSPA(double* f, double* x, int spa_tn, int spa_np, double* a,
 	int64 l, double* am, double* h, double* g, double* a2);
 
 /* Matrix multiplication */
 TARGET int MatrixMul(double* l, int lr, int lc, double* r, int rr, int rc, double* res);
 
+/* Matrix multiplication */
+TARGET int MatrixMul(float* l, int lr, int lc, float* r, int rr, int rc, float* res);
+
 /* Matrix inverstion */
 TARGET void MatrixInv2(double* M, int m);
+
+/* Matrix inverstion */
+TARGET void MatrixInv2(float* M, int m);
 
 /* Matrix inverstion */
 TARGET int MatrixInv(double* M, int m);

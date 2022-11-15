@@ -3,40 +3,46 @@
 #pragma once
 #include "vcfpop.h"
 
+template TARGET void CalcHaplotype<double>();
+template TARGET void CalcHaplotype<float >();
+template TARGET double GetDummyK<double>(int64 st, int64 ed, TABLE<HASH, ushort>& hfidx, TABLE<HASH, ushort>& gfidx);
+template TARGET double GetDummyK<float >(int64 st, int64 ed, TABLE<HASH, ushort>& hfidx, TABLE<HASH, ushort>& gfidx);
+
 #ifndef _EXHAPLO
-	/* Do nothing */
-	TARGET HAPLO_DUMMY_HAPLOTYPE::HAPLO_DUMMY_HAPLOTYPE()
-	{
-
-	}
-
-	/* Extract the ith haplotype from an individual */
-	TARGET void HAPLO_DUMMY_HAPLOTYPE::ExtractHaplotype(int vi, IND* ti, int64 st, int64 ed, int nvar, ushort aid, MEMORY& haplo_memory)
-	{
-		alleleid = aid;
-		haplo_memory.Alloc(alleles, nvar);
-		int sc = 0;
-
-		for (int64 l = st; l <= ed; ++l)
-		{
-			int ta = ti->GetGenotype(GetLocId(l), GetLoc(l).GetGtab()).GetAlleleCopy(vi);//fine
-
-			//encounter an missing allele, set all haplotype to missing
-			if (ta == 0xFFFF)
-			{
-				SetFF(alleles, nvar);
-				return;
-			}
-			alleles[sc++] = (ushort)ta;
-		}
-	}
-
-	/* Print information for an extracted locus */
-	TARGET void HAPLO_DUMMY_HAPLOTYPE::PrintHaplotype(FILE* f1, int64 st, int64 ed)
+/* Do nothing */
+TARGET HAPLO_DUMMY_HAPLOTYPE::HAPLO_DUMMY_HAPLOTYPE()
 {
-	fprintf(f1, "%s%d", g_linebreak_val, alleleid);
-	for (int64 l = st, sc = 0; l <= ed; ++l)
-		fprintf(f1, "%c%s", g_delimiter_val, GetLoc(l).GetAlleleName(alleles[sc++]));
+
+}
+
+/* Extract the ith haplotype from an individual */
+template<typename REAL>
+TARGET void HAPLO_DUMMY_HAPLOTYPE::ExtractHaplotype(int vi, IND<REAL>* ti, int64 st, int64 ed, int nvar, ushort aid, MEMORY& haplo_memory)
+{
+	alleleid = aid;
+	haplo_memory.Alloc(alleles, nvar);
+	int sc = 0;
+
+	for (int64 l = st; l <= ed; ++l)
+	{
+		int ta = ti->GetGenotype(GetLocId(l), GetLoc(l).GetGtab()).GetAlleleCopy(vi);//fine
+
+		//encounter an missing allele, set all haplotype to missing
+		if (ta == 0xFFFF)
+		{
+			SetFF(alleles, nvar);
+			return;
+		}
+		alleles[sc++] = (ushort)ta;
+	}
+}
+
+/* Print information for an extracted locus */
+TARGET void HAPLO_DUMMY_HAPLOTYPE::PrintHaplotype(FILE* f1, int64 st, int64 ed)
+{
+fprintf(f1, "%s%d", g_linebreak_val, alleleid);
+for (int64 l = st, sc = 0; l <= ed; ++l)
+	fprintf(f1, "%c%s", g_delimiter_val, GetLoc(l).GetAlleleName(alleles[sc++]));
 }
 #endif
 
@@ -51,9 +57,9 @@ extern LOCN* locus_id;								//Locus id for small locus used in haplotype extra
 #undef extern 
 
 /* Check aneuploid within contigs in haplotype extraction */
-THREAD(CheckAneuploid)
+THREAD2(CheckAneuploid)
 {
-	AssignPloidyThreadIn();
+	AssignPloidyThreadIn<REAL>();
 	nfilterind = 0;
 
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
@@ -95,6 +101,7 @@ THREAD(CheckAneuploid)
 }
 
 /* Perform haplotype extraction */
+template<typename REAL>
 TARGET void CalcHaplotype()
 {
 	if (abs(g_format_val) > BCF || !haplotype)
@@ -127,20 +134,20 @@ TARGET void CalcHaplotype()
 	RunThreads(&QSWorker, NULL, NULL, nloc, nloc, "\nSorting loci according to contig/chromosome and position:\n", g_nthread_val, true);
 
 	//Marker aneuploids in the same contig
-	RunThreads(&CheckAneuploid, NULL, NULL, nind + nloc, nind + nloc, "\nChecking ansioploids in the same contig:\n", 1, true);
+	RunThreads(&CheckAneuploid<REAL>, NULL, NULL, nind + nloc, nind + nloc, "\nChecking ansioploids in the same contig:\n", 1, true);
 
 	if (nfilterind == 0)
 		Exit("\nError: all %d individuals are excluded from analysis due to the aneuploid in the same contig, please check data.\n", nind);
 
 	//Remove aneuploids in the same contig
 	if (nfilterind != nind)
-		RunThreads(&RemoveIndividual, NULL, NULL, nloc, nloc, "\nFiltering ansioploids in the same contig to perform haplotype extraction:\n", 1, true);
-	CheckGenotypeId();
+		RunThreads(&RemoveIndividual<REAL>, NULL, NULL, nloc, nloc, "\nFiltering ansioploids in the same contig to perform haplotype extraction:\n", 1, true);
+	CheckGenotypeId<REAL>();
 
-	//CreateHaplotypeLocus
+	//Create haplotypic locus
 	haplotype_contig = -1;
-	RunThreads(&CreateHaplotypeLocus, NULL, NULL, nloc, nloc, "\nCreating haplotype from VCF file:\n", g_nthread_val, true);
-	CheckGenotypeId();
+	RunThreads(&CreateHaplotypeLocus<REAL>, NULL, NULL, nloc, nloc, "\nCreating haplotype from VCF file:\n", g_nthread_val, true);
+	CheckGenotypeId<REAL>();
 	
 	//Sort extracted locus
 	int64 nl = haplotype_locus.size;
@@ -156,7 +163,7 @@ TARGET void CalcHaplotype()
 
 	//Calculate new genotype index table offset
 	haplo_bucket.CreateBucketGT(haplotype_locus);
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 
 	//Create new locus
 	MEMORY* omemory = locus_memory;
@@ -167,13 +174,13 @@ TARGET void CalcHaplotype()
 	OpenResFile("-haplotype", "Extracted haplotype information");
 	OpenTempFiles(g_nthread_val, ".haplotype");
 	PROGRESS_VALUE = 0; PROGRESS_TOTAL = nl; PROGRESS_NOUTPUTED2 = PROGRESS_NOUTPUTED; PROGRESS_NOUTPUTED = 0;
-	RunThreads(&WriteHaplotypeLocus, NULL, NULL, nl, nl, "\nWriting extracted loci:\n", g_nthread_val, true);
-	CheckGenotypeId();
+	RunThreads(&WriteHaplotypeLocus<REAL>, NULL, NULL, nl, nl, "\nWriting extracted loci:\n", g_nthread_val, true);
+	CheckGenotypeId<REAL>();
 
 	ALLELE_IDENTIFIER = false;
 
 	//Finish, release memory
-	nloc = nl;
+	nloc = nfilter = nl;
 
 	delete[] slocus;
 	slocus = haplotype_nslocus;
@@ -198,9 +205,13 @@ TARGET void CalcHaplotype()
 	haplotype = false;
 
 	//Calculate total number of alleles and genotypes
+	delete[] allele_freq_offset;      allele_freq_offset = new uint64[nloc];
+	delete[] genotype_count_offset;   genotype_count_offset = new uint64[nloc];
 	KT = GT = maxK = maxG = 0;
 	for (int64 l = 0; l < nloc; ++l)
 	{
+		allele_freq_offset[l] = KT;
+		genotype_count_offset[l] = GT;
 		KT += GetLoc(l).k;
 		GT += GetLoc(l).ngeno;
 		maxK = Max((int)GetLoc(l).k, maxK);
@@ -361,6 +372,7 @@ THREAD(QSHapWorker)
 }
 
 /* Get number of alleles and genotypes at a dummy locus */
+template<typename REAL>
 TARGET double GetDummyK(int64 st, int64 ed, TABLE<HASH, ushort>& hfidx, TABLE<HASH, ushort>& gfidx)
 {
 	hfidx.Clear(); gfidx.Clear();
@@ -394,7 +406,7 @@ TARGET double GetDummyK(int64 st, int64 ed, TABLE<HASH, ushort>& hfidx, TABLE<HA
 }
 
 /* Create locus for haplotype extraction */
-THREAD(CreateHaplotypeLocus)
+THREAD2(CreateHaplotypeLocus)
 {
 	TABLE<HASH, ushort> hfidx(false, NULL), gfidx(false, NULL);
 	LIST<HAPLO_DUMMY_LOCUS> dlocus(NULL);    //dummy locus
@@ -431,7 +443,7 @@ THREAD(CreateHaplotypeLocus)
 		//3. Calculate the values of several parameters (the length of each haplotype, the number of variants, the number of alleles and the number of genotypes). 
 		int64 clen = GetLocPos(ed) - GetLocPos(st) + 1;
 		int64 nvariants = ed - st + 1;
-		double gtrate = GetDummyK(st, ed, hfidx, gfidx);
+		double gtrate = GetDummyK<REAL>(st, ed, hfidx, gfidx);
 
 		//4. If any parameter exceeds the upper bound then increase i and go to step 2. 
 		if (clen > haplotype_length_max ||
@@ -470,7 +482,7 @@ THREAD(CreateHaplotypeLocus)
 }
 
 /* Output locus for haplotype extraction */
-THREAD(WriteHaplotypeLocus)
+THREAD2(WriteHaplotypeLocus)
 {
 	char name_buf[NAME_BUF_LEN];
 	int nthread = g_nthread_val;

@@ -2,9 +2,72 @@
 
 #include "vcfpop.h"
 
+template struct IND<double>;
+template struct IND<float >;
+template struct LOCSTAT2<double>;
+template struct LOCSTAT2<float >;
+template struct POP<double>;
+template struct POP<float >;
+
+template TARGET GENOTYPE& IND<double>::GetGenotype(int64 l);
+template TARGET GENOTYPE& IND<float >::GetGenotype(int64 l);
+template TARGET GENOTYPE& IND<double>::GetGenotype(int64 l, GENOTYPE* gtab);
+template TARGET GENOTYPE& IND<float >::GetGenotype(int64 l, GENOTYPE* gtab);
+template TARGET int IND<double>::GetGenotypeId(int64 l);
+template TARGET int IND<float >::GetGenotypeId(int64 l);
+template TARGET int IND<double>::GetGenotypeId(int64 l, byte* bucket, OFFSET* offset);
+template TARGET int IND<float >::GetGenotypeId(int64 l, byte* bucket, OFFSET* offset);
+template TARGET IND<double>::IND();
+template TARGET IND<float >::IND();
+template TARGET IND<double>::IND(char* t, bool iscount, int id, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET IND<float >::IND(char* t, bool iscount, int id, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET IND<double>::IND(char*& title, int id);
+template TARGET IND<float >::IND(char*& title, int id);
+template TARGET IND<double>::IND(IND<double>& ref);
+template TARGET IND<float >::IND(IND<float >& ref);
+template TARGET double IND<double>::GenoFreq(POP<double>* grp, int model, int64 loc, double e);
+template TARGET double IND<float >::GenoFreq(POP<float >* grp, int model, int64 loc, double e);
+template TARGET void IND<double>::GetDyadGenotypeIdx(int& id1, int& id2, int64 l);
+template TARGET void IND<float >::GetDyadGenotypeIdx(int& id1, int& id2, int64 l);
+template TARGET double* POP<double>::GetFreq(int64 l);
+template TARGET float * POP<float >::GetFreq(int64 l);
+template TARGET double POP<double>::GetFreq(int64 l, int a);
+template TARGET float  POP<float >::GetFreq(int64 l, int a);
+template TARGET ushort* POP<double>::GetGenoCount(int64 l);
+template TARGET ushort* POP<float >::GetGenoCount(int64 l);
+template TARGET ushort POP<double>::GetGenoCount(int64 l, int id);
+template TARGET ushort POP<float >::GetGenoCount(int64 l, int id);
+template TARGET void POP<double>::AllocFreq();
+template TARGET void POP<float >::AllocFreq();
+template TARGET void POP<double>::UnAllocFreq();
+template TARGET void POP<float >::UnAllocFreq();
+template TARGET void POP<double>::GetLocStat2(LOCSTAT2<double>* loc_stat2);
+template TARGET void POP<float >::GetLocStat2(LOCSTAT2<float >* loc_stat2);
+
+template TARGET void Initialize<double>();
+template TARGET void Initialize<float >();
+template TARGET void UnInitialize1<double>();
+template TARGET void UnInitialize1<float >();
+template TARGET void UnInitialize2<double>();
+template TARGET void UnInitialize2<float >();
+template TARGET void AssignPloidy<double>();
+template TARGET void AssignPloidy<float >();
+template TARGET void CalcFreq<double>();
+template TARGET void CalcFreq<float >();
+template TARGET void EstimatePES<double>();
+template TARGET void EstimatePES<float >();
+template TARGET void Calculate<double>();
+template TARGET void Calculate<float >();
+template TARGET double GENOTYPE::GetFreq<double>(int k2);
+template TARGET float  GENOTYPE::GetFreq<float >(int k2);
+template TARGET void GENOTYPE::GetFreq<double>(double* p, int k2);
+template TARGET void GENOTYPE::GetFreq<float >(float * p, int k2);
+
 #define extern 
+
 /* Misc */
-extern POP* cpop;									//Current population
+extern void* cpop_;									//Current population
+#define cpop (*(POP<REAL>**)&cpop_)
 extern ushort missing_array[N_MAX_PLOIDY];			//Allele array of the missing genotypes
 extern GENOTYPE missing_genotype[N_MAX_PLOIDY + 1];	//Missing genotype at different ploidy level
 extern HASH missing_hash[N_MAX_PLOIDY + 1];			//Hash of missing genotype
@@ -15,34 +78,37 @@ extern bool useslocus;								//Use small locus
 extern TABLE<HASH, GENOTYPE*> emptygftab;			//Empty genotype table
 
 /* Load File */
-extern LIST<POP> pop;								//Original input population
-extern LIST<LIST<POP>> reg;							//Original input regions
-extern LOCUS* locus;								//Locus information
+template<> extern LIST<POP<double>> pop<double>;						//Original input population
+template<> extern LIST<POP<float >> pop<float >;						//Original input population
+template<> extern LIST<LIST<POP<double>>> reg<double>; 				//Original input regions
+template<> extern LIST<LIST<POP<float >>> reg<float >; 				//Original input regions
 
+extern LOCUS* locus;								//Locus information
 extern MEMORY* individual_memory;					//Individual memory class
 extern MEMORY* locus_memory;						//Locus memory class
 extern MEMORY* nvcf_memory;							//Locus memory for first round counting ngeno
 extern TABLE<HASH, uint>* nvcf_gfid;				//Hash table for counting ngeno 
 
 /* Allele frequency and genotype count offset */
-extern LOCN* allele_freq_offset;					//Allele frequency array at locus l
+extern uint64* allele_freq_offset;					//Allele frequency array at locus l
 extern int maxK;									//Max number of alleles
 extern int64 KT;									//Total number of alleles
 
-extern LOCN* genotype_count_offset;					//Genotype count array at locus l
+extern uint64* genotype_count_offset;					//Genotype count array at locus l
 extern int maxG;									//Max number of genotypes at all loci
 extern int64 GT;									//Total number of genotypes
 
 
 /* Genotype bucket */
-
 extern VMEMORY locus_list;
-extern BUCKET geno_bucket, haplo_bucket, ad_bucket;
-
+extern BUCKET geno_bucket;
+extern BUCKET haplo_bucket;
+extern BUCKET ad_bucket;
 
 /* Reassign individuals and populations */
 extern bool reassigned;								//Is ploidy assigned, to distiguish diversity filter and diversity estimation
-extern IND** rinds;									//Rearranged individuals according to population source
+extern void* rinds_;						//Rearranged individuals according to population source
+#define rinds (*(IND<REAL>***)&rinds_)
 #undef extern
 
 #ifndef _BCFHEADER
@@ -52,7 +118,10 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	{
 		if (contig_name == NULL) return;
 		for (int64 i = 0; i < contig_size; ++i)
+		{
 			delete[] contig_name[i];
+			contig_name[i] = NULL;
+		}
 		delete[] contig_name;
 		contig_name = NULL;
 	}
@@ -1207,12 +1276,12 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	{
 		//array is 50% faster than switch
 		static double PT_HINDEX[150] = 									//Pattern index to h-index
-		{ NA, 0.000000000000000, 0.000000000000000, 1.000000000000000, 0.000000000000000, 0.666666666666667, 1.000000000000000, 0.000000000000000, 0.500000000000000, 0.666666666666667, 0.833333333333333, 1.000000000000000, 0.000000000000000, 0.400000000000000, 0.600000000000000, 0.700000000000000, 0.800000000000000, 0.900000000000000, 1.000000000000000, 0.000000000000000, 0.333333333333333, 0.533333333333333, 0.600000000000000, 0.600000000000000, 0.733333333333333, 0.800000000000000, 0.800000000000000, 0.866666666666667, 0.933333333333333, 1.000000000000000, 0.000000000000000, 0.285714285714286, 0.476190476190476, 0.523809523809524, 0.571428571428572, 0.666666666666667, 0.714285714285714, 0.714285714285714, 0.761904761904762, 0.809523809523809, 0.857142857142857, 0.857142857142857, 0.904761904761905, 0.952380952380952, 1.000000000000000, 0.000000000000000, 0.250000000000000, 0.428571428571429, 0.464285714285714, 0.535714285714286, 0.607142857142857, 0.642857142857143, 0.571428571428571, 0.678571428571429, 0.714285714285714, 0.750000000000000, 0.785714285714286, 0.750000000000000, 0.785714285714286, 0.821428571428571, 0.857142857142857, 0.892857142857143, 0.857142857142857, 0.892857142857143, 0.928571428571429, 0.964285714285714, 1.000000000000000, 0.000000000000000, 0.222222222222222, 0.388888888888889, 0.416666666666667, 0.500000000000000, 0.555555555555556, 0.583333333333333, 0.555555555555556, 0.638888888888889, 0.666666666666667, 0.694444444444444, 0.722222222222222, 0.666666666666667, 0.722222222222222, 0.750000000000000, 0.777777777777778, 0.805555555555556, 0.833333333333333, 0.750000000000000, 0.805555555555556, 0.833333333333333, 0.833333333333333, 0.861111111111111, 0.888888888888889, 0.916666666666667, 0.888888888888889, 0.916666666666667, 0.944444444444444, 0.972222222222222, 1.000000000000000, 0.000000000000000, 0.200000000000000, 0.355555555555555, 0.377777777777778, 0.466666666666667, 0.511111111111111, 0.533333333333333, 0.533333333333333, 0.600000000000000, 0.622222222222222, 0.644444444444444, 0.666666666666667, 0.555555555555556, 0.644444444444444, 0.688888888888889, 0.711111111111111, 0.733333333333333, 0.755555555555555, 0.777777777777778, 0.711111111111111, 0.733333333333333, 0.733333333333333, 0.777777777777778, 0.800000000000000, 0.800000000000000, 0.822222222222222, 0.844444444444444, 0.866666666666667, 0.800000000000000, 0.822222222222222, 0.844444444444444, 0.866666666666667, 0.866666666666667, 0.888888888888889, 0.911111111111111, 0.933333333333333, 0.888888888888889, 0.911111111111111, 0.933333333333333, 0.955555555555555, 0.977777777777778, 1.000000000000000, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA };
+		{ NAN, 0.000000000000000, 0.000000000000000, 1.000000000000000, 0.000000000000000, 0.666666666666667, 1.000000000000000, 0.000000000000000, 0.500000000000000, 0.666666666666667, 0.833333333333333, 1.000000000000000, 0.000000000000000, 0.400000000000000, 0.600000000000000, 0.700000000000000, 0.800000000000000, 0.900000000000000, 1.000000000000000, 0.000000000000000, 0.333333333333333, 0.533333333333333, 0.600000000000000, 0.600000000000000, 0.733333333333333, 0.800000000000000, 0.800000000000000, 0.866666666666667, 0.933333333333333, 1.000000000000000, 0.000000000000000, 0.285714285714286, 0.476190476190476, 0.523809523809524, 0.571428571428572, 0.666666666666667, 0.714285714285714, 0.714285714285714, 0.761904761904762, 0.809523809523809, 0.857142857142857, 0.857142857142857, 0.904761904761905, 0.952380952380952, 1.000000000000000, 0.000000000000000, 0.250000000000000, 0.428571428571429, 0.464285714285714, 0.535714285714286, 0.607142857142857, 0.642857142857143, 0.571428571428571, 0.678571428571429, 0.714285714285714, 0.750000000000000, 0.785714285714286, 0.750000000000000, 0.785714285714286, 0.821428571428571, 0.857142857142857, 0.892857142857143, 0.857142857142857, 0.892857142857143, 0.928571428571429, 0.964285714285714, 1.000000000000000, 0.000000000000000, 0.222222222222222, 0.388888888888889, 0.416666666666667, 0.500000000000000, 0.555555555555556, 0.583333333333333, 0.555555555555556, 0.638888888888889, 0.666666666666667, 0.694444444444444, 0.722222222222222, 0.666666666666667, 0.722222222222222, 0.750000000000000, 0.777777777777778, 0.805555555555556, 0.833333333333333, 0.750000000000000, 0.805555555555556, 0.833333333333333, 0.833333333333333, 0.861111111111111, 0.888888888888889, 0.916666666666667, 0.888888888888889, 0.916666666666667, 0.944444444444444, 0.972222222222222, 1.000000000000000, 0.000000000000000, 0.200000000000000, 0.355555555555555, 0.377777777777778, 0.466666666666667, 0.511111111111111, 0.533333333333333, 0.533333333333333, 0.600000000000000, 0.622222222222222, 0.644444444444444, 0.666666666666667, 0.555555555555556, 0.644444444444444, 0.688888888888889, 0.711111111111111, 0.733333333333333, 0.755555555555555, 0.777777777777778, 0.711111111111111, 0.733333333333333, 0.733333333333333, 0.777777777777778, 0.800000000000000, 0.800000000000000, 0.822222222222222, 0.844444444444444, 0.866666666666667, 0.800000000000000, 0.822222222222222, 0.844444444444444, 0.866666666666667, 0.866666666666667, 0.888888888888889, 0.911111111111111, 0.933333333333333, 0.888888888888889, 0.911111111111111, 0.933333333333333, 0.955555555555555, 0.977777777777778, 1.000000000000000, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN };
 
 		return PT_HINDEX[patternid];
 		/*switch (patternid)
 		{
-			default: 	return NA;
+			default: 	return NAN;
 			case	1: 	return 0.000000000000000;
 			case	2: 	return 0.000000000000000;
 			case	3: 	return 1.000000000000000;
@@ -1358,12 +1427,12 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	TARGET double GENOTYPE::SS_IAM()
 	{
 		static double PT_SSIAM[150] = 									//Pattern index to ss smm
-		{ NA, NA, 0.000000000000000, 0.500000000000000, 0.000000000000000, 0.666666666666667, 1.000000000000000, 0.000000000000000, 0.750000000000000, 1.000000000000000, 1.250000000000000, 1.500000000000000, 0.000000000000000, 0.800000000000000, 1.200000000000000, 1.400000000000000, 1.600000000000000, 1.800000000000000, 2.000000000000000, 0.000000000000000, 0.833333333333332, 1.333333333333330, 1.500000000000000, 1.500000000000000, 1.833333333333330, 2.000000000000000, 2.000000000000000, 2.166666666666670, 2.333333333333330, 2.500000000000000, 0.000000000000000, 0.857142857142858, 1.428571428571430, 1.571428571428570, 1.714285714285720, 2.000000000000000, 2.142857142857140, 2.142857142857140, 2.285714285714290, 2.428571428571430, 2.571428571428570, 2.571428571428570, 2.714285714285710, 2.857142857142860, 3.000000000000000, 0.000000000000000, 0.875000000000000, 1.500000000000000, 1.625000000000000, 1.875000000000000, 2.125000000000000, 2.250000000000000, 2.000000000000000, 2.375000000000000, 2.500000000000000, 2.625000000000000, 2.750000000000000, 2.625000000000000, 2.750000000000000, 2.875000000000000, 3.000000000000000, 3.125000000000000, 3.000000000000000, 3.125000000000000, 3.250000000000000, 3.375000000000000, 3.500000000000000, 0.000000000000000, 0.888888888888888, 1.555555555555560, 1.666666666666670, 2.000000000000000, 2.222222222222220, 2.333333333333330, 2.222222222222220, 2.555555555555560, 2.666666666666670, 2.777777777777780, 2.888888888888890, 2.666666666666670, 2.888888888888890, 3.000000000000000, 3.111111111111110, 3.222222222222220, 3.333333333333330, 3.000000000000000, 3.222222222222220, 3.333333333333330, 3.333333333333330, 3.444444444444440, 3.555555555555560, 3.666666666666670, 3.555555555555560, 3.666666666666670, 3.777777777777780, 3.888888888888890, 4.000000000000000, 0.000000000000000, 0.900000000000000, 1.600000000000000, 1.700000000000000, 2.100000000000000, 2.300000000000000, 2.400000000000000, 2.400000000000000, 2.700000000000000, 2.800000000000000, 2.900000000000000, 3.000000000000000, 2.500000000000000, 2.900000000000000, 3.100000000000000, 3.200000000000000, 3.300000000000000, 3.400000000000000, 3.500000000000000, 3.200000000000000, 3.300000000000000, 3.300000000000000, 3.500000000000000, 3.600000000000000, 3.600000000000000, 3.700000000000000, 3.800000000000000, 3.900000000000000, 3.600000000000000, 3.700000000000000, 3.800000000000000, 3.900000000000000, 3.900000000000000, 4.000000000000000, 4.100000000000000, 4.200000000000000, 4.000000000000000, 4.100000000000000, 4.200000000000000, 4.300000000000000, 4.400000000000000, 4.500000000000000, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA };
+		{ NAN, NAN, 0.000000000000000, 0.500000000000000, 0.000000000000000, 0.666666666666667, 1.000000000000000, 0.000000000000000, 0.750000000000000, 1.000000000000000, 1.250000000000000, 1.500000000000000, 0.000000000000000, 0.800000000000000, 1.200000000000000, 1.400000000000000, 1.600000000000000, 1.800000000000000, 2.000000000000000, 0.000000000000000, 0.833333333333332, 1.333333333333330, 1.500000000000000, 1.500000000000000, 1.833333333333330, 2.000000000000000, 2.000000000000000, 2.166666666666670, 2.333333333333330, 2.500000000000000, 0.000000000000000, 0.857142857142858, 1.428571428571430, 1.571428571428570, 1.714285714285720, 2.000000000000000, 2.142857142857140, 2.142857142857140, 2.285714285714290, 2.428571428571430, 2.571428571428570, 2.571428571428570, 2.714285714285710, 2.857142857142860, 3.000000000000000, 0.000000000000000, 0.875000000000000, 1.500000000000000, 1.625000000000000, 1.875000000000000, 2.125000000000000, 2.250000000000000, 2.000000000000000, 2.375000000000000, 2.500000000000000, 2.625000000000000, 2.750000000000000, 2.625000000000000, 2.750000000000000, 2.875000000000000, 3.000000000000000, 3.125000000000000, 3.000000000000000, 3.125000000000000, 3.250000000000000, 3.375000000000000, 3.500000000000000, 0.000000000000000, 0.888888888888888, 1.555555555555560, 1.666666666666670, 2.000000000000000, 2.222222222222220, 2.333333333333330, 2.222222222222220, 2.555555555555560, 2.666666666666670, 2.777777777777780, 2.888888888888890, 2.666666666666670, 2.888888888888890, 3.000000000000000, 3.111111111111110, 3.222222222222220, 3.333333333333330, 3.000000000000000, 3.222222222222220, 3.333333333333330, 3.333333333333330, 3.444444444444440, 3.555555555555560, 3.666666666666670, 3.555555555555560, 3.666666666666670, 3.777777777777780, 3.888888888888890, 4.000000000000000, 0.000000000000000, 0.900000000000000, 1.600000000000000, 1.700000000000000, 2.100000000000000, 2.300000000000000, 2.400000000000000, 2.400000000000000, 2.700000000000000, 2.800000000000000, 2.900000000000000, 3.000000000000000, 2.500000000000000, 2.900000000000000, 3.100000000000000, 3.200000000000000, 3.300000000000000, 3.400000000000000, 3.500000000000000, 3.200000000000000, 3.300000000000000, 3.300000000000000, 3.500000000000000, 3.600000000000000, 3.600000000000000, 3.700000000000000, 3.800000000000000, 3.900000000000000, 3.600000000000000, 3.700000000000000, 3.800000000000000, 3.900000000000000, 3.900000000000000, 4.000000000000000, 4.100000000000000, 4.200000000000000, 4.000000000000000, 4.100000000000000, 4.200000000000000, 4.300000000000000, 4.400000000000000, 4.500000000000000, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN };
 
 		return PT_SSIAM[patternid];
 		/*switch (patternid)
 		{
-		default: return NA;
+		default: return NAN;
 		case 2: return 0.0000000000000000;
 		case 3: return 0.5000000000000000;
 		case 4: return 0.0000000000000000;
@@ -1521,13 +1590,13 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	TARGET double GENOTYPE::HWECoef()
 	{
 		static double PT_HWECOEF[150] = 								//Pattern index to hwe coef
-		{ NA, 1, 1, 2, 1, 3, 6, 1, 4, 6, 12, 24, 1, 5, 10, 20, 30, 60, 120, 1, 6, 15, 30, 20, 60, 120, 90, 180, 360, 720, 1, 7, 21, 42, 35, 105, 210, 140, 210, 420, 840, 630, 1260, 2520, 5040, 1, 8, 28, 56, 56, 168, 336, 70, 280, 420, 840, 1680, 560, 1120, 1680, 3360, 6720, 2520, 5040, 10080, 20160, 40320, 1, 9, 36, 72, 84, 252, 504, 126, 504, 756, 1512, 3024, 630, 1260, 2520, 3780, 7560, 15120, 1680, 5040, 10080, 7560, 15120, 30240, 60480, 22680, 45360, 90720, 181440, 362880, 1, 10, 45, 90, 120, 360, 720, 210, 840, 1260, 2520, 5040, 252, 1260, 2520, 5040, 7560, 15120, 30240, 3150, 6300, 4200, 12600, 25200, 18900, 37800, 75600, 151200, 16800, 25200, 50400, 100800, 75600, 151200, 302400, 604800, 113400, 226800, 453600, 907200, 1814400, 3628800, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA };
+		{ NAN, 1, 1, 2, 1, 3, 6, 1, 4, 6, 12, 24, 1, 5, 10, 20, 30, 60, 120, 1, 6, 15, 30, 20, 60, 120, 90, 180, 360, 720, 1, 7, 21, 42, 35, 105, 210, 140, 210, 420, 840, 630, 1260, 2520, 5040, 1, 8, 28, 56, 56, 168, 336, 70, 280, 420, 840, 1680, 560, 1120, 1680, 3360, 6720, 2520, 5040, 10080, 20160, 40320, 1, 9, 36, 72, 84, 252, 504, 126, 504, 756, 1512, 3024, 630, 1260, 2520, 3780, 7560, 15120, 1680, 5040, 10080, 7560, 15120, 30240, 60480, 22680, 45360, 90720, 181440, 362880, 1, 10, 45, 90, 120, 360, 720, 210, 840, 1260, 2520, 5040, 252, 1260, 2520, 5040, 7560, 15120, 30240, 3150, 6300, 4200, 12600, 25200, 18900, 37800, 75600, 151200, 16800, 25200, 50400, 100800, 75600, 151200, 302400, 604800, 113400, 226800, 453600, 907200, 1814400, 3628800, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN };
 
 		return PT_HWECOEF[patternid];
 		/*
 		switch (pattern)
 		{
-		default: return NA;
+		default: return NAN;
 		case 0x1ull: return 1;
 		case 0x2ull: return 1;
 		case 0x11ull: return 2;
@@ -1670,7 +1739,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		*/
 		/*switch (patternid)
 		{
-			default: 	return NA;
+			default: 	return NAN;
 			case	1: 	return 1;
 			case	2: 	return 1;
 			case	3: 	return 2;
@@ -1947,6 +2016,116 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		}
 	}
 
+	/* Genotypic frequency for zygotes under specific double-reduction model */
+	TARGET double GENOTYPE::GFZ(int DR_MODE, float* f)
+	{
+		int ploidy = Ploidy(), nalleles = Nalleles();
+		if (nalleles == 0) return 1;
+
+		ushort* a = GetAlleleArray() + ploidy;
+		if (DR_MODE == 0 || ploidy <= 2 || ploidy % 2 == 1 || ploidy > N_MAX_PLOIDY)
+		{
+			double re = HWECoef();
+			uint64 ap = GetPattern();
+			for (int ai = nalleles - 1; ai >= 0; --ai)
+			{
+				re *= IntegerPower((double)f[a[ai]], (int)(ap & 0xF));
+				ap >>= 4;
+			}
+			return re;
+		}
+
+		double* alpha = &ALPHA[DR_MODE][ploidy][0];
+		switch (patternid)
+		{
+			case	7: 		return GFZ4_iiii(alpha[1], (double)f[a[0]]);
+			case	8: 		return GFZ4_iiij(alpha[1], (double)f[a[0]], (double)f[a[1]]);
+			case	9: 		return GFZ4_iijj(alpha[1], (double)f[a[0]], (double)f[a[1]]);
+			case	10: 	return GFZ4_iijk(alpha[1], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	11: 	return GFZ4_ijkl(alpha[1], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+
+			case	19: 	return GFZ6_iiiiii(alpha[1], (double)f[a[0]]);
+			case	20: 	return GFZ6_iiiiij(alpha[1], (double)f[a[0]], (double)f[a[1]]);
+			case	21: 	return GFZ6_iiiijj(alpha[1], (double)f[a[0]], (double)f[a[1]]);
+			case	22: 	return GFZ6_iiiijk(alpha[1], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	23: 	return GFZ6_iiijjj(alpha[1], (double)f[a[0]], (double)f[a[1]]);
+			case	24: 	return GFZ6_iiijjk(alpha[1], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	25: 	return GFZ6_iiijkl(alpha[1], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	26: 	return GFZ6_iijjkk(alpha[1], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	27: 	return GFZ6_iijjkl(alpha[1], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	28: 	return GFZ6_iijklm(alpha[1], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	29: 	return GFZ6_ijklmn(alpha[1], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]]);
+
+			case	45: 	return GFZ8_iiiiiiii(alpha[1], alpha[2], (double)f[a[0]]);
+			case	46: 	return GFZ8_iiiiiiij(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]]);
+			case	47: 	return GFZ8_iiiiiijj(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]]);
+			case	48: 	return GFZ8_iiiiiijk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	49: 	return GFZ8_iiiiijjj(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]]);
+			case	50: 	return GFZ8_iiiiijjk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	51: 	return GFZ8_iiiiijkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	52: 	return GFZ8_iiiijjjj(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]]);
+			case	53: 	return GFZ8_iiiijjjk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	54: 	return GFZ8_iiiijjkk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	55: 	return GFZ8_iiiijjkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	56: 	return GFZ8_iiiijklm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	57: 	return GFZ8_iiijjjkk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	58: 	return GFZ8_iiijjjkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	59: 	return GFZ8_iiijjkkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	60: 	return GFZ8_iiijjklm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	61: 	return GFZ8_iiijklmn(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]]);
+			case	62: 	return GFZ8_iijjkkll(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	63: 	return GFZ8_iijjkklm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	64: 	return GFZ8_iijjklmn(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]]);
+			case	65: 	return GFZ8_iijklmno(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]], (double)f[a[6]]);
+			case	66: 	return GFZ8_ijklmnop(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]], (double)f[a[6]], (double)f[a[7]]);
+
+			case	97: 	return GFZ10_iiiiiiiiii(alpha[1], alpha[2], (double)f[a[0]]);
+			case	98: 	return GFZ10_iiiiiiiiij(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]]);
+			case	99: 	return GFZ10_iiiiiiiijj(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]]);
+			case	100: 	return GFZ10_iiiiiiiijk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	101: 	return GFZ10_iiiiiiijjj(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]]);
+			case	102: 	return GFZ10_iiiiiiijjk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	103: 	return GFZ10_iiiiiiijkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	104: 	return GFZ10_iiiiiijjjj(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]]);
+			case	105: 	return GFZ10_iiiiiijjjk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	106: 	return GFZ10_iiiiiijjkk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	107: 	return GFZ10_iiiiiijjkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	108: 	return GFZ10_iiiiiijklm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	109: 	return GFZ10_iiiiijjjjj(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]]);
+			case	110: 	return GFZ10_iiiiijjjjk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	111: 	return GFZ10_iiiiijjjkk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	112: 	return GFZ10_iiiiijjjkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	113: 	return GFZ10_iiiiijjkkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	114: 	return GFZ10_iiiiijjklm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	115: 	return GFZ10_iiiiijklmn(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]]);
+			case	116: 	return GFZ10_iiiijjjjkk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	117: 	return GFZ10_iiiijjjjkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	118: 	return GFZ10_iiiijjjkkk(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]]);
+			case	119: 	return GFZ10_iiiijjjkkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	120: 	return GFZ10_iiiijjjklm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	121: 	return GFZ10_iiiijjkkll(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	122: 	return GFZ10_iiiijjkklm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	123: 	return GFZ10_iiiijjklmn(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]]);
+			case	124: 	return GFZ10_iiiijklmno(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]], (double)f[a[6]]);
+			case	125: 	return GFZ10_iiijjjkkkl(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	126: 	return GFZ10_iiijjjkkll(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]]);
+			case	127: 	return GFZ10_iiijjjkklm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	128: 	return GFZ10_iiijjjklmn(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]]);
+			case	129: 	return GFZ10_iiijjkkllm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	130: 	return GFZ10_iiijjkklmn(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]]);
+			case	131: 	return GFZ10_iiijjklmno(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]], (double)f[a[6]]);
+			case	132: 	return GFZ10_iiijklmnop(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]], (double)f[a[6]], (double)f[a[7]]);
+			case	133: 	return GFZ10_iijjkkllmm(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]]);
+			case	134: 	return GFZ10_iijjkkllmn(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]]);
+			case	135: 	return GFZ10_iijjkklmno(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]], (double)f[a[6]]);
+			case	136: 	return GFZ10_iijjklmnop(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]], (double)f[a[6]], (double)f[a[7]]);
+			case	137: 	return GFZ10_iijklmnopq(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]], (double)f[a[6]], (double)f[a[7]], (double)f[a[8]]);
+			case	138: 	return GFZ10_ijklmnopqr(alpha[1], alpha[2], (double)f[a[0]], (double)f[a[1]], (double)f[a[2]], (double)f[a[3]], (double)f[a[4]], (double)f[a[5]], (double)f[a[6]], (double)f[a[7]], (double)f[a[8]], (double)f[a[9]]);
+
+			default	:	return -1;
+		}
+	}
+
 	/* Number of copies of target allele */
 	TARGET int GENOTYPE::GetAlleleCount(int a)
 	{
@@ -1962,13 +2141,14 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Frequency of target allele in this genotype */
-	TARGET double GENOTYPE::GetFreq(int a)
+	template<typename REAL>
+	TARGET REAL GENOTYPE::GetFreq(int a)
 	{
-		static double PT_FREQ[171] =
+		static REAL PT_FREQ[171] =
 		{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, 1.0, 0.50, 0.333333333333333, 0.250, 0.20, 0.166666666666667, 0.142857142857143, 0.1250, 0.111111111111111, 0.10, -1, -1, -1, -1, -1, -1, -1, 1.0, 0.666666666666667, 0.50, 0.40, 0.333333333333333, 0.285714285714286, 0.250, 0.222222222222222, 0.20, -1, -1, -1, -1, -1, -1, -1, -1, 1.0, 0.750, 0.60, 0.50, 0.428571428571429, 0.3750, 0.333333333333333, 0.30, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1.0, 0.80, 0.666666666666667, 0.571428571428571, 0.50, 0.444444444444444, 0.40, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1.0, 0.833333333333333, 0.714285714285714, 0.6250, 0.555555555555556, 0.50, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1.0, 0.857142857142857, 0.750, 0.666666666666667, 0.60, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1.0, 0.8750, 0.777777777777778, 0.70, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1.0, 0.888888888888889, 0.80, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1.0, 0.90, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1.0 };
 
 		int ploidy = Ploidy(), nalleles = Nalleles();
-		if (nalleles == 0) return NA;
+		if (nalleles == 0) return NAN;
 
 		int count = 0;
 		ushort* als = GetAlleleArray(), usa = (ushort)a;;
@@ -1978,7 +2158,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		return PT_FREQ[(count << 4) | ploidy];
 		/*switch ((count << 4) | ploidy)
 		{
-		default: return NA;
+		default: return NAN;
 		case 0x00: return 0.000000000000000;
 		case 0x01: return 0.000000000000000;
 		case 0x02: return 0.000000000000000;
@@ -2050,13 +2230,14 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Frequencies of all alleles in this genotype */
-	TARGET void GENOTYPE::GetFreq(double* p, int k2)
+	template<typename REAL>
+	TARGET void GENOTYPE::GetFreq(REAL* p, int k2)
 	{
 		int ploidy = Ploidy(), nalleles = Nalleles();
 		SetZero(p, k2);
 		if (nalleles == 0) return;
 
-		double f = 1.0 / ploidy;
+		REAL f = 1.0 / ploidy;
 		ushort* als = GetAlleleArray();
 		for (int i = 0; i < ploidy; ++i)
 			p[als[i]] += f;
@@ -2259,9 +2440,10 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		int asize = flag_alen ? (int)k : 0;
 		int ssize = ref.GetEnd() - ref.GetChrom();
 		int gasize = (int)ref.GetGenoAlleleSize();//genotype allele array
+		int tsize = gsize * sizeof(GENOTYPE) + asize * sizeof(ushort) + ssize + gasize * sizeof(ushort);
 
 		byte* bucket = NULL;
-		memory.Alloc(bucket, gsize * sizeof(GENOTYPE) + asize * sizeof(ushort) + ssize + gasize * sizeof(ushort));
+		memory.Alloc(bucket, tsize);
 		bits1 = (uint64)bucket;
 
 		//copy genotype array
@@ -2750,6 +2932,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		//int gsize = ngeno;
 		//int asize = 0;
 		int ssize = (int)strlen(ref.GetChrom()) + 1 + 3 + CeilLog10(id + 1) + 1 + 1;
+
 		gasize = _gasize;
 
 		byte* bucket = memory.Alloc(ngeno * sizeof(GENOTYPE) + gasize * sizeof(ushort));
@@ -2767,7 +2950,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		strcpy(GetChrom(), ref.GetChrom());
 		sprintf(GetName(), "Loc%llu", (uint64)id + 1); //20220717
 
-		//no allele identifier!!!
+		//no allele identifier
 
 		//gftab
 		new(&gftab) TABLE<HASH, GENOTYPE*>(true, &memory, ngeno);
@@ -2843,19 +3026,24 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 				line[namelen] != '\r' && line[namelen] != '\n')
 				namelen++;
 
-			memory.Alloc(_chrom, 1 + namelen + 1 + 1);
+			int tsize = 1 + namelen + 1 + 1;
+
+			memory.Alloc(_chrom, tsize);
 			SetZero(_chrom, namelen + 3);
 			SetVal(_chrom + 1, line, namelen);
 		}
 		else
 		{
+
+			int tsize = 1 + 3 + CeilLog10(id + 1) + 1 + 1;
+
 			//no chrom, no locus name, name it
-			memory.Alloc(_chrom, 1 + 3 + CeilLog10(id + 1) + 1 + 1);
+			memory.Alloc(_chrom, tsize);
 			SetZero(_chrom, CeilLog10(id + 1) + 5);
 			sprintf(_chrom + 1, "Loc%llu", (uint64)id + 1);
 		}
 	}
-
+	
 	/* For vcf input, set locus name and id, SLOCUS */
 	TARGET LOCUS::LOCUS(MEMORY& memory, char*& line, uint64 _mask, int _ngenotype, GENOTYPE*& gtab, ushort*& gatab)
 	{
@@ -2987,7 +3175,8 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		*end = '\t';
 
 		//find offset of each format string (from base)
-		VLA_NEW(format_offset, ushort, format_size);
+		ushort format_offset[1024];
+		//VLA_NEW(format_offset, ushort, format_size);
 		for (int i = 0; line < end; ++i)
 		{
 			format_offset[i] = (ushort)(line - base);
@@ -3006,7 +3195,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		{
 			gtid = GetFormatId(base, (char*)"GT", format_offset);
 			if (gtid == 0xFFFF) //must have gt
-				Exit("\nExit: variant %s does not has GT format_offset tag. \n", name);
+				Exit("\nExit: variant %s does not have GT format_offset tag. \n", name);
 
 			gqid = GetFormatId(base, (char*)"GQ", format_offset);
 			flag_hasgq = gqid != 0xFFFF;
@@ -3017,7 +3206,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 			adid = GetFormatId(base, (char*)"AD", format_offset);
 			flag_hasad = adid != 0xFFFF;
 		}
-		VLA_DELETE(format_offset);
+		//VLA_DELETE(format_offset);
 	}
 
 	/* Get end of chrom \0 name \0 {(allele identifiers \0)[k] */
@@ -3303,14 +3492,16 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 
 #ifndef _IND
 	/* Initialize */
-	TARGET IND::IND()
+	template<typename REAL>
+	TARGET IND<REAL>::IND()
 	{
 		indid = 0xFFFF;
 		name = NULL;
 	}
 
 	/* Create individual for non-vcf input */
-	TARGET IND::IND(char* t, bool iscount, int id, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+	template<typename REAL>
+	TARGET IND<REAL>::IND(char* t, bool iscount, int id, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 	{
 		indid = id;
 		vmin = vmax = 0;
@@ -3328,7 +3519,8 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Create individual for vcf/bcf input */
-	TARGET IND::IND(char*& title, int id)
+	template<typename REAL>
+	TARGET IND<REAL>::IND(char*& title, int id)
 	{
 		//from VCF line
 		name = title;
@@ -3346,7 +3538,8 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Create individual from a reference individual */
-	TARGET IND::IND(IND& ref)
+	template<typename REAL>
+	TARGET IND<REAL>::IND(IND& ref)
 	{
 		SetVal(this, &ref, 1);
 		individual_memory->Alloc(name, (int)strlen(ref.name) + 1);
@@ -3354,13 +3547,15 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Unnitialize */
-	TARGET IND::~IND()
+	template<typename REAL>
+	TARGET IND<REAL>::~IND()
 	{
 
 	}
 
 	/* Set individual genotype with default bucket */
-	TARGET void IND::SetGenotype(int64 l, uint gid)
+	template<typename REAL>
+	TARGET void IND<REAL>::SetGenotype(int64 l, uint gid)
 	{
 		uint size = (uint)geno_bucket.offset[l].size;
 		uint64 offset = size * indid;
@@ -3370,7 +3565,8 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Set individual genotype with local bucket */
-	TARGET void IND::SetGenotype(int64 l, uint gid, OFFSET* _offset, byte* bucket)
+	template<typename REAL>
+	TARGET void IND<REAL>::SetGenotype(int64 l, uint gid, OFFSET* _offset, byte* bucket)
 	{
 		uint size = (uint)_offset[l].size;
 		uint64 offset = size * indid;
@@ -3380,7 +3576,8 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Get index for a pair of genotype */
-	TARGET void IND::GetDyadGenotypeIdx(int& id1, int& id2, int64 l)
+	template<typename REAL>
+	TARGET void IND<REAL>::GetDyadGenotypeIdx(int& id1, int& id2, int64 l)
 	{
 		OFFSET ot = geno_bucket.offset[l];
 		uint size = (uint)ot.size;
@@ -3393,7 +3590,8 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Get individual genotype index from default table */
-	TARGET int IND::GetGenotypeId(int64 l, byte* _bucket, OFFSET* _offset)
+	template<typename REAL>
+	TARGET int IND<REAL>::GetGenotypeId(int64 l, byte* _bucket, OFFSET* _offset)
 	{
 		uint size = (uint)_offset[l].size;
 		uint64 offset = size * indid;
@@ -3402,7 +3600,8 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Get individual genotype index from default table */
-	TARGET int IND::GetGenotypeId(int64 l)
+	template<typename REAL>
+	TARGET int IND<REAL>::GetGenotypeId(int64 l)
 	{
 		uint size = (uint)geno_bucket.offset[l].size;
 		uint64 offset = size * indid;
@@ -3411,25 +3610,29 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Get individual genotype from default table */
-	TARGET GENOTYPE& IND::GetGenotype(int64 l)
+	template<typename REAL>
+	TARGET GENOTYPE& IND<REAL>::GetGenotype(int64 l)
 	{
 		return GetLoc(l).GetGtab()[GetGenotypeId(l)];
 	}
 
 	/* Get individual genotype from local table */
-	TARGET GENOTYPE& IND::GetGenotype(int64 l, TABLE<HASH, GENOTYPE*>& gftab)
+	template<typename REAL>
+	TARGET GENOTYPE& IND<REAL>::GetGenotype(int64 l, TABLE<HASH, GENOTYPE*>& gftab)
 	{
 		return *gftab(GetGenotypeId(l));
 	}
 
 	/* Get individual genotype from local table */
-	TARGET GENOTYPE& IND::GetGenotype(int64 l, GENOTYPE* gtab)
+	template<typename REAL>
+	TARGET GENOTYPE& IND<REAL>::GetGenotype(int64 l, GENOTYPE* gtab)
 	{
 		return gtab[GetGenotypeId(l)];
 	}
 
 	/* Calculate the genotypic frequency */
-	TARGET double IND::GenoFreq(POP* grp, int model, int64 loc, double e)
+	template<typename REAL>
+	TARGET double IND<REAL>::GenoFreq(POP<REAL>* grp, int model, int64 loc, double e)
 	{
 		//Logarithm
 		int64 slog = 0; double prod = 1;
@@ -3449,20 +3652,22 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		}
 		CloseLog(slog, prod);
 
-		if (loc >= 0 && prod == 0) prod = NA;
+		if (loc >= 0 && prod == 0) prod = NAN;
 		return prod;
 	}
 #endif
 
 #ifndef _POP
 	/* Initialize */
-	TARGET POP::POP()
+	template<typename REAL>
+	TARGET POP<REAL>::POP()
 	{
 		SetZero(this, 1);
 	}
 
 	/* Create a pop */
-	TARGET POP::POP(char* _name, char** _names, int _nind, int _regid, int _npop, int _id, bool _ispop)
+	template<typename REAL>
+	TARGET POP<REAL>::POP(char* _name, char** _names, int _nind, int _regid, int _npop, int _id, bool _ispop)
 	{
 		ispop = _ispop;
 		id = _id;
@@ -3480,39 +3685,38 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Get genotype count array */
-	TARGET ushort* POP::GetGenoCount(int64 l)
+	template<typename REAL>
+	TARGET ushort* POP<REAL>::GetGenoCount(int64 l)
 	{
 		return genocount + genotype_count_offset[l];
 	}
 
 	/* Get genotype count of a genotype */
-	TARGET ushort POP::GetGenoCount(int64 l, int gid)
+	template<typename REAL>
+	TARGET ushort POP<REAL>::GetGenoCount(int64 l, int gid)
 	{
 		return *(genocount + genotype_count_offset[l] + gid);
 	}
 
 	/* Get allele frequencies array */
-	TARGET double* POP::GetFreq(int64 l)
+	template<typename REAL>
+	TARGET REAL* POP<REAL>::GetFreq(int64 l)
 	{
 		return allelefreq + allele_freq_offset[l];
 	}
 
 	/* Get allele frequency of an allele */
-	TARGET double POP::GetFreq(int64 l, int a)
+	template<typename REAL>
+	TARGET REAL POP<REAL>::GetFreq(int64 l, int a)
 	{
 		return *(allelefreq + allele_freq_offset[l] + a);
 	}
 
-	/* Uninitialize a pop */
-	TARGET void POP::Uninitialize()
+	/* Uninitialize a pop, unalloc memory except population name */
+	template<typename REAL>
+	TARGET void POP<REAL>::Uninitialize1()
 	{
-		if (name)
-		{
-			delete[] name;
-			name = NULL;
-		}
-
-		if (allelefreq) 
+		if (allelefreq && allelefreq != total_pop->allelefreq) 
 		{
 			delete[] allelefreq; 
 			allelefreq = NULL;
@@ -3524,7 +3728,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 			genocount = NULL;
 		}
 
-		if (loc_stat1) 
+		if (loc_stat1 != total_pop->loc_stat1)
 		{
 			delete[] loc_stat1; 
 			loc_stat1 = NULL;
@@ -3537,8 +3741,44 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 		}
 	}
 
+	/* Uninitialize a pop, unalloc population name */
+	template<typename REAL>
+	TARGET void POP<REAL>::Uninitialize2()
+	{
+		if (allelefreq)
+		{
+			delete[] allelefreq;
+			allelefreq = NULL;
+		}
+
+		if (genocount)
+		{
+			delete[] genocount;
+			genocount = NULL;
+		}
+
+		if (loc_stat1)
+		{
+			delete[] loc_stat1;
+			loc_stat1 = NULL;
+		}
+
+		if (names)
+		{
+			delete[] names;
+			names = NULL;
+		}
+
+		if (name)
+		{
+			delete[] name;
+			name = NULL;
+		}
+	}
+
 	/* Uncllocate memory for locstat, allele frequency, genotype count */
-	TARGET void POP::UnAllocFreq()
+	template<typename REAL>
+	TARGET void POP<REAL>::UnAllocFreq()
 	{
 		if (loc_stat1) 
 		{ 
@@ -3560,16 +3800,18 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Allocate memory for locstat, allele frequency, genotype count */
-	TARGET void POP::AllocFreq()
+	template<typename REAL>
+	TARGET void POP<REAL>::AllocFreq()
 	{
 		//to apply diversity filter and test genotype distributions
-		loc_stat1 = new LOCSTAT1[nloc];  SetZero(loc_stat1, nloc);
-		allelefreq = new double[KT];   SetZero(allelefreq, KT);
-		genocount = new ushort[GT];    SetZero(genocount, GT);
+		loc_stat1 = new LOCSTAT1[nloc];		SetZero(loc_stat1, nloc);
+		allelefreq = new REAL[KT];			SetZero(allelefreq, KT);
+		genocount = new ushort[GT];			SetZero(genocount, GT);
 	}
 
 	/* Move after filter locus */
-	TARGET void POP::MoveFreq(LOCN* nafoffset, LOCN* ngcoffset)
+	template<typename REAL>
+	TARGET void POP<REAL>::MoveFreq(LOCN* nafoffset, LOCN* ngcoffset)
 	{
 		LOCSTAT1 *nloc_stat = NULL;
 		if (loc_stat1)
@@ -3578,10 +3820,10 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 			SetZero(nloc_stat, nfilter);
 		}
 
-		double* nallelefreq = NULL;
+		REAL* nallelefreq = NULL;
 		if (allelefreq)
 		{
-			nallelefreq = new double[KT];
+			nallelefreq = new REAL[KT];
 			SetZero(nallelefreq, KT);
 		}
 
@@ -3627,7 +3869,8 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Clear memory for locstat, allele frequency, genotype count */
-	TARGET void POP::ClearFreqGcount()
+	template<typename REAL>
+	TARGET void POP<REAL>::ClearFreqGcount()
 	{
 		SetZero(loc_stat1, nloc);
 		SetZero(allelefreq, KT);
@@ -3635,7 +3878,8 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Calculate loc stat, allele frequency, genotype count */
-	TARGET void POP::CalcFreqGcount()
+	template<typename REAL>
+	TARGET void POP<REAL>::CalcFreqGcount()
 	{
 		if (nind == 0) return;
 
@@ -3647,7 +3891,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 				GENOTYPE* gtab = GetLoc(l).GetGtab();
 				int ngeno = GetLoc(l).ngeno;
 
-				double* p = GetFreq(l);
+				REAL* p = GetFreq(l);
 				ushort* gcount = GetGenoCount(l);
 				LOCSTAT1 &stat1 = loc_stat1[l];
 
@@ -3689,7 +3933,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 			for (int64 l = 0; l < nloc; ++l)
 			{
-				double* p = GetFreq(l);
+				REAL* p = GetFreq(l);
 				ushort* gcount = GetGenoCount(l);
 				LOCSTAT1 &stat1 = loc_stat1[l];
 
@@ -3707,21 +3951,22 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 	}
 
 	/* Calculate loc_stat2 in a pre-allocated buffer, used in relatedness estimation */
-	TARGET void POP::GetLocStat2(LOCSTAT2* loc_stat2)
+	template<typename REAL>
+	TARGET void POP<REAL>::GetLocStat2(LOCSTAT2<REAL>* loc_stat2)
 	{
-		SetZero(relatedness_loc_stat2, nloc);
+		SetZero(relatedness_loc_stat, nloc);
 
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 		for (int64 l = 0; l < nloc; ++l)
 		{
-			double* p = GetFreq(l);
-			LOCSTAT2& stat2 = loc_stat2[l];
+			REAL* p = GetFreq(l);
+			LOCSTAT2<REAL>& stat2 = loc_stat2[l];
 			int k2 = GetLoc(l).k, nhaplo = loc_stat1[l].nhaplo;
 
 			stat2.s2 = stat2.s3 = stat2.s4 = 0;
 			for (int a = 0; a < k2; ++a)
 			{
-				double af = p[a];
+				REAL af = p[a];
 				if (af * nhaplo <= 1e-5) continue;
 				stat2.s2 += af * af;
 				stat2.s3 += af * af * af;
@@ -3732,6 +3977,7 @@ extern IND** rinds;									//Rearranged individuals according to population sou
 #endif
 
 /* Initialize */
+template<typename REAL>
 TARGET void Initialize()
 {
 	if (g_eval_val == 1 && FileExists((g_output_val + ".eval.txt").c_str()))
@@ -3771,10 +4017,10 @@ TARGET void Initialize()
 	load_buf = NULL;
 	vcf_header = NULL;
 
-	pop.Clear();
-	for (uint i = 0; i < reg.size; ++i)
-		reg[i].Clear();
-	reg.Clear();
+	pop<REAL>.Clear();
+	for (uint i = 0; i < reg<REAL>.size; ++i)
+		reg<REAL>[i].Clear();
+	reg<REAL>.Clear();
 
 	slocus = NULL;
 	useslocus = false;
@@ -3812,7 +4058,7 @@ TARGET void Initialize()
 	convert_linesize = 0;
 
 	diversity_buf = NULL;
-	SetZero(&diversity_sum, 1);
+	SetZero(&diversity_sum<REAL>, 1);
 	diversity_stage = 0;
 
 	SetZero(fst_buf, 6);
@@ -3824,7 +4070,7 @@ TARGET void Initialize()
 	amova_buf = NULL;
 
 	relatedness_buf = NULL;
-	relatedness_loc_stat2 = NULL;
+	relatedness_loc_stat = NULL;
 
 	kinship_buf = NULL;
 	SetZero(gdindex, N_GD_ESTIMATOR + 1);
@@ -3867,7 +4113,6 @@ TARGET void Initialize()
 				tf.compressed_len = ftello64(tf.handle);
 				fclose(tf.handle);
 
-				TOTLEN_DECOMPRESS += tf.compressed_len;
 				tf.handle = FOpen(tf.path.c_str(), "rb");
 			}
 			else
@@ -3908,7 +4153,11 @@ TARGET void Initialize()
 
 	individual_memory = new MEMORY[1];
 	locus_memory = new MEMORY[g_nthread_val];
-
+	for (int i = 0; i < g_nthread_val; ++i)
+		locus_memory[i].Alloc(1);
+	for (int i = 0; i < g_nthread_val; ++i)
+		locus_memory[i].Alloc(1);
+	
 	//initial missing genotypes
 	SetFF(missing_array, N_MAX_PLOIDY);
 	ushort* nullgatab = NULL;
@@ -3918,12 +4167,12 @@ TARGET void Initialize()
 		new(&missing_genotype[i]) GENOTYPE(nullgatab, missing_array, i);//sorted
 	}
 
-	POP tp;
-	LIST<POP> tlist(NULL);
-	pop.Push(tp);
+	POP<REAL> tp;
+	LIST<POP<REAL>> tlist(NULL);
+	pop<REAL>.Push(tp);
 	char* defpopname = new char[7];
 	strcpy(defpopname, "DefPop");
-	new(&pop[0]) POP(defpopname, NULL, 0, 0, 0, 0, true);
+	new(&pop<REAL>[0]) POP<REAL>(defpopname, NULL, 0, 0, 0, 0, true);
 
 	//assign pop 1
 	if (g_indtext_b)
@@ -3940,21 +4189,21 @@ TARGET void Initialize()
 			while (*t1 == '\n' || *t1 == '\r' || *t1 == ' ' || *t1 == '\t') t1++;
 			if (t1 >= indtextend) break;
 
-			if (reg.size == 0 || LwrLineCmp("#REG", t1) == 0)
+			if (reg<REAL>.size == 0 || LwrLineCmp("#REG", t1) == 0)
 			{
 				//add reg
 				rl++;
-				if (reg.size)
+				if (reg<REAL>.size)
 				{
 					t1 = StrNextIdx(t1, "\n", 1) + 1;
 					while (*t1 == '\n' || *t1 == '\r' || *t1 == ' ' || *t1 == '\t') t1++;
 				}
-				POP tr2;
-				reg.Push(tlist);
-				reg[rl + 1].Push(tr2);
+				POP<REAL> tr2;
+				reg<REAL>.Push(tlist);
+				reg<REAL>[rl + 1].Push(tr2);
 				char* defregname = new char[15];
 				sprintf(defregname, "DefRegL%d", rl + 2);
-				new(&reg[rl + 1][0]) POP(defregname, NULL, 0, 0, 0, 0, false);
+				new(&reg<REAL>[rl + 1][0]) POP<REAL>(defregname, NULL, 0, 0, 0, 0, false);
 			}
 
 			if (rl == -1)
@@ -3966,8 +4215,8 @@ TARGET void Initialize()
 				tp.name = new char[strlen(t1) + 1];
 				strcpy(tp.name, t1);
 
-				for (uint i = 0; i < pop.size; ++i)
-					if (strcmp(pop[i].name, t1) == 0)
+				for (uint i = 0; i < pop<REAL>.size; ++i)
+					if (strcmp(pop<REAL>[i].name, t1) == 0)
 						Exit("\nError: Two populations have the same name: %s\n", t1);
 
 				t1 = t2 + 1;
@@ -3976,7 +4225,7 @@ TARGET void Initialize()
 				else t2 = StrNextIdx0(t1, 1);
 
 				tp.ispop = true;
-				tp.id = pop.size;
+				tp.id = pop<REAL>.size;
 				tp.names = SplitStr(t1, ',', tp.nind);//deleted
 				tp.inds = NULL;
 				tp.allelefreq = NULL;
@@ -3985,7 +4234,7 @@ TARGET void Initialize()
 				tp.rid = 0;
 				tp.vpop = NULL;
 				tp.npop = 0;
-				pop.Push(tp);
+				pop<REAL>.Push(tp);
 			}
 			else
 			{
@@ -3993,9 +4242,9 @@ TARGET void Initialize()
 				if (t2 == NULL) break;
 				*t2 = '\0';
 
-				POP tr;
+				POP<REAL> tr;
 				tr.ispop = false;
-				tr.id = reg[rl].size;
+				tr.id = reg<REAL>[rl].size;
 				tr.name = new char[strlen(t1) + 1];
 				strcpy(tr.name, t1);
 
@@ -4015,16 +4264,16 @@ TARGET void Initialize()
 
 				//check subreg/pop name
 				for (int rl2 = 0; rl2 <= rl; ++rl2)
-					for (uint i = 0; i < reg[rl2].size; ++i)
-						if (strcmp(reg[rl2][i].name, tr.name) == 0)
+					for (uint i = 0; i < reg<REAL>[rl2].size; ++i)
+						if (strcmp(reg<REAL>[rl2][i].name, tr.name) == 0)
 							Exit("\nError: repeat population/region name: %s.\n", tr.name);
 
-				for (uint i = 0; i < pop.size; ++i)
-					if (strcmp(pop[i].name, tr.name) == 0)
+				for (uint i = 0; i < pop<REAL>.size; ++i)
+					if (strcmp(pop<REAL>[i].name, tr.name) == 0)
 						Exit("\nError: repeat population/region name: %s.\n", tr.name);
 
 				//assign pop
-				LIST<POP>& popv = rl == 0 ? pop : reg[rl - 1];
+				LIST<POP<REAL>>& popv = rl == 0 ? pop<REAL> : reg<REAL>[rl - 1];
 				int npop2 = 0, namelen = 0;
 
 				for (int j2 = 0; j2 < tr.npop; ++j2)
@@ -4046,7 +4295,7 @@ TARGET void Initialize()
 							if (popv[i].rid == tr.id)
 								Exit("\nError: Population/subregion appear twice in Region %s.\n", popv[i].name, tr.name);
 							if (popv[i].rid != 0)
-								Exit("\nError: Two regions %s and %s have the same population/subregion: %s.\n", reg[rl][popv[i].rid].name, tr.name, popv[i].name);
+								Exit("\nError: Two regions %s and %s have the same population/subregion: %s.\n", reg<REAL>[rl][popv[i].rid].name, tr.name, popv[i].name);
 							namelen += (int)strlen(popv[i].name) + 1;
 							popv[i].rid = (ushort)tr.id;
 							npop2++;
@@ -4062,7 +4311,7 @@ TARGET void Initialize()
 								if (popv[i].rid == tr.id)
 									Exit("\nError: Population/subregion appear twice in Region %s.\n", popv[i].name, tr.name);
 								if (popv[i].rid != 0)
-									Exit("\nError: Two regions %s and %s have the same population/subregion: %s.\n", reg[rl][popv[i].rid].name, tr.name, popv[i].name);
+									Exit("\nError: Two regions %s and %s have the same population/subregion: %s.\n", reg<REAL>[rl][popv[i].rid].name, tr.name, popv[i].name);
 								namelen += (int)strlen(popv[i].name) + 1;
 								popv[i].rid = (ushort)tr.id;
 								npop2++;
@@ -4078,7 +4327,7 @@ TARGET void Initialize()
 				delete[] tr.names;
 				tr.names = NULL;
 				tr.npop = npop2;
-				reg[rl].Push(tr);
+				reg<REAL>[rl].Push(tr);
 			}
 		}
 	}
@@ -4090,8 +4339,9 @@ TARGET void Initialize()
 		InitLock(GLOCK3[i]);
 }
 
-/* UnInitialize */
-TARGET void UnInitialize()
+/* UnInitialize before Bayesian clustering*/
+template<typename REAL>
+TARGET void UnInitialize1()
 {
 	//Exit("\nCalculation complete!\n");
 
@@ -4106,10 +4356,32 @@ TARGET void UnInitialize()
 		total_pop->name = NULL;
 	}
 
-	delete[] FRES_BUF;			FRES_BUF = NULL;
-	delete[] FRES_NAME;			FRES_NAME = NULL;
-	delete[] slocus;			slocus = NULL;
-	
+	for (uint rl = 0; rl < reg<REAL>.size; ++rl)
+		for (uint i = 0; i < reg<REAL>[rl].size; ++i)
+			reg<REAL>[rl][i].Uninitialize1();
+
+	for (uint i = 0; i < pop<REAL>.size; ++i)
+		pop<REAL>[i].Uninitialize1();
+
+	qslstack.~LIST();           new (&qslstack) LIST<QUICKSORT_PARAMETER>();
+	haplo_bucket.~BUCKET();		new (&haplo_bucket) BUCKET();
+	ad_bucket.~BUCKET();		new (&ad_bucket) BUCKET();
+
+	if (genotype_count_offset)  delete[] genotype_count_offset;    genotype_count_offset = NULL;
+	if (cryptTable)				delete[] cryptTable;				cryptTable = NULL;
+    
+    if (GLOCK3)
+    {
+        for (int i = 0; i < 256; ++i)
+            UnInitLock(GLOCK3[i]);
+                                delete[] GLOCK3;					GLOCK3 = NULL;
+    }
+}
+
+/* Final unInitialize */
+template<typename REAL>
+TARGET void UnInitialize2()
+{
 	if (ainds || rinds)
 	{
 		if (ainds) delete[] ainds;
@@ -4117,56 +4389,47 @@ TARGET void UnInitialize()
 		ainds = rinds = NULL;
 	}
 
-	for (uint rl = 0; rl < reg.size; ++rl)
-		for (uint i = 0; i < reg[rl].size; ++i)
-			reg[rl][i].Uninitialize();
+	for (uint rl = 0; rl < reg<REAL>.size; ++rl)
+		for (uint i = 0; i < reg<REAL>[rl].size; ++i)
+			reg<REAL>[rl][i].Uninitialize2();
 
 	if (aregs)
 	{
-		for (uint rl = 0; rl < reg.size; ++rl)
+		for (uint rl = 0; rl < reg<REAL>.size; ++rl)
 			if (aregs[rl])
+			{
 				delete[] aregs[rl];
-		delete[] aregs;
+				aregs[rl] = NULL;
+			}
+		delete[] aregs; aregs = NULL;
 	}
 
-	for (uint i = 0; i < pop.size; ++i)
-		pop[i].Uninitialize();
+	for (uint i = 0; i < pop<REAL>.size; ++i)
+		pop<REAL>[i].Uninitialize2();
 
-	if (apops) delete[] apops;
+	if (apops) delete[] apops; apops = NULL;
 
-	qslstack.~LIST(); 
-	new (&qslstack) LIST<QUICKSORT_PARAMETER>();
+	for (uint rl = 0; rl < reg<REAL>.size; ++rl)
+		reg<REAL>[rl].~LIST();
+	reg<REAL>.~LIST();			new (&reg<REAL>) LIST<LIST<POP<REAL>>>();
+	pop<REAL>.~LIST();			new (&pop<REAL>) LIST<POP<REAL>>();
+	geno_bucket.~BUCKET();		new (&geno_bucket) BUCKET();
 
-	pop.~LIST();
-	new (&pop) LIST<POP>();
-
-	for (uint rl = 0; rl < reg.size; ++rl)
-		reg[rl].~LIST();
-	reg.~LIST();
-	new (&reg) LIST<LIST<POP>>();
-
-	geno_bucket.~BUCKET();
-	new (&geno_bucket) BUCKET();
-	haplo_bucket.~BUCKET();
-	new (&haplo_bucket) BUCKET();
-	ad_bucket.~BUCKET();
-	new (&ad_bucket) BUCKET();
-
-	if (allele_freq_offset) delete[] allele_freq_offset;
-	if (genotype_count_offset)  delete[] genotype_count_offset;
-
-	delete[] cryptTable;
-	delete[] individual_memory;
-	delete[] locus_memory;
-	delete[] state_lock;
-	delete[] GLOCK3;
+	if (slocus)					delete[] slocus;					slocus = NULL;
+	if (allele_freq_offset)     delete[] allele_freq_offset;		allele_freq_offset = NULL;
+	if (state_lock)				delete[] state_lock;				state_lock = NULL;
+	if (locus_memory)			delete[] locus_memory;				locus_memory = NULL;
+	if (individual_memory)		delete[] individual_memory;			individual_memory = NULL;
+	if (FRES_BUF)				delete[] FRES_BUF;			FRES_BUF = NULL;
+	if (FRES_NAME)				delete[] FRES_NAME;			FRES_NAME = NULL;
 }
 
 /* Calculate individual mininum and maximum ploidy, and sum ploidy levels */
+template<typename REAL>
 TARGET void AssignPloidy()
 {
 	EvaluationBegin();
-	RunThreads(&AssignPloidyThread, NULL, NULL, nloc, nloc,
+	RunThreads(&AssignPloidyThread<REAL>, NULL, NULL, nloc, nloc,
 		"\nAssigning individual ploidy:\n", 1, true);
 
 	//Calculate the total number of haplotypes in each population
@@ -4179,7 +4442,7 @@ TARGET void AssignPloidy()
 	for (int rl = 0; rl <= lreg; ++rl)
 		for (int i = 0; i < nreg[rl]; ++i)
 		{
-			POP* tp = aregs[rl][i];
+			POP<REAL>* tp = aregs[rl][i];
 			tp->nhaplotypes = 0;
 			for (int j = 0; j < tp->npop; ++j)
 				tp->nhaplotypes += tp->vpop[j]->nhaplotypes;
@@ -4190,104 +4453,147 @@ TARGET void AssignPloidy()
 }
 
 /* Calculate allele frequencies for each population and region for further use */
+template<typename REAL>
 TARGET void CalcFreq()
 {
 	EvaluationBegin();
 	//Calculate allele frequency and genotype count
-	RunThreads(&CalcAlleleFreq, NULL, NULL, nloc * (int64)nind * (lreg + 2), nloc * (int64)nind * (lreg + 2),
+	RunThreads(&CalcAlleleFreq<REAL>, NULL, NULL, nloc * (int64)nind * (lreg + 2), nloc * (int64)nind * (lreg + 2),
 		"\nCalculating allele frequencies:\n", 1, true);
 	EvaluationEnd("Allele frequency estimation");
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 }
 
 /* Estimate PES model */
+template<typename REAL>
 TARGET void EstimatePES()
 {
 	if ((diversity && diversity_model_val[4] == 1) || (indstat && indstat_model_val[4] == 1) || (popas && popas_model_val[4] == 1))
 	{
 		EvaluationBegin();
-		RunThreads(&GetLocusPESModel, NULL, NULL, nloc, nloc, "\nEstimating double-reduction rate for PES model:\n", 1, true);
+		RunThreads(&GetLocusPESModel<REAL>, NULL, NULL, nloc, nloc, "\nEstimating double-reduction rate for PES model:\n", 1, true);
 		EvaluationEnd("PES model estimation");
 	}
 }
 
 /* Calculate various analyses */
+template<typename REAL>
 TARGET void Calculate()
 {
-	Initialize();
+	Initialize<REAL>();
 
 	// 1. Load
-	LoadFile();
+	LoadFile<REAL>();
 
 	// 2. Filter
-	ApplyFilter();//allow ad
+	ApplyFilter<REAL>();//allow ad
 
 	EvaluationStat();
 
 	// 3. Haplotype
-	CalcHaplotype();//forbid ad
+	CalcHaplotype<REAL>();//forbid ad
 
-	AssignPloidy();//allow ad
+	AssignPloidy<REAL>();//allow ad
 
-	CalcFreq();//allow ad
+	if (diversity || indstat || fst || gdist || 
+		amova || popas || relatedness || kinship || 
+		pcoa || cluster || spa || ploidyinfer ||
+		(structure && structure_f_val == 1))
+	CalcFreq<REAL>();//allow ad
 
 	//    Estimate pes model
-	EstimatePES();//allow ad
+	EstimatePES<REAL>();//allow ad
 
 	// 4. Convert
-	ConvertFile(); //forbid ad, circle buf
+	ConvertFile<REAL>(); //forbid ad, circle buf
 
 	// 5. Genetic diversity
-	CalcDiversity(); //allow ad, circle buf
+	CalcDiversity<REAL>(); //allow ad, circle buf
 
 	// 6. Individual statistics
-	CalcIndstat(); //forbid ad, circle buf
+	CalcIndstat<REAL>(); //forbid ad, circle buf
 
 	// 7. Genetic differentiation
-	CalcDiff(); //allow ad
+	CalcDiff<REAL>(); //allow ad
 
 	// 8. Genetic distance
-	CalcDist(); //allow ad, circle buf
+	CalcDist<REAL>(); //allow ad, circle buf
 
 	// 9. AMOVA
-	CalcAMOVA(); //forbid ad
+	CalcAMOVA<REAL>(); //forbid ad
 
 	// 10. Population assignment
-	CalcAssignment(); //forbid ad
+	CalcAssignment<REAL>(); //forbid ad
 
 	// 11. Relatedness coefficient
-	CalcRelatedness(); //forbid ad, circle buf
+	CalcRelatedness<REAL>(); //forbid ad, circle buf
 
 	// 12. Kinship coefficient
-	CalcKinship(); //forbid ad, circle buf
+	CalcKinship<REAL>(); //forbid ad, circle buf
 
 	// 13. Principal coordinate analysis
-	CalcPCOA(); //allow ad
+	CalcPCOA<REAL>(); //allow ad
 
 	// 14. Hierarchical clustering
-	CalcClustering(); //allow ad
+	CalcClustering<REAL>(); //allow ad
 
 	//TEST SPA
-	CalcSPA();//allow ad
-
-	//15. Bayesian clustering
-	CalcBayesian(); //forbid ad
+	CalcSPA<REAL>();//allow ad
 
 	//16. Ploidy Inference
-	CalcPloidyInference(); //forbid ad
+	CalcPloidyInference<REAL>(); //forbid ad
 
-	UnInitialize();
+	//Free allele freq
+	UnInitialize1<REAL>();
+
+	//15. Bayesian clustering
+	if (structure_eval_val == 1)
+	{
+		structure_nadmburnin_val = 0;
+		structure_nburnin_val = 0;
+		structure_nreps_val = 1;
+		structure_nthinning_val = 1;
+		structure_nruns_val = 1;
+		structure_krange_min = 5;
+		structure_krange_max = 5;
+		g_nthread_val = 4;
+		structure_nstream_val = 1;
+
+#ifdef CUDA
+			g_gpu_val = 2;
+			nGPU = GetDeviceCountCUDA();
+#else
+			g_gpu_val = 1;
+			nGPU = 0;
+#endif
+
+		for (structure_admix_val = 1; structure_admix_val <= 2; ++structure_admix_val)
+		{
+			g_fastsingle_val = 1;
+			CalcBayesian<float >(); //forbid ad
+
+			g_fastsingle_val = 2;
+			CalcBayesian<float >(); //forbid ad
+
+			CalcBayesian<double>(); //forbid ad
+		}
+	}
+	else
+		CalcBayesian<REAL>(); //forbid ad
+
+	//Free allele freq
+	UnInitialize2<REAL>();
 }
 
 /* Calculate allele frequencies for each population and region */
-THREAD(CalcAlleleFreq)
+THREAD2(CalcAlleleFreq)
 {
 	if (allele_freq_offset)      delete[] allele_freq_offset;
 	if (genotype_count_offset)   delete[] genotype_count_offset;
 
 	//Allocate new offset
-	allele_freq_offset = new LOCN[nloc];
-	genotype_count_offset = new LOCN[nloc];
+	allele_freq_offset = new uint64[nloc];
+	genotype_count_offset = new uint64[nloc];
 	SetFF(allele_freq_offset, nloc);
 	SetFF(genotype_count_offset, nloc);
 
@@ -4319,16 +4625,16 @@ THREAD(CalcAlleleFreq)
 		for (int rl = 0; rl < lreg; ++rl)
 			for (int i = 0; i < nreg[rl]; ++i)
 			{
-				POP* cp = aregs[rl][i];
-				POP* *vp = cp->vpop;
+				POP<REAL>* cp = aregs[rl][i];
+				POP<REAL>* *vp = cp->vpop;
 				for (int p = 0; p < cp->npop; ++p)
 					Add(cp->allelefreq, vp[p]->allelefreq, KT);
 			}
 
 		if (lreg > -1)
 		{
-			POP* cp = total_pop;
-			POP* *vp = cp->vpop;
+			POP<REAL>* cp = total_pop;
+			POP<REAL>* *vp = cp->vpop;
 			for (int p = 0; p < cp->npop; ++p)
 				Add(cp->allelefreq, vp[p]->allelefreq, KT);
 		}
@@ -4345,26 +4651,28 @@ THREAD(CalcAlleleFreq)
 }
 
 /* Calculate individual minimum and maximum ploidy, and sum ploidy levels */
-THREAD(AssignPloidyThread)
+THREAD2(AssignPloidyThread)
 {
-	VLA_NEW(ploidytab, int, maxG * g_nthread_val);
-	VLA_NEW(nallelestab, int, maxG * g_nthread_val);
+	int* Ploidy = new int[maxG * g_nthread_val];
+	int* Nalleles = new int[maxG * g_nthread_val];
+	int64* Vt = new int64[nind * g_nthread_val];
+	byte* Vmin = new byte[nind * g_nthread_val];
+	byte* Vmax = new byte[nind * g_nthread_val];
 
-	atomic<int64>* vt = new atomic<int64>[nind];
-	atomic<byte>* vmin = new atomic<byte>[nind];
-	atomic<byte>* vmax = new atomic<byte>[nind];
-
-	SetZero(vt, nind);
-	SetVal((byte*)vmin, (byte)100, nind);
-	SetZero(vmax, nind);
+	SetZero(Vt, nind * g_nthread_val);
+	SetVal(Vmin, (byte)100, nind * g_nthread_val);
+	SetZero(Vmax, nind * g_nthread_val);
 
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		threadid = omp_get_thread_num();
 
-		int* nalleles = nallelestab + maxG * threadid;
-		int* ploidy = ploidytab + maxG * threadid;
+		int* nalleles = Nalleles + maxG * threadid;
+		int* ploidy = Ploidy + maxG * threadid;
+		int64* vt = Vt + nind * threadid;
+		byte* vmin = Vmin + nind * threadid;
+		byte* vmax = Vmax + nind * threadid;
 
 		GENOTYPE* gtab = GetLoc(l).GetGtab();
 		int ngeno = GetLoc(l).ngeno;
@@ -4385,19 +4693,34 @@ THREAD(AssignPloidyThread)
 			{
 				byte v = (byte)ploidy[gid];
 				vt[j] += v;
-				if (v < vmin[j]) AtomicMin(vmin[j], v);
-				if (v > vmax[j]) AtomicMax(vmax[j], v);
+				vmin[j] = Min(vmin[j], v);
+				vmax[j] = Max(vmax[j], v);
 			}
 		}
 		PROGRESS_VALUE++;
 	}
 
+	//gather
+	for (int threadid = 1; threadid < g_nthread_val; ++threadid)
+	{
+		int64* vt = Vt + nind * threadid;
+		byte* vmin = Vmin + nind * threadid;
+		byte* vmax = Vmax + nind * threadid;
+
+		for (int j = 0; j < nind; ++j)
+		{
+			Vt[j] += vt[j];
+			Vmin[j] = Min(Vmin[j], vmin[j]);
+			Vmax[j] = Max(Vmax[j], vmax[j]);
+		}
+	}
+
 	minploidy = 100; maxploidy = 0; maxvt = 0;
 	for (int i = 0; i < nind; ++i)
 	{
-		ainds[i]->vt = vt[i];
-		ainds[i]->vmin = vmin[i] == 100 ? 0 : (byte)vmin[i];
-		ainds[i]->vmax = vmax[i];
+		ainds[i]->vt = Vt[i];
+		ainds[i]->vmin = Vmin[i] == 100 ? 0 : (byte)Vmin[i];
+		ainds[i]->vmax = Vmax[i];
 
 		minploidy = Min(minploidy, ainds[i]->vmin);
 		maxploidy = Max(maxploidy, ainds[i]->vmax);
@@ -4405,16 +4728,15 @@ THREAD(AssignPloidyThread)
 		sumvt += ainds[i]->vt;
 	}
 
-	delete[] vt;
-	delete[] vmin;
-	delete[] vmax;
-
-	VLA_DELETE(ploidytab);
-	VLA_DELETE(nallelestab);
+	delete[] Vt;
+	delete[] Vmin;
+	delete[] Vmax;
+	delete[] Ploidy;
+	delete[] Nalleles;
 }
 
 /* Find the optimal Partial Equational Segregation model for each locus */
-THREAD(GetLocusPESModel)
+THREAD2(GetLocusPESModel)
 {
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 	for (int64 l = 0; l < nloc; ++l)
@@ -4423,16 +4745,17 @@ THREAD(GetLocusPESModel)
 		int ngeno = GetLoc(l).ngeno;
 
 		int model = 0;
-		double maxli = -1e300;
+		double maxli = -DBL_MAX;
 		for (int m = 4; m <= N_DRE_MODELT; ++m)
 		{
-			double slog = 0, prod = 1;
+			double slogd = 0, prod = 1; 
+			int64& slog = *(int64*) & slogd;
 
 			OpenLog(slog, prod);
 			for (int p = 0; p < npop; ++p)
 			{
 				ushort* gcount = cpop->GetGenoCount(l);
-				double* freq = apops[p]->GetFreq(l);
+				REAL* freq = apops[p]->GetFreq(l);
 
 				for (int gi = 0; gi < ngeno; ++gi)
 				{
@@ -4451,7 +4774,7 @@ THREAD(GetLocusPESModel)
 			}
 			CloseLog(slog, prod);
 
-			if (slog > maxli)
+			if (slogd > maxli)
 			{
 				maxli = slog;
 				model = m;

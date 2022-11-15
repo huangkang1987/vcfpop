@@ -1,620 +1,1347 @@
-/* NEO Instruction Set Functions */
+/* NEO Bayesian clustering functions */
 
 #include "vcfpop.h"
 
+template struct BAYESIAN<double>;
+template struct BAYESIAN<float >;
+
+template TARGETNEO void BAYESIAN<double>::UpdateQNoAdmixNEO(int tid);
+template TARGETNEO void BAYESIAN<float >::UpdateQNoAdmixNEO(int tid);
+
+template TARGETNEO void BAYESIAN<double>::UpdateZNoAdmixNEO(int tid);
+template TARGETNEO void BAYESIAN<float >::UpdateZNoAdmixNEO(int tid);
+
+template TARGETNEO void BAYESIAN<double>::UpdateQMetroNEO<true >(int tid);
+template TARGETNEO void BAYESIAN<double>::UpdateQMetroNEO<false>(int tid);
+template TARGETNEO void BAYESIAN<float >::UpdateQMetroNEO<true >(int tid);
+template TARGETNEO void BAYESIAN<float >::UpdateQMetroNEO<false>(int tid);
+
+template TARGETNEO void BAYESIAN<double>::UpdateZAdmixNEO<true >(int tid);
+template TARGETNEO void BAYESIAN<double>::UpdateZAdmixNEO<false>(int tid);
+template TARGETNEO void BAYESIAN<float >::UpdateZAdmixNEO<true >(int tid);
+template TARGETNEO void BAYESIAN<float >::UpdateZAdmixNEO<false>(int tid);
+
+template TARGETNEO void BAYESIAN<double>::RecordNEO<true , true >(int tid);
+template TARGETNEO void BAYESIAN<double>::RecordNEO<true , false>(int tid);
+template TARGETNEO void BAYESIAN<double>::RecordNEO<false, true >(int tid);
+template TARGETNEO void BAYESIAN<double>::RecordNEO<false, false>(int tid);
+template TARGETNEO void BAYESIAN<float >::RecordNEO<true , true >(int tid);
+template TARGETNEO void BAYESIAN<float >::RecordNEO<true , false>(int tid);
+template TARGETNEO void BAYESIAN<float >::RecordNEO<false, true >(int tid);
+template TARGETNEO void BAYESIAN<float >::RecordNEO<false, false>(int tid);
+
 #ifdef __aarch64__
 
-/* Read allele id from decompreNEOd bucket */
-/*ReadAidNEO(BAYESIAN_READER& rt, int size, uint64x2_t* aid, uint64x2_t* type)
-{ \
-	uint64x2_t mask = vdupq_n_u64((1u << size) - 1u);
-	uint64x2_t aid1, aid2, aid3, aid4; 
-	uint64x2_t type1, type2, type3, type4; */
-#define ReadAidNEO \
-{ \
-	/* if data is empty */ \
-	if (rt.nbits < size) [[unlikely]] \
-	{ \
-		/* move nbits data to gid */ \
-		aid1 = rt.data128[0]; \
-		aid2 = rt.data128[1]; \
-		aid3 = rt.data128[2]; \
-		aid4 = rt.data128[3]; \
- \
-		/* remain number of bits to read */ \
-		int rbits = size - rt.nbits; \
- \
-		/* read 64 bits to data */ \
-		uint64* tpos = rt.pos; \
- \
-		rt.data64[0] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[1] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[2] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[3] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[4] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[5] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[6] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[7] = *tpos; tpos += structure_indnbytes; \
- \
-		rt.pos++; \
- \
-		/* read rbits from data and concate to higher bits in gid */ \
-		uint64x2_t maskrbits = vdupq_n_u64((1u << rbits) - 1u); \
-		uint64x2_t c1, c2, c3, c4; \
- \
-		c1 = vandq_u64(rt.data128[0], maskrbits); \
-		c2 = vandq_u64(rt.data128[1], maskrbits); \
-		c3 = vandq_u64(rt.data128[2], maskrbits); \
-		c4 = vandq_u64(rt.data128[3], maskrbits); \
- \
-		int64x2_t nlbits = vdupq_n_s64(rt.nbits); \
- \
-		c1 = vshlq_u64(c1, nlbits); /*left move rt.nbits (positive) */ \
-		c2 = vshlq_u64(c2, nlbits); \
-		c3 = vshlq_u64(c3, nlbits); \
-		c4 = vshlq_u64(c4, nlbits); \
- \
-		aid1 = vorrq_u64(aid1, c1); \
-		aid2 = vorrq_u64(aid2, c2); \
-		aid3 = vorrq_u64(aid3, c3); \
-		aid4 = vorrq_u64(aid4, c4); \
- \
-		/*shift right */ \
-		nlbits = vdupq_n_s64(-rbits); \
-		rt.data128[0] = vshlq_u64(rt.data128[0], nlbits);/* right move rbits (negative) */ \
-		rt.data128[1] = vshlq_u64(rt.data128[1], nlbits); \
-		rt.data128[2] = vshlq_u64(rt.data128[2], nlbits); \
-		rt.data128[3] = vshlq_u64(rt.data128[3], nlbits); \
- \
-		rt.nbits = 64 - rbits; \
-	} \
-	else [[likely]] \
-	{ \
-		/*read size bits */ \
-		aid1 = vandq_u64(rt.data128[0], mask); \
-		aid2 = vandq_u64(rt.data128[1], mask); \
-		aid3 = vandq_u64(rt.data128[2], mask); \
-		aid4 = vandq_u64(rt.data128[3], mask); \
- \
-		/*shift right */ \
-		rt.data128[0] = vshlq_u64(rt.data128[0], nsize); /* right move size (negative) */ \
-		rt.data128[1] = vshlq_u64(rt.data128[1], nsize); \
-		rt.data128[2] = vshlq_u64(rt.data128[2], nsize); \
-		rt.data128[3] = vshlq_u64(rt.data128[3], nsize); \
- \
-		rt.nbits -= size; \
-	} \
- \
-	/*typed is 0xFFFFFFFF */ \
-	type1 = vcgtq_u64(mask, aid1); \
-	type2 = vcgtq_u64(mask, aid2); \
-	type3 = vcgtq_u64(mask, aid3); \
-	type4 = vcgtq_u64(mask, aid4); \
- \
-	/* set missing to 0 */ \
-	aid1 = vandq_u64(aid1, type1); \
-	aid2 = vandq_u64(aid2, type2); \
-	aid3 = vandq_u64(aid3, type3); \
-	aid4 = vandq_u64(aid4, type4); \
+#ifndef _GENO_READERNEO
+template<typename REAL>
+struct GENO_READERNEO
+{
+	uint32x4_t data[16];					//Readed bits
+	uint32x4_t msize;
+	byte* pos;								//Current read pointer
+	uint vindex[64];						//Offset of 16 loci
+	byte size;								//Number of bits a genotype id used
+	byte nbits;								//Number of bits remaining in data
+
+	TARGETNEO GENO_READERNEO()
+	{
+
+	}
+
+	TARGETNEO GENO_READERNEO(int indid, int64 l, int64 num, BUCKET* bucket = NULL)
+	{
+		//set pos and size
+		SetZero(this, 1);
+		num = Min(num, 64);
+
+		//set bucket from default bucket or assigned bucket
+		if (bucket == NULL) bucket = &geno_bucket;
+
+		OFFSET* offset = &bucket->offset.bucket[l];
+		uint64 offset0 = offset[0].offset;
+		pos = (byte*)(bucket->base_addr + offset0);
+
+		for (int i = 0; i < num; ++i)
+			vindex[i] = offset[i].offset - offset0;
+
+		size = offset[0].size;
+
+		msize = vdupq_n_u32((1u << size) - 1u);
+
+		if (indid)
+		{
+			//skip indid * size bits
+			int nreadbits = indid * size;
+
+			//pos move nreadbits / 32
+			pos += nreadbits >> 5;
+
+			//remain bits to read
+			nreadbits &= 31;
+
+			//read 32 bits to data and read remain bits from data
+			uint* data2 = (uint*)data;
+			REP(64) data2[kk] = *(uint*)(pos + vindex[kk]);
+
+			switch (nreadbits)
+			{
+			case  0:                                               break;
+			case  1: REP(16) data[kk] = vshrq_n_u32(data[kk],  1); break;
+			case  2: REP(16) data[kk] = vshrq_n_u32(data[kk],  2); break;
+			case  3: REP(16) data[kk] = vshrq_n_u32(data[kk],  3); break;
+			case  4: REP(16) data[kk] = vshrq_n_u32(data[kk],  4); break;
+			case  5: REP(16) data[kk] = vshrq_n_u32(data[kk],  5); break;
+			case  6: REP(16) data[kk] = vshrq_n_u32(data[kk],  6); break;
+			case  7: REP(16) data[kk] = vshrq_n_u32(data[kk],  7); break;
+			case  8: REP(16) data[kk] = vshrq_n_u32(data[kk],  8); break;
+			case  9: REP(16) data[kk] = vshrq_n_u32(data[kk],  9); break;
+			case 10: REP(16) data[kk] = vshrq_n_u32(data[kk], 10); break;
+			case 11: REP(16) data[kk] = vshrq_n_u32(data[kk], 11); break;
+			case 12: REP(16) data[kk] = vshrq_n_u32(data[kk], 12); break;
+			case 13: REP(16) data[kk] = vshrq_n_u32(data[kk], 13); break;
+			case 14: REP(16) data[kk] = vshrq_n_u32(data[kk], 14); break;
+			case 15: REP(16) data[kk] = vshrq_n_u32(data[kk], 15); break;
+			case 16: REP(16) data[kk] = vshrq_n_u32(data[kk], 16); break;
+			case 17: REP(16) data[kk] = vshrq_n_u32(data[kk], 17); break;
+			case 18: REP(16) data[kk] = vshrq_n_u32(data[kk], 18); break;
+			case 19: REP(16) data[kk] = vshrq_n_u32(data[kk], 19); break;
+			case 20: REP(16) data[kk] = vshrq_n_u32(data[kk], 20); break;
+			case 21: REP(16) data[kk] = vshrq_n_u32(data[kk], 21); break;
+			case 22: REP(16) data[kk] = vshrq_n_u32(data[kk], 22); break;
+			case 23: REP(16) data[kk] = vshrq_n_u32(data[kk], 23); break;
+			case 24: REP(16) data[kk] = vshrq_n_u32(data[kk], 24); break;
+			case 25: REP(16) data[kk] = vshrq_n_u32(data[kk], 25); break;
+			case 26: REP(16) data[kk] = vshrq_n_u32(data[kk], 26); break;
+			case 27: REP(16) data[kk] = vshrq_n_u32(data[kk], 27); break;
+			case 28: REP(16) data[kk] = vshrq_n_u32(data[kk], 28); break;
+			case 29: REP(16) data[kk] = vshrq_n_u32(data[kk], 29); break;
+			case 30: REP(16) data[kk] = vshrq_n_u32(data[kk], 30); break;
+			case 31: REP(16) data[kk] = vshrq_n_u32(data[kk], 31); break;
+			}
+
+			pos += 4;
+
+			//set nbits
+			nbits = 32 - nreadbits;
+		}
+		else
+		{
+			//read 32 bits
+			uint* data2 = (uint*)data;
+			REP(64) data2[kk] = *(uint*)(pos + vindex[kk]);
+
+			pos += 4;
+
+			//set nbits
+			nbits = 32;
+		}
+	}
+
+	__forceinline
+	TARGETNEO void Read(uint32x4_t* gid)
+	{
+		// if data is empty
+		if (nbits < size) [[unlikely]]
+		{
+			// move nbits data to gid
+			memcpy(gid, data, 16 * sizeof(uint32x4_t));
+
+			// remain number of bits to read
+			int rbits = size - nbits;
+			uint32x4_t tmask = vdupq_n_u32((1u << rbits) - 1u);
+
+			// read 32 bits to data
+			uint* data2 = (uint*)data;
+			REP(64) data2[kk] = *(uint*)(pos + vindex[kk]);
+
+			// read rbits from data and concate to higher bits in gid
+			switch (nbits)
+			{
+			case  0: REP(16) gid[kk] = veorq_u32(gid[kk],             vandq_u32(data[kk], tmask)     ); break;
+			case  1: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask),  1)); break;
+			case  2: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask),  2)); break;
+			case  3: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask),  3)); break;
+			case  4: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask),  4)); break;
+			case  5: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask),  5)); break;
+			case  6: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask),  6)); break;
+			case  7: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask),  7)); break;
+			case  8: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask),  8)); break;
+			case  9: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask),  9)); break;
+			case 10: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 10)); break;
+			case 11: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 11)); break;
+			case 12: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 12)); break;
+			case 13: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 13)); break;
+			case 14: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 14)); break;
+			case 15: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 15)); break;
+			case 16: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 16)); break;
+			case 17: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 17)); break;
+			case 18: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 18)); break;
+			case 19: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 19)); break;
+			case 20: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 20)); break;
+			case 21: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 21)); break;
+			case 22: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 22)); break;
+			case 23: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 23)); break;
+			case 24: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 24)); break;
+			case 25: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 25)); break;
+			case 26: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 26)); break;
+			case 27: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 27)); break;
+			case 28: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 28)); break;
+			case 29: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 29)); break;
+			case 30: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 30)); break;
+			case 31: REP(16) gid[kk] = veorq_u32(gid[kk], vshlq_n_u32(vandq_u32(data[kk], tmask), 31)); break;
+			}
+
+
+
+
+			//shift right
+			switch (rbits)
+			{
+			case  0:                                               break;
+			case  1: REP(16) data[kk] = vshrq_n_u32(data[kk],  1); break;
+			case  2: REP(16) data[kk] = vshrq_n_u32(data[kk],  2); break;
+			case  3: REP(16) data[kk] = vshrq_n_u32(data[kk],  3); break;
+			case  4: REP(16) data[kk] = vshrq_n_u32(data[kk],  4); break;
+			case  5: REP(16) data[kk] = vshrq_n_u32(data[kk],  5); break;
+			case  6: REP(16) data[kk] = vshrq_n_u32(data[kk],  6); break;
+			case  7: REP(16) data[kk] = vshrq_n_u32(data[kk],  7); break;
+			case  8: REP(16) data[kk] = vshrq_n_u32(data[kk],  8); break;
+			case  9: REP(16) data[kk] = vshrq_n_u32(data[kk],  9); break;
+			case 10: REP(16) data[kk] = vshrq_n_u32(data[kk], 10); break;
+			case 11: REP(16) data[kk] = vshrq_n_u32(data[kk], 11); break;
+			case 12: REP(16) data[kk] = vshrq_n_u32(data[kk], 12); break;
+			case 13: REP(16) data[kk] = vshrq_n_u32(data[kk], 13); break;
+			case 14: REP(16) data[kk] = vshrq_n_u32(data[kk], 14); break;
+			case 15: REP(16) data[kk] = vshrq_n_u32(data[kk], 15); break;
+			case 16: REP(16) data[kk] = vshrq_n_u32(data[kk], 16); break;
+			case 17: REP(16) data[kk] = vshrq_n_u32(data[kk], 17); break;
+			case 18: REP(16) data[kk] = vshrq_n_u32(data[kk], 18); break;
+			case 19: REP(16) data[kk] = vshrq_n_u32(data[kk], 19); break;
+			case 20: REP(16) data[kk] = vshrq_n_u32(data[kk], 20); break;
+			case 21: REP(16) data[kk] = vshrq_n_u32(data[kk], 21); break;
+			case 22: REP(16) data[kk] = vshrq_n_u32(data[kk], 22); break;
+			case 23: REP(16) data[kk] = vshrq_n_u32(data[kk], 23); break;
+			case 24: REP(16) data[kk] = vshrq_n_u32(data[kk], 24); break;
+			case 25: REP(16) data[kk] = vshrq_n_u32(data[kk], 25); break;
+			case 26: REP(16) data[kk] = vshrq_n_u32(data[kk], 26); break;
+			case 27: REP(16) data[kk] = vshrq_n_u32(data[kk], 27); break;
+			case 28: REP(16) data[kk] = vshrq_n_u32(data[kk], 28); break;
+			case 29: REP(16) data[kk] = vshrq_n_u32(data[kk], 29); break;
+			case 30: REP(16) data[kk] = vshrq_n_u32(data[kk], 30); break;
+			case 31: REP(16) data[kk] = vshrq_n_u32(data[kk], 31); break;
+			}
+
+			pos += 4;
+
+			nbits = 32 - rbits;
+		}
+		else [[likely]]
+		{
+			//read size bits
+			REP(16) gid[kk] = vandq_u32(data[kk], msize);
+
+			//shift right
+			switch (size)
+			{
+			case  0:                                              break;
+			case  1: REP(16) data[kk] = vshrq_n_u32(data[kk], 1); break;
+			case  2: REP(16) data[kk] = vshrq_n_u32(data[kk], 2); break;
+			case  3: REP(16) data[kk] = vshrq_n_u32(data[kk], 3); break;
+			case  4: REP(16) data[kk] = vshrq_n_u32(data[kk], 4); break;
+			case  5: REP(16) data[kk] = vshrq_n_u32(data[kk], 5); break;
+			case  6: REP(16) data[kk] = vshrq_n_u32(data[kk], 6); break;
+			case  7: REP(16) data[kk] = vshrq_n_u32(data[kk], 7); break;
+			case  8: REP(16) data[kk] = vshrq_n_u32(data[kk], 8); break;
+			case  9: REP(16) data[kk] = vshrq_n_u32(data[kk], 9); break;
+			case 10: REP(16) data[kk] = vshrq_n_u32(data[kk], 10); break;
+			case 11: REP(16) data[kk] = vshrq_n_u32(data[kk], 11); break;
+			case 12: REP(16) data[kk] = vshrq_n_u32(data[kk], 12); break;
+			case 13: REP(16) data[kk] = vshrq_n_u32(data[kk], 13); break;
+			case 14: REP(16) data[kk] = vshrq_n_u32(data[kk], 14); break;
+			case 15: REP(16) data[kk] = vshrq_n_u32(data[kk], 15); break;
+			case 16: REP(16) data[kk] = vshrq_n_u32(data[kk], 16); break;
+			case 17: REP(16) data[kk] = vshrq_n_u32(data[kk], 17); break;
+			case 18: REP(16) data[kk] = vshrq_n_u32(data[kk], 18); break;
+			case 19: REP(16) data[kk] = vshrq_n_u32(data[kk], 19); break;
+			case 20: REP(16) data[kk] = vshrq_n_u32(data[kk], 20); break;
+			case 21: REP(16) data[kk] = vshrq_n_u32(data[kk], 21); break;
+			case 22: REP(16) data[kk] = vshrq_n_u32(data[kk], 22); break;
+			case 23: REP(16) data[kk] = vshrq_n_u32(data[kk], 23); break;
+			case 24: REP(16) data[kk] = vshrq_n_u32(data[kk], 24); break;
+			case 25: REP(16) data[kk] = vshrq_n_u32(data[kk], 25); break;
+			case 26: REP(16) data[kk] = vshrq_n_u32(data[kk], 26); break;
+			case 27: REP(16) data[kk] = vshrq_n_u32(data[kk], 27); break;
+			case 28: REP(16) data[kk] = vshrq_n_u32(data[kk], 28); break;
+			case 29: REP(16) data[kk] = vshrq_n_u32(data[kk], 29); break;
+			case 30: REP(16) data[kk] = vshrq_n_u32(data[kk], 30); break;
+			case 31: REP(16) data[kk] = vshrq_n_u32(data[kk], 31); break;
+			}
+
+			nbits -= size;
+		}
+	}
+};
+
+#endif
+
+__forceinline TARGETNEO double _neo_reduce_add_pd(float64x2_t v2)
+{
+	return vgetq_lane_f64(v2, 0) + vgetq_lane_f64(v2, 1);
 }
 
-/* Read allele frequency from decompreNEOd bucket */
-/*
-TARGETNEO void ReadFreqNEO(BAYESIAN_READER& rt, int size, uint64x2_t* slog, float64x2_t* prod, double* p, int K)
+__forceinline TARGETNEO double _neo_reduce_mul_pd(float64x2_t v2)
 {
-	int64x2_t nsize = vdupq_n_s64(-size);
-	uint64x2_t mask = vdupq_n_u64((1u << size) - 1u);
-	uint64x2_t maskunder = vdupq_n_u64(0x1FF0000000000000);
-	uint64x2_t mask1 = vdupq_n_u64(0x7FF0000000000000);
-	uint64x2_t mask2 = vdupq_n_u64(0x800FFFFFFFFFFFFF);
-	uint64x2_t mask3 = vdupq_n_u64(0x3FF0000000000000);
-	uint64x2_t subv = vdupq_n_u64(1023);
-	uint64x2_t addr_inc = vdupq_n_u64(KT * sizeof(double));
-	float64x2_t maskone = vdupq_n_f64(1.0);
-*/
-#define ReadFreqNEO \
-{ \
-	uint64x2_t aid1, aid2, aid3, aid4; \
-	uint64x2_t a1, a2, a3, a4; \
-	uint64x2_t b1, b2, b3, b4; \
-	uint64x2_t type1, type2, type3, type4; \
-	float64x2_t freq1, freq2, freq3, freq4; \
-	uint64x2_t* prodi = (uint64x2_t*)prod; \
- \
-	ReadAidNEO \
- \
-	/* x sizeof(double) to load frequency */ \
-	aid1 = vshlq_n_u64(aid1, 3); \
-	aid2 = vshlq_n_u64(aid2, 3); \
-	aid3 = vshlq_n_u64(aid3, 3); \
-	aid4 = vshlq_n_u64(aid4, 3); \
- \
-	uint64x2_t addr = vdupq_n_u64((uint64)p); \
- \
-	aid1 = vaddq_f64(aid1, addr); \
-	aid2 = vaddq_f64(aid2, addr); \
-	aid3 = vaddq_f64(aid3, addr); \
-	aid4 = vaddq_f64(aid4, addr); \
- \
-	for (int k = 0; k < K; ++k) \
-	{ \
-		double f[8] = { \
-			*(double*)vgetq_lane_u64(aid1, 0), *(double*)vgetq_lane_u64(aid1, 1), \
-			*(double*)vgetq_lane_u64(aid2, 0), *(double*)vgetq_lane_u64(aid2, 1), \
-			*(double*)vgetq_lane_u64(aid3, 0), *(double*)vgetq_lane_u64(aid3, 1), \
-			*(double*)vgetq_lane_u64(aid4, 0), *(double*)vgetq_lane_u64(aid4, 1) \
-		}; \
-        \
-		/* get freq of 8 allele copies for 8 individuals in cluster k */ \
-		freq1 = vld1q_f64(&f[0]); \
-		freq2 = vld1q_f64(&f[2]); \
-		freq3 = vld1q_f64(&f[4]); \
-		freq4 = vld1q_f64(&f[6]); \
- \
-		/* set missing freq to one */ \
-		freq1 = vbslq_u64(type1, freq1, maskone); \
-		freq2 = vbslq_u64(type2, freq2, maskone); \
-		freq3 = vbslq_u64(type3, freq3, maskone); \
-		freq4 = vbslq_u64(type4, freq4, maskone); \
- \
-		/* mul to prod */ \
-		prod[k * 4 + 0] = vmulq_f64(prod[k * 4 + 0], freq1); \
-		prod[k * 4 + 1] = vmulq_f64(prod[k * 4 + 1], freq2); \
-		prod[k * 4 + 2] = vmulq_f64(prod[k * 4 + 2], freq3); \
-		prod[k * 4 + 3] = vmulq_f64(prod[k * 4 + 3], freq4); \
- \
-		aid1 = vaddq_f64(aid1, addr_inc); \
-		aid2 = vaddq_f64(aid2, addr_inc); \
-		aid3 = vaddq_f64(aid3, addr_inc); \
-		aid4 = vaddq_f64(aid4, addr_inc); \
- \
-		a1 = vcgtq_u64(maskunder, (uint64x2_t)prod[k * 4 + 0]); \
-		a2 = vcgtq_u64(maskunder, (uint64x2_t)prod[k * 4 + 1]); \
-		a3 = vcgtq_u64(maskunder, (uint64x2_t)prod[k * 4 + 2]); \
-		a4 = vcgtq_u64(maskunder, (uint64x2_t)prod[k * 4 + 3]); \
- \
-		a1 = vorrq_u64(a1, a2); \
-		a3 = vorrq_u64(a3, a4); \
-		a1 = vorrq_u64(a1, a3); \
- \
-		/* check underflow */ \
-		if (!(vgetq_lane_u64(a1, 0) | vgetq_lane_u64(a1, 1))) [[likely]] continue; \
- \
-		/* add exponent */ \
-		a1 = vandq_u64(prodi[k * 4 + 0], mask1); \
-		a2 = vandq_u64(prodi[k * 4 + 1], mask1); \
-		a3 = vandq_u64(prodi[k * 4 + 2], mask1); \
-		a4 = vandq_u64(prodi[k * 4 + 3], mask1); \
- \
-		b1 = vandq_u64(prodi[k * 4 + 0], mask2); \
-		b2 = vandq_u64(prodi[k * 4 + 1], mask2); \
-		b3 = vandq_u64(prodi[k * 4 + 2], mask2); \
-		b4 = vandq_u64(prodi[k * 4 + 3], mask2); \
- \
-		a1 = vshrq_n_u64(a1, 52); \
-		a2 = vshrq_n_u64(a2, 52); \
-		a3 = vshrq_n_u64(a3, 52); \
-		a4 = vshrq_n_u64(a4, 52); \
- \
-		prodi[k * 4 + 0] = vorrq_u64(b1, mask3); \
-		prodi[k * 4 + 1] = vorrq_u64(b2, mask3); \
-		prodi[k * 4 + 2] = vorrq_u64(b3, mask3); \
-		prodi[k * 4 + 3] = vorrq_u64(b4, mask3); \
- \
-		a1 = vsubq_u64(a1, subv); \
-		a2 = vsubq_u64(a2, subv); \
-		a3 = vsubq_u64(a3, subv); \
-		a4 = vsubq_u64(a4, subv); \
- \
-		slog[k * 4 + 0] = vaddq_f64(slog[k * 4 + 0], a1); \
-		slog[k * 4 + 1] = vaddq_f64(slog[k * 4 + 1], a2); \
-		slog[k * 4 + 2] = vaddq_f64(slog[k * 4 + 2], a3); \
-		slog[k * 4 + 3] = vaddq_f64(slog[k * 4 + 3], a4); \
- \
-	} \
+	return vgetq_lane_f64(v2, 0) * vgetq_lane_f64(v2, 1);
+}
+
+__forceinline TARGETNEO float _neo_reduce_add_ps(float32x4_t v2)
+{
+	volatile float a1 = vgetq_lane_f32(v2, 0) + vgetq_lane_f32(v2, 1);
+	volatile float a2 = vgetq_lane_f32(v2, 1) + vgetq_lane_f32(v2, 2);
+	return a1 + a2;
+}
+
+__forceinline TARGETNEO float _neo_reduce_mul_ps(float32x4_t v2)
+{
+	volatile float a1 = vgetq_lane_f32(v2, 0) * vgetq_lane_f32(v2, 1);
+	volatile float a2 = vgetq_lane_f32(v2, 1) * vgetq_lane_f32(v2, 2);
+	return a1 * a2;
+}
+
+__forceinline TARGETNEO double _neo_reduce_add_psd(float32x4_t v2)
+{
+	volatile double a1 = (double)vgetq_lane_f32(v2, 0) + (double)vgetq_lane_f32(v2, 1);
+	volatile double a2 = (double)vgetq_lane_f32(v2, 1) + (double)vgetq_lane_f32(v2, 2);
+	return a1 + a2;
+}
+
+__forceinline TARGETNEO double _neo_reduce_mul_psd(float32x4_t v2)
+{
+	volatile double a1 = (double)vgetq_lane_f32(v2, 0) * (double)vgetq_lane_f32(v2, 1);
+	volatile double a2 = (double)vgetq_lane_f32(v2, 1) * (double)vgetq_lane_f32(v2, 2);
+	return a1 * a2;
+}
+
+/* Update a priori ancetral proportion for non-admix model */
+template<typename REAL>
+TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
+{
+	if (tid == -1)
+	{
+		SetZero(Q, N * K);
+		OpenLog((int64*)bufNK1, bufNK2, N * K * structure_nsubthread);
+
+		//add priori probability
+		double* buf1 = bufNK1, * buf2 = bufNK2;
+		if (locpriori) for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
+		{
+			if (ainds[i]->vt == 0) continue;
+			ChargeLog((int64*)buf1, buf2, Gamma + ainds[i]->popid * K, K);
+		}
+
+		//////////////////////////////////////////////////////////
+
+		SetZero((int64*)l_atomic, 32);
+
+		UpdateQNoAdmixNEO(0);
+
+		//avoid thread-conflict
+		for (int i = 1; i < structure_nsubthread; ++i)
+			Add(bufNK1, bufNK1 + N * K * i, N * K);
+
+		buf1 = bufNK1;
+		REAL* q = Q;
+		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		for (int i = 0; i < N; ++i, buf1 += K, q += K)
+		{
+			if (ainds[i]->vt == 0) continue;
+			ushort k2 = (ushort)rng.PolyLog(buf1, K);
+			q[k2] = 1;
+			Z[i] = k2;
+		}
+		return;
+	}
+
+	static float64x2_t maskoned = vdupq_n_f64(1.0);
+	static float32x4_t maskones = vdupq_n_f32(1.0);
+	static uint32x4_t mask00 = vdupq_n_u32(0);
+	static uint32x4_t maskff = vdupq_n_u32(0xFFFFFFFF);
+	static uint32x4_t mask24 = vdupq_n_u32(0xFFFFFF);
+	static uint32x4_t mask01 = vdupq_n_u32(1);
+	static uint32x4_t mask02 = vdupq_n_u32(2);
+	alignas(16) static uint maskidx1[64] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63 };
+	static uint32x4_t* maskidx = (uint32x4_t*)maskidx1;
+	static uint PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
+		{
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
+
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
+			{
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				REAL* p = Freq + allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				uint32x4_t gtab[16]; uint* gtab1 = (uint*)gtab;
+				REP(64) gtab1[kk] = GetLocTabDiff(l + kk);
+
+				uint32x4_t lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull;
+				uint32x4_t lmaskt = vdupq_n_u32(lmask0);
+				uint lmaskv1[4] = { 1, 2, 4, 8 }; uint32x4_t lmaskv2 = vld1q_u32(lmaskv1);
+				REP(16)
+				{
+                    if (kk == 8) lmaskt = vdupq_n_u32(lmask0 >> 32);
+					lmask[kk] = vcgtq_u32(vandq_u32(lmaskt, lmaskv2), mask00);
+					lmaskt = vshrq_n_u32(lmaskt, 4);
+					lmaskidx[kk] = vandq_u32(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERNEO<REAL> rt(0, l, lend - l);
+
+				uint32x4_t oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+				REP(16) oindex[kk] = vld1q_u32(((uint[]) { (uint)(toffset[lmaskidx2[0 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[1 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[2 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01) }));
+
+                uint32x4_t gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], typed[16];
+                uint64x2_t typed64[32];
+				int* allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+				float64x2_t freq[32];
+
+				int64* buf1 = (int64*)bufNK1 + N * K * tid; double* buf2 = bufNK2 + N * K * tid;
+
+				for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
+				{
+					rt.Read(gtaddr);
+
+					REP(16) gtaddr[kk] = vaddq_u32(gtab[kk], vshlq_n_u32(gtaddr[kk], 2));
+
+					REP(16) gtlow[kk] = vld1q_u32(((uint[]) { *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]) }));
+
+					REP(16) gtploidy[kk] = vandq_u32(lmask[kk], vshrq_n_u32(gtlow[kk], 24));
+
+					REP(16) gtlow[kk] = vandq_u32(gtlow[kk], mask24);
+
+					REP(16) gtploidy[kk] = vld1q_u32(((uint[]) { PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]] }));
+
+					REP(16) gtals[kk] = vaddq_u32(gtaddr[kk], gtlow[kk]);
+
+					int maxv = maxploidy;
+					if (maxploidy != minploidy)
+					{
+						uint32x4_t maxv1 =
+							vmaxq_u32(
+								vmaxq_u32(
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[0], gtploidy[1]),
+										vmaxq_u32(gtploidy[2], gtploidy[3])),
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[4], gtploidy[5]),
+										vmaxq_u32(gtploidy[6], gtploidy[7]))),
+								vmaxq_u32(
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[8], gtploidy[9]),
+										vmaxq_u32(gtploidy[10], gtploidy[11])),
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[12], gtploidy[13]),
+										vmaxq_u32(gtploidy[14], gtploidy[15]))));
+
+						maxv = Max(Max(vgetq_lane_u32(maxv1, 0), vgetq_lane_u32(maxv1, 1)), Max(vgetq_lane_u32(maxv1, 2), vgetq_lane_u32(maxv1, 3)));
+					}
+
+					uint32x4_t ai = vdupq_n_u32(0);
+					for (int a = 0; a < maxv; ++a, ai = vaddq_u32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = vcgtq_u32(gtploidy[kk], ai);
+
+							if constexpr (sizeof(REAL) == 8)
+							{
+                                typed64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 0), (uint64)vgetq_lane_s32(typed[kk], 1) }));
+                                typed64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 2), (uint64)vgetq_lane_s32(typed[kk], 3) }));
+							}
+
+							uint32x4_t als3 = vandq_u32(gtals[kk], typed[kk]);
+
+                            allele[kk] = vld1q_u32(((uint []) { *(ushort*)(gtab_base + vgetq_lane_u32(als3, 0)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 1)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 2)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 3)) }));
+
+							gtals[kk] = vaddq_u32(gtals[kk], mask02);
+
+							allele[kk] = vaddq_u32(allele[kk], oindex[kk]);
+
+							allele[kk] = vandq_u32(allele[kk], typed[kk]);
+						}
+
+						REAL* p2 = p;
+						for (int k = 0; k < K; ++k, p2 += KT)
+						{
+							if constexpr (sizeof(REAL) == 8)
+							{
+								REP(32) freq[kk] = vbslq_f64(typed64[kk], vld1q_f64(((double []) { p2[allele2[0 + (kk << 1)]] , p2[allele2[1 + (kk << 1)]] })), maskoned);
+							}
+							else
+							{
+								REP(16)
+								{
+									float32x4_t v2 = vbslq_f64(typed[kk], vld1q_f32(((float []) { p2[allele2[0 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[3 + (kk << 2)]] })), maskones);
+									freq[0 + (kk << 1)] = vcvt_f64_f32(vget_low_f32 (v2));
+									freq[1 + (kk << 1)] = vcvt_f64_f32(vget_high_f32(v2));
+								}
+							}
+
+							for (int K = sizeof(freq) / sizeof(freq[0]) / 2; K >= 1; K >>= 1)
+								REP(K) freq[kk] = vmulq_f64(freq[kk], freq[kk + K]);
+
+							ChargeLog(buf1[k], buf2[k], vgetq_lane_f64(freq[0], 0) * vgetq_lane_f64(freq[0], 1));
+						}
+					}
+				}
+			}
+		}
+
+		//avoid thread-conflict
+		CloseLog((int64*)bufNK1 + N * K * tid, bufNK2 + N * K * tid, N * K);
+	}
 }
 
 /* Update individual or allele origin when ancetral proportion is binary */
-TARGETNEO void UpdateZBinaryNEO(int* Ni, ushort* Z)
+template<typename REAL>
+TARGETNEO void BAYESIAN<REAL>::UpdateZNoAdmixNEO(int tid)
 {
-	uint64x2_t Kt = vdupq_n_u64(KT);
-	uint64x2_t mask01 = vdupq_n_u64(1);
-
-	for (int i = 0, pad = 0; i < nind; i += STRUCTURE_NPACK)
+	if (tid == -1)
 	{
-		if (i + STRUCTURE_NPACK >= nind) //fix i for the last several
+		SetZero(Mi, N * K);
+		SetZero(Ni, K * KT);
+
+		for (int i = 0; i < N; ++i)
+			Mi[i * K + Z[i]] = ainds[i]->vt;
+
+		//////////////////////////////////////////////////////////
+
+		SetZero((int64*)l_atomic, 32);
+
+		UpdateZNoAdmixNEO(0);
+
+		return;
+	}
+
+	static uint32x4_t mask00 = vdupq_n_u32(0);
+	static uint32x4_t maskff = vdupq_n_u32(0xFFFFFFFF);
+	static uint32x4_t mask24 = vdupq_n_u32(0xFFFFFF);
+	static uint32x4_t mask01 = vdupq_n_u32(1);
+	static uint32x4_t mask02 = vdupq_n_u32(2);
+	alignas(16) static uint maskidx1[64] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63 };
+	static uint32x4_t* maskidx = (uint32x4_t*)maskidx1;
+	static uint PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
-			pad = STRUCTURE_NPACK - (nind - i);
-			i = nind - STRUCTURE_NPACK;
-		}
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
 
-		uint64x2_t ZxKT1, ZxKT2, ZxKT3, ZxKT4;
-
-		uint64 z[8] = {
-			Z[i + 0], Z[i + 1], Z[i + 2], Z[i + 3],
-			Z[i + 4], Z[i + 5], Z[i + 6], Z[i + 7]
-		};
-
-		ZxKT1 = vld1q_u64(&z[0]);
-		ZxKT2 = vld1q_u64(&z[2]);
-		ZxKT3 = vld1q_u64(&z[4]);
-		ZxKT4 = vld1q_u64(&z[6]);
-
-		ZxKT1 = (uint64x2_t)vmulq_u32((uint32x4_t)Kt, (uint32x4_t)ZxKT1);
-		ZxKT2 = (uint64x2_t)vmulq_u32((uint32x4_t)Kt, (uint32x4_t)ZxKT2);
-		ZxKT3 = (uint64x2_t)vmulq_u32((uint32x4_t)Kt, (uint32x4_t)ZxKT3);
-		ZxKT4 = (uint64x2_t)vmulq_u32((uint32x4_t)Kt, (uint32x4_t)ZxKT4);
-
-		ZxKT1 = vshlq_n_u64(ZxKT1, 2);
-		ZxKT2 = vshlq_n_u64(ZxKT2, 2);
-		ZxKT3 = vshlq_n_u64(ZxKT3, 2);
-		ZxKT4 = vshlq_n_u64(ZxKT4, 2);
-
-		BAYESIAN_READER rt(i);
-		int* ni = Ni;
-
-		for (int64 l = 0; l < nloc; ++l, ni += GetLoc(l).k)
-		{
-			int size = structure_size[l];
-			int64x2_t nsize = vdupq_n_s64(-size);
-			uint64x2_t mask = vdupq_n_u64((1u << size) - 1u); 
-			uint64x2_t aid1, aid2, aid3, aid4;
-			uint64x2_t type1, type2, type3, type4;
-			uint64x2_t npio2 = vdupq_n_u64((int64)ni);
-			uint64x2_t a1, a2, a3, a4;
-			uint64x2_t b1, b2, b3, b4;
-
-			a1 = vaddq_f64(ZxKT1, npio2);
-			a2 = vaddq_f64(ZxKT2, npio2);
-			a3 = vaddq_f64(ZxKT3, npio2);
-			a4 = vaddq_f64(ZxKT4, npio2);
-
-#define REP_MID \
-			ReadAidNEO/*(rt, size, aid, type);*/ \
-			\
-			b1 = vshlq_n_u64(aid1, 2); \
-			b2 = vshlq_n_u64(aid2, 2); \
-			b3 = vshlq_n_u64(aid3, 2); \
-			b4 = vshlq_n_u64(aid4, 2); \
-			\
-			b1 = vaddq_f64(a1, b1); \
-			b2 = vaddq_f64(a2, b2); \
-			b3 = vaddq_f64(a3, b3); \
-			b4 = vaddq_f64(a4, b4); \
-			\
-			type1 = vandq_u64(type1, mask01);\
-			type2 = vandq_u64(type2, mask01);\
-			type3 = vandq_u64(type3, mask01);\
-			type4 = vandq_u64(type4, mask01);\
-			\
-			switch (pad) \
-			{ /* Z and Mi is updated before call, update Ni here */ \
-			case 0: (*(int*)vgetq_lane_u64(b1, 0)) += vgetq_lane_u64(type1, 0); \
-			case 1: (*(int*)vgetq_lane_u64(b1, 1)) += vgetq_lane_u64(type1, 1); \
-			case 2: (*(int*)vgetq_lane_u64(b2, 0)) += vgetq_lane_u64(type2, 0); \
-			case 3: (*(int*)vgetq_lane_u64(b2, 1)) += vgetq_lane_u64(type2, 1); \
-			case 4: (*(int*)vgetq_lane_u64(b3, 0)) += vgetq_lane_u64(type3, 0); \
-			case 5: (*(int*)vgetq_lane_u64(b3, 1)) += vgetq_lane_u64(type3, 1); \
-			case 6: (*(int*)vgetq_lane_u64(b4, 0)) += vgetq_lane_u64(type4, 0); \
-			case 7: (*(int*)vgetq_lane_u64(b4, 1)) += vgetq_lane_u64(type4, 1); \
-			}
-
-			switch (maxploidy)
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
 			{
-			case 10: REP_MID;
-			case  9: REP_MID;
-			case  8: REP_MID;
-			case  7: REP_MID;
-			case  6: REP_MID;
-			case  5: REP_MID;
-			case  4: REP_MID;
-			case  3: REP_MID;
-			case  2: REP_MID;
-			case  1: REP_MID;
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				int64 o = allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				uint32x4_t gtab[16]; uint* gtab1 = (uint*)gtab;
+				REP(64) gtab1[kk] = GetLocTabDiff(l + kk);
+
+				uint32x4_t lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull;
+				uint32x4_t lmaskt = vdupq_n_u32(lmask0);
+				uint lmaskv1[4] = { 1, 2, 4, 8 }; uint32x4_t lmaskv2 = vld1q_u32(lmaskv1);
+				REP(16)
+				{
+                    if (kk == 8) lmaskt = vdupq_n_u32(lmask0 >> 32);
+					lmask[kk] = vcgtq_u32(vandq_u32(lmaskt, lmaskv2), mask00);
+					lmaskt = vshrq_n_u32(lmaskt, 4);
+					lmaskidx[kk] = vandq_u32(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERNEO<REAL> rt(0, l, lend - l);
+
+				uint32x4_t oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+                REP(16) oindex[kk] = vld1q_u32(((uint[]) { (uint)(toffset[lmaskidx2[0 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[1 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[2 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01) }));
+
+				uint32x4_t gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], typed[16];
+				int* typed2 = (int*)typed, * allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+
+				for (int i = 0; i < N; i++)
+				{
+					rt.Read(gtaddr);
+                    
+                    REP(16) gtaddr[kk] = vaddq_u32(gtab[kk], vshlq_n_u32(gtaddr[kk], 2));
+
+                    REP(16) gtlow[kk] = vld1q_u32(((uint[]) { *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]) }));
+
+                    REP(16) gtploidy[kk] = vandq_u32(lmask[kk], vshrq_n_u32(gtlow[kk], 24));
+
+                    REP(16) gtlow[kk] = vandq_u32(gtlow[kk], mask24);
+
+                    REP(16) gtploidy[kk] = vld1q_u32(((uint[]) { PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]] }));
+
+                    REP(16) gtals[kk] = vaddq_u32(gtaddr[kk], gtlow[kk]);
+
+					int maxv = maxploidy;
+					if (maxploidy != minploidy)
+					{
+						uint32x4_t maxv1 =
+							vmaxq_u32(
+								vmaxq_u32(
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[0], gtploidy[1]),
+										vmaxq_u32(gtploidy[2], gtploidy[3])),
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[4], gtploidy[5]),
+										vmaxq_u32(gtploidy[6], gtploidy[7]))),
+								vmaxq_u32(
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[8], gtploidy[9]),
+										vmaxq_u32(gtploidy[10], gtploidy[11])),
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[12], gtploidy[13]),
+										vmaxq_u32(gtploidy[14], gtploidy[15]))));
+
+						maxv = Max(Max(vgetq_lane_u32(maxv1, 0), vgetq_lane_u32(maxv1, 1)), Max(vgetq_lane_u32(maxv1, 2), vgetq_lane_u32(maxv1, 3)));
+					}
+
+					int* ni = Ni + Z[i] * KT + o;
+					uint32x4_t ai = vdupq_n_u32(0);
+					for (int a = 0; a < maxv; ++a, ai = vaddq_u32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = vcgtq_u32(gtploidy[kk], ai);
+
+							uint32x4_t als3 = vandq_u32(gtals[kk], typed[kk]);
+
+							allele[kk] = vld1q_u32(((uint []) { *(ushort*)(gtab_base + vgetq_lane_u32(als3, 0)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 1)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 2)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 3)) }));
+
+							gtals[kk] = vaddq_u32(gtals[kk], mask02);
+
+							allele[kk] = vaddq_u32(allele[kk], oindex[kk]);
+
+							allele[kk] = vandq_u32(allele[kk], typed[kk]);
+						}
+
+						REP(64) ni[allele2[kk]] -= typed2[kk];
+					}
+				}
 			}
-#undef REP_MID
 		}
 	}
 }
 
 /* Update a priori ancetral proportion for non-admix model */
-TARGETNEO void UpdateQNoAdmixNEO(double* Q, int K, double* bufNK1, double* bufNK2, double* Gamma, RNGNEO& rng, bool locpriori, double* Base, ushort* Z)
+template<typename REAL>
+template<bool fast_fp32>
+TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid)
 {
-	uint64x2_t maskunder = vdupq_n_u64(0x1FF0000000000000);
-	uint64x2_t mask1 = vdupq_n_u64(0x7FF0000000000000);
-	uint64x2_t mask2 = vdupq_n_u64(0x800FFFFFFFFFFFFF);
-	uint64x2_t mask3 = vdupq_n_u64(0x3FF0000000000000);
-	uint64x2_t subv = vdupq_n_u64(1023);
-	uint64x2_t addr_inc = vdupq_n_u64(KT * sizeof(double));
-	float64x2_t maskone = vdupq_n_f64(1.0);
-
-	double* q = Q;
-
-	for (int i = 0, pad = 0; i < nind; i += STRUCTURE_NPACK)
+	if (tid == -1)
 	{
-		if (i + STRUCTURE_NPACK >= nind) //fix i for the last several
+		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		REAL* bufi = (REAL*)bufNK1;
+		REAL* q = NULL;
+
+		for (int i = 0; i < N; ++i, bufi += K)
 		{
-			pad = STRUCTURE_NPACK - (nind - i);
-			i = nind - STRUCTURE_NPACK;
+			if (ainds[i]->vt == 0) continue;
+			if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds[i]->popid * K, K);
+			else           rng.Dirichlet(bufi, Alpha, K);
 		}
 
-		//K elements, each save NPACK log or likelihood
-		uint64x2_t* slog = AlignSIMD((uint64x2_t*)bufNK1);
-		float64x2_t* prod = AlignSIMD((float64x2_t*)bufNK2);
+		OpenLog((int64*)bufN1, bufN2, N * structure_nsubthread);
 
-		//slog and prod at K clusters
-		OpenLog((int64*)slog, (double*)prod, K * STRUCTURE_NPACK);
+		//////////////////////////////////////////////////////////
 
-		//add priori probability
-		if (locpriori) for (int k = 0; k < K; ++k)
+		SetZero((int64*)l_atomic, 32);
+
+		g_fastsingle_val == 1 ? UpdateQMetroNEO<true >(0) : UpdateQMetroNEO<false>(0);
+
+		//avoid thread-conflict
+		for (int i = 1; i < structure_nsubthread; ++i)
+			Add(bufN1, bufN1 + N * i, N);
+
+		bufi = (REAL*)bufNK1; q = Q;
+		for (int i = 0; i < N; ++i, q += K, bufi += K)
 		{
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 0), *((double*)prod + k * STRUCTURE_NPACK + 0), Gamma[ainds[i + 0]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 1), *((double*)prod + k * STRUCTURE_NPACK + 1), Gamma[ainds[i + 1]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 2), *((double*)prod + k * STRUCTURE_NPACK + 2), Gamma[ainds[i + 2]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 3), *((double*)prod + k * STRUCTURE_NPACK + 3), Gamma[ainds[i + 3]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 4), *((double*)prod + k * STRUCTURE_NPACK + 4), Gamma[ainds[i + 4]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 5), *((double*)prod + k * STRUCTURE_NPACK + 5), Gamma[ainds[i + 5]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 6), *((double*)prod + k * STRUCTURE_NPACK + 6), Gamma[ainds[i + 6]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 7), *((double*)prod + k * STRUCTURE_NPACK + 7), Gamma[ainds[i + 7]->popid * K + k]);
+			if (ainds[i]->vt == 0) continue;
+			if (bufN1[i] >= NZERO || rng.Uniform() < exp(bufN1[i]))
+				SetVal(q, bufi, K);
 		}
+		return;
+	}
 
-		double* p = Base;
-		BAYESIAN_READER rt(i);
-		for (int64 l = 0; l < nloc; ++l, p += GetLoc(l).k)
+	static float64x2_t maskoned = vdupq_n_f64(1.0);
+	static float32x4_t maskones = vdupq_n_f32(1.0);
+	static uint32x4_t mask00 = vdupq_n_u32(0);
+	static uint32x4_t maskff = vdupq_n_u32(0xFFFFFFFF);
+	static uint32x4_t mask24 = vdupq_n_u32(0xFFFFFF);
+	static uint32x4_t mask01 = vdupq_n_u32(1);
+	static uint32x4_t mask02 = vdupq_n_u32(2);
+	alignas(16) static uint maskidx1[64] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63 };
+	static uint32x4_t* maskidx = (uint32x4_t*)maskidx1;
+	static uint PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
-			int size = structure_size[l];
-			int64x2_t nsize = vdupq_n_s64(-size);
-			uint64x2_t mask = vdupq_n_u64((1u << size) - 1u);
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
 
-			switch (maxploidy)
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
 			{
-			case 10: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
-			case  9: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
-			case  8: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
-			case  7: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
-			case  6: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
-			case  5: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
-			case  4: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
-			case  3: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
-			case  2: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
-			case  1: ReadFreqNEO/*(rt, size, slog, prod, p, K)*/;
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				REAL* p = Freq + allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				uint32x4_t gtab[16]; uint* gtab1 = (uint*)gtab;
+				REP(64) gtab1[kk] = GetLocTabDiff(l + kk);
+
+				uint32x4_t lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull;
+				uint32x4_t lmaskt = vdupq_n_u32(lmask0);
+				uint lmaskv1[4] = { 1, 2, 4, 8 }; uint32x4_t lmaskv2 = vld1q_u32(lmaskv1);
+				REP(16)
+				{
+                    if (kk == 8) lmaskt = vdupq_n_u32(lmask0 >> 32);
+					lmask[kk] = vcgtq_u32(vandq_u32(lmaskt, lmaskv2), mask00);
+					lmaskt = vshrq_n_u32(lmaskt, 4);
+					lmaskidx[kk] = vandq_u32(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERNEO<REAL> rt(0, l, lend - l);
+
+				uint32x4_t oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+                REP(16) oindex[kk] = vld1q_u32(((uint[]) { (uint)(toffset[lmaskidx2[0 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[1 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[2 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01) }));
+                
+                uint32x4_t gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], typed[16];
+                uint64x2_t typed64[32];
+				int* allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+				float64x2_t f1[32], f2[32];
+				float32x4_t f1s[16], f2s[16];
+
+				REAL* bufi = (REAL*)bufNK1, * q = Q;
+				//avoid thread-conflict
+				double* buf1 = bufN1 + N * tid, * buf2 = bufN2 + N * tid;
+
+				for (int i = 0; i < N; ++i, q += K, bufi += K, buf1++, buf2++)
+				{
+                    rt.Read(gtaddr);
+                    
+                    REP(16) gtaddr[kk] = vaddq_u32(gtab[kk], vshlq_n_u32(gtaddr[kk], 2));
+
+                    REP(16) gtlow[kk] = vld1q_u32(((uint[]) { *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]) }));
+
+                    REP(16) gtploidy[kk] = vandq_u32(lmask[kk], vshrq_n_u32(gtlow[kk], 24));
+
+                    REP(16) gtlow[kk] = vandq_u32(gtlow[kk], mask24);
+
+                    REP(16) gtploidy[kk] = vld1q_u32(((uint[]) { PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]] }));
+
+                    REP(16) gtals[kk] = vaddq_u32(gtaddr[kk], gtlow[kk]);
+                    
+					int maxv = maxploidy;
+					if (maxploidy != minploidy)
+					{
+						uint32x4_t maxv1 =
+							vmaxq_u32(
+								vmaxq_u32(
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[0], gtploidy[1]),
+										vmaxq_u32(gtploidy[2], gtploidy[3])),
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[4], gtploidy[5]),
+										vmaxq_u32(gtploidy[6], gtploidy[7]))),
+								vmaxq_u32(
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[8], gtploidy[9]),
+										vmaxq_u32(gtploidy[10], gtploidy[11])),
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[12], gtploidy[13]),
+										vmaxq_u32(gtploidy[14], gtploidy[15]))));
+
+						maxv = Max(Max(vgetq_lane_u32(maxv1, 0), vgetq_lane_u32(maxv1, 1)), Max(vgetq_lane_u32(maxv1, 2), vgetq_lane_u32(maxv1, 3)));
+					}
+
+					uint32x4_t ai = vdupq_n_u32(0);
+					for (int a = 0; a < maxv; ++a, ai = vaddq_u32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = vcgtq_u32(gtploidy[kk], ai);
+
+							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							{
+                                typed64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 0), (uint64)vgetq_lane_s32(typed[kk], 1) }));
+                                typed64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 2), (uint64)vgetq_lane_s32(typed[kk], 3) }));
+							}
+
+							uint32x4_t als3 = vandq_u32(gtals[kk], typed[kk]);
+
+                            allele[kk] = vld1q_u32(((uint []) { *(ushort*)(gtab_base + vgetq_lane_u32(als3, 0)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 1)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 2)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 3)) }));
+
+							gtals[kk] = vaddq_u32(gtals[kk], mask02);
+
+							allele[kk] = vaddq_u32(allele[kk], oindex[kk]);
+
+							allele[kk] = vandq_u32(allele[kk], typed[kk]);
+						}
+
+						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+						{
+							REP(32) f1[kk] = vdupq_n_f64(0);
+							REP(32) f2[kk] = vdupq_n_f64(0);
+						}
+						else
+						{
+							REP(16) f1s[kk] = vdupq_n_f32(0);
+							REP(16) f2s[kk] = vdupq_n_f32(0);
+						}
+
+						REAL* p2 = p;
+						for (int k = 0; k < K; ++k, p2 += KT)
+						{
+							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							{
+								float64x2_t pp[32], qq = vdupq_n_f64(q[k]), ii = vdupq_n_f64(bufi[k]);
+
+								REP(32)
+								{
+									pp[kk] = vld1q_f64(((double []) { p2[allele2[0 + (kk << 1)]], p2[allele2[1 + (kk << 1)]] }));
+									f1[kk] = vaddq_f64(f1[kk], vmulq_f64(pp[kk], ii));
+									f2[kk] = vaddq_f64(f2[kk], vmulq_f64(pp[kk], qq));
+								}
+							}
+							else
+							{
+								float32x4_t pp[16], v1[16], v2[16], qq = vdupq_n_f32(q[k]), ii = vdupq_n_f32(bufi[k]);
+
+								REP(16)
+								{
+									pp[kk] = vld1q_f32(((float[]) { p2[allele2[0 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[3 + (kk << 2)]] }));
+									v1[kk] = vmulq_f32(pp[kk], ii);
+									v2[kk] = vmulq_f32(pp[kk], qq);
+									f1s[kk] = vaddq_f32(f1s[kk], v1[kk]);
+									f2s[kk] = vaddq_f32(f2s[kk], v2[kk]);
+								}
+							}
+						}
+
+						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						{
+							REP(16) f1s[kk] = vdivq_f32(f1s[kk], f2s[kk]);
+							REP(16) f1s[kk] = vbslq_f32(typed[kk], f1s[kk], maskones);
+							REP(16)
+							{
+								f1[0 + (kk << 1)] = vcvt_f64_f32(vget_low_f32(f1s[kk]));
+								f1[1 + (kk << 1)] = vcvt_f64_f32(vget_high_f32(f1s[kk]));
+							}
+						}
+						else
+						{
+							REP(32)
+							{
+								f1[kk] = vdivq_f64(f1[kk], f2[kk]);
+								f1[kk] = vbslq_f64(typed64[kk], f1[kk], maskoned);
+							}
+						}
+
+						for (int K = sizeof(f1) / sizeof(f1[0]) / 2; K >= 1; K >>= 1)
+							REP(K) f1[kk] = vmulq_f64(f1[kk], f1[kk + K]);
+
+						ChargeLog(*(int64*)buf1, *buf2, vgetq_lane_f64(f1[0], 0) * vgetq_lane_f64(f1[0], 1));
+					}
+				}
 			}
 		}
 
-		CloseLog((int64*)slog, (double*)prod, K * STRUCTURE_NPACK);
+		//avoid thread-conflict
+		CloseLog((int64*)bufN1 + N * tid, bufN2 + N * tid, N);
+	}
+}
 
-		uint64x2_t ki[4];
-		rng.PolyLog(prod, K, ki);
+/* Update individual or allele origin when ancetral proportion */
+template<typename REAL>
+template<bool fast_fp32>
+TARGETNEO void BAYESIAN<REAL>::UpdateZAdmixNEO(int tid)
+{
+	if (tid == -1)
+	{
+		SetZero(Mi, N * K * structure_nsubthread);
+		SetZero(Ni, K * KT);
 
-		for (int j = pad, ii = i + pad; j < STRUCTURE_NPACK; ++j, ++ii, q += K)
+		//////////////////////////////////////////////////////////
+
+		SetZero((int64*)l_atomic, 32);
+
+		g_fastsingle_val == 1 ? UpdateZAdmixNEO<true >(0) : UpdateZAdmixNEO<false>(0);
+
+		//avoid thread-conflict
+		for (int i = 1; i < structure_nsubthread; ++i)
+			Add(Mi, Mi + N * K * i, N * K);
+
+		return;
+	}
+
+	static uint32x4_t mask00 = vdupq_n_u32(0);
+	static uint32x4_t maskff = vdupq_n_u32(0xFFFFFFFF);
+	static uint32x4_t mask24 = vdupq_n_u32(0xFFFFFF);
+	static uint32x4_t mask01 = vdupq_n_u32(1);
+	static uint32x4_t mask02 = vdupq_n_u32(2);
+	alignas(16) static uint maskidx1[64] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63 };
+	static uint32x4_t* maskidx = (uint32x4_t*)maskidx1;
+	static float64x2_t minfreqd = vdupq_n_f64(MIN_FREQ);
+	static float32x4_t minfreqs = vdupq_n_f32(MIN_FREQ);
+	static uint PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		//64 * K  * sizeof(double)
+		float64x2_t* bufkd = (float64x2_t*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
+		float32x4_t* bufks = (float32x4_t*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
-			ushort k2 = simp_u64(ki, j);
-			q[k2] = 1;
-			Z[ii] = k2;
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
+
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
+			{
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				REAL* p = Freq + allele_freq_offset[l];
+				int* ni = Ni + allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				uint32x4_t gtab[16]; uint* gtab1 = (uint*)gtab;
+				REP(64) gtab1[kk] = GetLocTabDiff(l + kk);
+
+				uint32x4_t lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull;
+				uint32x4_t lmaskt = vdupq_n_u32(lmask0);
+				uint lmaskv1[4] = { 1, 2, 4, 8 }; uint32x4_t lmaskv2 = vld1q_u32(lmaskv1);
+				REP(16)
+				{
+                    if (kk == 8) lmaskt = vdupq_n_u32(lmask0 >> 32);
+					lmask[kk] = vcgtq_u32(vandq_u32(lmaskt, lmaskv2), mask00);
+					lmaskt = vshrq_n_u32(lmaskt, 4);
+					lmaskidx[kk] = vandq_u32(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERNEO<REAL> rt(0, l, lend - l);
+
+				uint32x4_t oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+                REP(16) oindex[kk] = vld1q_u32(((uint[]) { (uint)(toffset[lmaskidx2[0 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[1 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[2 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01) }));
+
+				uint32x4_t gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], typed[16];
+				uint64x2_t allele64[32], k2[32], typed64[32];
+				int* typed2 = (int*)typed, * allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+				uint64* k22 = (uint64*)&k2;
+
+				RNGNEO<double> rngd; RNGNEO<float > rngs;
+
+				if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+					new (&rngd) RNGNEO<double>(seed + m * L + l, RNG_SALT_UPDATEZ);
+				else
+					new (&rngs) RNGNEO<float >(seed + m * L + l, RNG_SALT_UPDATEZ);
+
+				REAL* q = Q;
+				//avoid thread-conflict
+				int64* mi = Mi + N * K * tid;
+
+				for (int i = 0; i < N; ++i, q += K, mi += K)
+				{
+                    rt.Read(gtaddr);
+                    
+                    REP(16) gtaddr[kk] = vaddq_u32(gtab[kk], vshlq_n_u32(gtaddr[kk], 2));
+
+                    REP(16) gtlow[kk] = vld1q_u32(((uint[]) { *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]) }));
+
+                    REP(16) gtploidy[kk] = vandq_u32(lmask[kk], vshrq_n_u32(gtlow[kk], 24));
+
+                    REP(16) gtlow[kk] = vandq_u32(gtlow[kk], mask24);
+
+                    REP(16) gtploidy[kk] = vld1q_u32(((uint[]) { PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]] }));
+
+                    REP(16) gtals[kk] = vaddq_u32(gtaddr[kk], gtlow[kk]);
+
+					int maxv = maxploidy;
+
+					uint32x4_t ai = vdupq_n_u32(0);
+					for (int a = 0; a < maxv; ++a, ai = vaddq_u32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = vcgtq_u32(gtploidy[kk], ai);
+
+							uint32x4_t als3 = vandq_u32(gtals[kk], typed[kk]);
+
+                            allele[kk] = vld1q_u32(((uint []) { *(ushort*)(gtab_base + vgetq_lane_u32(als3, 0)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 1)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 2)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 3)) }));
+
+							gtals[kk] = vaddq_u32(gtals[kk], mask02);
+
+							allele[kk] = vaddq_u32(allele[kk], oindex[kk]);
+
+							allele[kk] = vandq_u32(allele[kk], typed[kk]);
+						}
+
+						REP(16)
+						{
+							{
+								allele64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { vgetq_lane_u32(allele[kk], 0), vgetq_lane_u32(allele[kk], 1)}));
+								allele64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { vgetq_lane_u32(allele[kk], 2), vgetq_lane_u32(allele[kk], 3)}));
+							}
+
+							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							{
+                                typed64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 0), (uint64)vgetq_lane_s32(typed[kk], 1) }));
+                                typed64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 2), (uint64)vgetq_lane_s32(typed[kk], 3) }));
+							}
+						}
+
+						REAL* p2 = p;
+						for (int k = 0; k < K; ++k, p2 += KT)
+						{
+							float64x2_t qd; float32x4_t qs;
+
+							if constexpr (sizeof(REAL) == 8)
+							{
+								qd = vdupq_n_f64(q[k]);
+								REP(32) bufkd[kk + (k << 5)] = vld1q_f64(((double []) { p2[allele2[0 + (kk << 1)]], p2[allele2[1 + (kk << 1)]] }));
+								REP(32) bufkd[kk + (k << 5)] = vmulq_f64(bufkd[kk + (k << 5)], qd);
+								REP(32) bufkd[kk + (k << 5)] = vaddq_f64(bufkd[kk + (k << 5)], minfreqd);
+								REP(32) bufkd[kk + (k << 5)] = vandq_u64(bufkd[kk + (k << 5)], typed64[kk]);
+							}
+							else if constexpr (fast_fp32)
+							{
+								qs = vdupq_n_f32(q[k]);
+
+								REP(16) bufks[kk + (k << 4)] = vld1q_f32(((float []) { p2[allele2[0 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[3 + (kk << 2)]] }));
+								REP(16) bufks[kk + (k << 4)] = vmulq_f32(bufks[kk + (k << 4)], qs);
+								REP(16) bufks[kk + (k << 4)] = vaddq_f32(bufks[kk + (k << 4)], minfreqs);
+								REP(16) bufks[kk + (k << 4)] = vandq_u32(bufks[kk + (k << 4)], typed[kk]);
+							}
+							else
+							{
+								qd = vdupq_n_f64(q[k]);
+								REP(16)
+								{
+									float32x4_t v2 = vld1q_f32(((float []) { p2[allele2[0 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[3 + (kk << 2)]] }));
+									bufkd[0 + (kk << 1) + (k << 5)] = vcvt_f64_f32(vget_low_f32 (v2));
+									bufkd[1 + (kk << 1) + (k << 5)] = vcvt_f64_f32(vget_high_f32(v2));
+								}
+								REP(32) bufkd[kk + (k << 5)] = vmulq_f64(bufkd[kk + (k << 5)], qd);
+								REP(32) bufkd[kk + (k << 5)] = vaddq_f64(bufkd[kk + (k << 5)], minfreqd);
+								REP(32) bufkd[kk + (k << 5)] = vandq_u64(bufkd[kk + (k << 5)], typed64[kk]);
+							}
+						}
+
+						//draw cluster for each allele copy
+						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							rngd.Poly<64>(bufkd, K, k2);
+						else
+							rngs.Poly<64>(bufks, K, k2);
+
+						//Update Mi
+						REP(64) mi[k22[kk]] -= typed2[kk];
+
+						REP(32) k2[kk] = vld1q_u64(((uint64[]) { k22[0 + (kk << 1)] * KT, k22[1 + (kk << 1)] * KT }));
+
+						REP(32) k2[kk] = vaddq_u64(k2[kk], allele64[kk]);
+
+						//ni[k2 * KT + als[a]]++;
+						REP(64) ni[k22[kk]] -= typed2[kk];
+					}
+				}
+			}
 		}
 	}
 }
 
-/* Update a priori ancetral proportion by Metropolis-Hastings for admix model */
-TARGETNEO void UpdateQMetroNEO(double* Q, int K, double* bufNK1, double* bufN1, double* bufN2, double* Base)
+/* Record updated MCMC parameters */
+template<typename REAL>
+template<bool isadmix, bool fast_fp32>
+TARGETNEO void BAYESIAN<REAL>::RecordNEO(int tid)
 {
-	//add priori probability
-	double* p = NULL, * q0 = Q, * b0 = bufNK1;
-	OpenLog((int64*)bufN1, bufN2, nind);
-
-	for (int i = 0, pad = 0; i < nind; i += STRUCTURE_NPACK, b0 += STRUCTURE_NPACK * K, q0 += STRUCTURE_NPACK * K)
+	if (tid == -1)
 	{
-		if (i + STRUCTURE_NPACK >= nind) //fix i for the last several
+		Add(MiSum, Mi, N * K);
+
+		//////////////////////////////////////////////////////////
+
+		SetZero((int64*)l_atomic, 32);
+
+		switch ((int)binaryq * 10 + g_fastsingle_val)
 		{
-			pad = STRUCTURE_NPACK - (nind - i);
-			i = nind - STRUCTURE_NPACK;
-			q0 = Q + i * K;
-			b0 = bufNK1 + i * K;
+		case 01: BAYESIAN<REAL>::RecordNEO<true, true >(0); break;
+		case 02: BAYESIAN<REAL>::RecordNEO<true, false>(0); break;
+		case 11: BAYESIAN<REAL>::RecordNEO<false, true >(0); break;
+		case 12: BAYESIAN<REAL>::RecordNEO<false, false>(0); break;
 		}
 
-		BAYESIAN_READER rt(i);
-		p = Base;
-		double* q1 = q0 + K, * q2 = q1 + K, * q3 = q2 + K, * q4 = q3 + K, * q5 = q4 + K, * q6 = q5 + K, * q7 = q6 + K;
-		double* b1 = b0 + K, * b2 = b1 + K, * b3 = b2 + K, * b4 = b3 + K, * b5 = b4 + K, * b6 = b5 + K, * b7 = b6 + K;
-
-		for (int64 l = 0; l < nloc; ++l, p += GetLoc(l).k)
-		{
-			int size = structure_size[l];
-			int64x2_t nsize = vdupq_n_s64(-size);
-			uint64x2_t mask = vdupq_n_u64((1u << size) - 1u);
-			uint64x2_t aid1, aid2, aid3, aid4;
-			uint64x2_t type1, type2, type3, type4;
-			uint64x2_t paddr = vdupq_n_u64((uint64)p);
-
-#define REP_MID \
-			ReadAidNEO/*(rt, size, aid, type)*/; \
-			\
-			aid1 = vshlq_n_u64(aid1, 3); \
-			aid2 = vshlq_n_u64(aid2, 3); \
-			aid3 = vshlq_n_u64(aid3, 3); \
-			aid4 = vshlq_n_u64(aid4, 3); \
-			\
-			aid1 = vaddq_f64(paddr, aid1); \
-			aid2 = vaddq_f64(paddr, aid2); \
-			aid3 = vaddq_f64(paddr, aid3); \
-			aid4 = vaddq_f64(paddr, aid4); \
-			\
-			switch (pad) \
-			{ \
-			case 0: if (simd_u64(type1, 0)) ChargeLog(*(int64*)&bufN1[i + 0], bufN2[i + 0], SumProdDiv(b0, q0, (double*)simd_u64(aid1, 0), KT, K)); \
-			case 1: if (simd_u64(type1, 1)) ChargeLog(*(int64*)&bufN1[i + 1], bufN2[i + 1], SumProdDiv(b1, q1, (double*)simd_u64(aid1, 1), KT, K)); \
-			case 2: if (simd_u64(type2, 0)) ChargeLog(*(int64*)&bufN1[i + 2], bufN2[i + 2], SumProdDiv(b2, q2, (double*)simd_u64(aid2, 0), KT, K)); \
-			case 3: if (simd_u64(type2, 1)) ChargeLog(*(int64*)&bufN1[i + 3], bufN2[i + 3], SumProdDiv(b3, q3, (double*)simd_u64(aid2, 1), KT, K)); \
-			case 4: if (simd_u64(type3, 0)) ChargeLog(*(int64*)&bufN1[i + 4], bufN2[i + 4], SumProdDiv(b4, q4, (double*)simd_u64(aid3, 0), KT, K)); \
-			case 5: if (simd_u64(type3, 1)) ChargeLog(*(int64*)&bufN1[i + 5], bufN2[i + 5], SumProdDiv(b5, q5, (double*)simd_u64(aid3, 1), KT, K)); \
-			case 6: if (simd_u64(type4, 0)) ChargeLog(*(int64*)&bufN1[i + 6], bufN2[i + 6], SumProdDiv(b6, q6, (double*)simd_u64(aid4, 0), KT, K)); \
-			case 7: if (simd_u64(type4, 1)) ChargeLog(*(int64*)&bufN1[i + 7], bufN2[i + 7], SumProdDiv(b7, q7, (double*)simd_u64(aid4, 1), KT, K)); \
-			}
-
-			switch (maxploidy)
-			{
-			case 10: REP_MID;
-			case  9: REP_MID;
-			case  8: REP_MID;
-			case  7: REP_MID;
-			case  6: REP_MID;
-			case  5: REP_MID;
-			case  4: REP_MID;
-			case  3: REP_MID;
-			case  2: REP_MID;
-			case  1: REP_MID;
-			}
-#undef REP_MID 
-		}
+		bufNK1[0] = Sum(bufNK1, structure_nsubthread);
+		return;
 	}
-	CloseLog((int64*)bufN1, bufN2, nind);
+
+	static float64x2_t maskoned = vdupq_n_f64(1.0);
+	static uint32x4_t mask00 = vdupq_n_u32(0);
+	static uint32x4_t maskff = vdupq_n_u32(0xFFFFFFFF);
+	static uint32x4_t mask24 = vdupq_n_u32(0xFFFFFF);
+	static uint32x4_t mask01 = vdupq_n_u32(1);
+	static uint32x4_t mask02 = vdupq_n_u32(2);
+	alignas(16) static uint maskidx1[64] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63 };
+	static uint32x4_t* maskidx = (uint32x4_t*)maskidx1;
+	static uint PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		int64 slog = 0; double prod = 1;
+		OpenLog(slog, prod);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
+		{
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
+
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
+			{
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				REAL* p = Freq + allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				uint32x4_t gtab[16]; uint* gtab1 = (uint*)gtab;
+				REP(64) gtab1[kk] = GetLocTabDiff(l + kk);
+
+				uint32x4_t lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull;
+				uint32x4_t lmaskt = vdupq_n_u32(lmask0);
+				uint lmaskv1[4] = { 1, 2, 4, 8 }; uint32x4_t lmaskv2 = vld1q_u32(lmaskv1);
+				REP(16)
+				{
+                    if (kk == 8) lmaskt = vdupq_n_u32(lmask0 >> 32);
+					lmask[kk] = vcgtq_u32(vandq_u32(lmaskt, lmaskv2), mask00);
+					lmaskt = vshrq_n_u32(lmaskt, 4);
+					lmaskidx[kk] = vandq_u32(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERNEO<REAL> rt(0, l, lend - l);
+
+				uint32x4_t oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+                REP(16) oindex[kk] = vld1q_u32(((uint[]) { (uint)(toffset[lmaskidx2[0 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[1 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[2 + (kk << 2)]] - oindex01), (uint)(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01) }));
+
+                uint32x4_t gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], typed[16];
+                uint64x2_t allele64[32], typed64[32];
+				int* allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+				float64x2_t f2[32];
+				float32x4_t f2s[16];
+
+				REAL* q = Q;
+
+				for (int i = 0; i < N; ++i, q += K)
+				{
+                    rt.Read(gtaddr);
+                    
+                    REP(16) gtaddr[kk] = vaddq_u32(gtab[kk], vshlq_n_u32(gtaddr[kk], 2));
+
+                    REP(16) gtlow[kk] = vld1q_u32(((uint[]) { *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]) }));
+
+                    REP(16) gtploidy[kk] = vandq_u32(lmask[kk], vshrq_n_u32(gtlow[kk], 24));
+
+                    REP(16) gtlow[kk] = vandq_u32(gtlow[kk], mask24);
+
+                    REP(16) gtploidy[kk] = vld1q_u32(((uint[]) { PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]] }));
+
+                    REP(16) gtals[kk] = vaddq_u32(gtaddr[kk], gtlow[kk]);
+
+					int maxv = maxploidy;
+					if (maxploidy != minploidy)
+					{
+						uint32x4_t maxv1 =
+							vmaxq_u32(
+								vmaxq_u32(
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[0], gtploidy[1]),
+										vmaxq_u32(gtploidy[2], gtploidy[3])),
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[4], gtploidy[5]),
+										vmaxq_u32(gtploidy[6], gtploidy[7]))),
+								vmaxq_u32(
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[8], gtploidy[9]),
+										vmaxq_u32(gtploidy[10], gtploidy[11])),
+									vmaxq_u32(
+										vmaxq_u32(gtploidy[12], gtploidy[13]),
+										vmaxq_u32(gtploidy[14], gtploidy[15]))));
+
+						maxv = Max(Max(vgetq_lane_u32(maxv1, 0), vgetq_lane_u32(maxv1, 1)), Max(vgetq_lane_u32(maxv1, 2), vgetq_lane_u32(maxv1, 3)));
+					}
+
+					uint32x4_t ai = vdupq_n_u32(0);
+					for (int a = 0; a < maxv; ++a, ai = vaddq_u32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = vcgtq_u32(gtploidy[kk], ai);
+
+							uint32x4_t als3 = vandq_u32(gtals[kk], typed[kk]);
+
+                            allele[kk] = vld1q_u32(((uint []) { *(ushort*)(gtab_base + vgetq_lane_u32(als3, 0)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 1)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 2)), *(ushort*)(gtab_base + vgetq_lane_u32(als3, 3)) }));
+
+							gtals[kk] = vaddq_u32(gtals[kk], mask02);
+
+							allele[kk] = vaddq_u32(allele[kk], oindex[kk]);
+
+							allele[kk] = vandq_u32(allele[kk], typed[kk]);
+						}
+
+						REP(16)
+						{
+                            {
+                                allele64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { vgetq_lane_u32(allele[kk], 0), vgetq_lane_u32(allele[kk], 1)}));
+                                allele64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { vgetq_lane_u32(allele[kk], 2), vgetq_lane_u32(allele[kk], 3)}));
+                            }
+
+							{
+                                typed64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 0), (uint64)vgetq_lane_s32(typed[kk], 1) }));
+                                typed64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 2), (uint64)vgetq_lane_s32(typed[kk], 3) }));
+							}
+						}
+
+						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							REP(32) f2[kk] = vdupq_n_f64(0);
+						else
+							REP(16) f2s[kk] = vdupq_n_f32(0);
+
+						if constexpr (!isadmix)
+						{
+							REAL* p2 = p + Z[i] * KT;
+
+							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							{
+								REP(32) f2[kk] = vld1q_f64(((double []) { p2[allele2[0 + (kk << 1)]], p2[allele2[1 + (kk << 1)]] }));
+							}
+							else
+							{
+								REP(16) f2s[kk] = vld1q_f32(((float []) { p2[allele2[0 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[3 + (kk << 2)]] }));
+							}
+						}
+						else
+						{
+							REAL* p2 = p;
+							for (int k = 0; k < K; ++k, p2 += KT)
+							{
+								//disable fmadd
+								if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+								{
+									float64x2_t pp[32], qq = vdupq_n_f64(q[k]);
+
+									REP(32) pp[kk] = vld1q_f64(((double[]) { p2[allele2[0 + (kk << 1)]] , p2[allele2[1 + (kk << 1)]] }));
+                                    
+									REP(32) f2[kk] = vaddq_f64(f2[kk], vmulq_f64(pp[kk], qq));
+								}
+								else
+								{
+									float32x4_t pp[16], qq = vdupq_n_f32(q[k]);
+
+									REP(16) pp[kk] = vld1q_f32(((float []) { p2[allele2[0 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[3 + (kk << 2)]] }));
+                                    
+									REP(16) f2s[kk] = vaddq_f32(f2s[kk], vmulq_f32(pp[kk], qq));
+								}
+							}
+						}
+
+						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						{
+							REP(16)
+							{
+								f2[0 + (kk << 1)] = vcvt_f64_f32(vget_low_f32 (f2s[kk]));
+								f2[1 + (kk << 1)] = vcvt_f64_f32(vget_high_f32(f2s[kk]));
+							}
+						}
+
+						REP(32) f2[kk] = vbslq_f64(typed64[kk], f2[kk], maskoned);
+
+						for (int K = sizeof(f2) / sizeof(f2[0]) / 2; K >= 1; K >>= 1)
+							REP(K) f2[kk] = vmulq_f64(f2[kk], f2[kk + K]);
+
+						ChargeLog(slog, prod, vgetq_lane_f64(f2[0], 0) * vgetq_lane_f64(f2[0], 1));
+					}
+				}
+			}
+		}
+
+		CloseLog(slog, prod);
+		bufNK1[tid] = prod;
+	}
 }
 
-/* Update individual or allele origin for admix model */
-TARGETNEO void UpdateZAdmixNEO(double* Q, int K, int64* Mi, int* Ni, double* bufNK1, double* bufNK2, double* Base, RNGNEO& rng)
-{
-	uint64x2_t mask01 = vdupq_n_u64(1);
-	float64x2_t* freq = AlignSIMD((float64x2_t*)bufNK1);
-	float64x2_t* qq = AlignSIMD((float64x2_t*)bufNK2);
-	float64x2_t dmin = vdupq_n_f64(MIN_FREQ);
-	uint64x2_t addr_inc = vdupq_n_u64(KT * sizeof(double));
+#else
 
-	for (int i = 0, pad = 0; i < nind; i += STRUCTURE_NPACK)
-	{
-		if (i + STRUCTURE_NPACK >= nind) //fix i for the last several
-		{
-			pad = STRUCTURE_NPACK - (nind - i);
-			i = nind - STRUCTURE_NPACK;
-		}
+template<typename REAL>
+TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid) { }
 
-		double* q0 = Q + i * K, * q1 = q0 + K, * q2 = q1 + K, * q3 = q2 + K, * q4 = q3 + K, * q5 = q4 + K, * q6 = q5 + K, * q7 = q6 + K;
-		int64* m0 = Mi + i * K, * m1 = m0 + K, * m2 = m1 + K, * m3 = m2 + K, * m4 = m3 + K, * m5 = m4 + K, * m6 = m5 + K, * m7 = m6 + K;
+template<typename REAL>
+TARGETNEO void BAYESIAN<REAL>::UpdateZNoAdmixNEO(int tid) { }
 
-		for (int k = 0; k < K; ++k)
-		{
-			double q[8] = { q0[k], q1[k], q2[k], q3[k], 
-							q4[k], q5[k], q6[k], q7[k] };
+template<typename REAL>
+template<bool fast_fp32>
+TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid) { }
 
-			qq[k * 4 + 0] = vld1q_f64(&q[0]);
-			qq[k * 4 + 1] = vld1q_f64(&q[2]);
-			qq[k * 4 + 2] = vld1q_f64(&q[4]);
-			qq[k * 4 + 3] = vld1q_f64(&q[6]);
-		}
+template<typename REAL>
+template<bool fast_fp32>
+TARGETNEO void BAYESIAN<REAL>::UpdateZAdmixNEO(int tid) { }
 
-		int* ni = Ni;
-		double* p = Base;
-		BAYESIAN_READER rt(i);
-
-		for (int64 l = 0; l < nloc; ++l, ni += GetLoc(l).k, p += GetLoc(l).k)
-		{
-			int size = structure_size[l];
-			int64x2_t nsize = vdupq_n_s64(-size);
-			uint64x2_t mask = vdupq_n_u64((1u << size) - 1u);
-			uint64x2_t type[4];
-			uint64x2_t aid1, aid2, aid3, aid4;
-			uint64x2_t& type1 = type[0];
-			uint64x2_t& type2 = type[1];
-			uint64x2_t& type3 = type[2];
-			uint64x2_t& type4 = type[3];
-			uint64x2_t t1, t2, t3, t4;
-			uint64x2_t addr = vdupq_n_u64((uint64)p);
-			float64x2_t sumfreq[4];
-			float64x2_t a1, a2, a3, a4;
-			uint64x2_t zid[4];
-			uint64x2_t& zid1 = zid[0];
-			uint64x2_t& zid2 = zid[1];
-			uint64x2_t& zid3 = zid[2];
-			uint64x2_t& zid4 = zid[3];
-			ushort k2;
-
-#define REP_MID \
-			ReadAidNEO/*(rt, size, aid, type)*/; \
-			\
-			sumfreq[0] = vdupq_n_f64(0); \
-			sumfreq[1] = vdupq_n_f64(0); \
-			sumfreq[2] = vdupq_n_f64(0); \
-			sumfreq[3] = vdupq_n_f64(0); \
-			\
-			t1 = vshlq_n_u64(aid1, 3); \
-			t2 = vshlq_n_u64(aid2, 3); \
-			t3 = vshlq_n_u64(aid3, 3); \
-			t4 = vshlq_n_u64(aid4, 3); \
-			\
-			t1 = vaddq_f64(t1, addr); \
-			t2 = vaddq_f64(t2, addr); \
-			t3 = vaddq_f64(t3, addr); \
-			t4 = vaddq_f64(t4, addr); \
-			\
-			for (int k = 0; k < K; ++k) \
-			{ \
-				double t[8] = { \
-					*(double*)vgetq_lane_u64(t1, 0), *(double*)vgetq_lane_u64(t1, 1), \
-					*(double*)vgetq_lane_u64(t2, 0), *(double*)vgetq_lane_u64(t2, 1), \
-					*(double*)vgetq_lane_u64(t3, 0), *(double*)vgetq_lane_u64(t3, 1), \
-					*(double*)vgetq_lane_u64(t4, 0), *(double*)vgetq_lane_u64(t4, 1)  \
-				}; \
-				\
-				a1 = vld1q_f64(&t[0]); \
-				a2 = vld1q_f64(&t[2]); \
-				a3 = vld1q_f64(&t[4]); \
-				a4 = vld1q_f64(&t[6]); \
-				\
-				a1 = vmulq_f64(qq[k * 4 + 0], a1); \
-				a2 = vmulq_f64(qq[k * 4 + 1], a2); \
-				a3 = vmulq_f64(qq[k * 4 + 2], a3); \
-				a4 = vmulq_f64(qq[k * 4 + 3], a4); \
-				\
-				freq[k * 4 + 0] = vaddq_f64(a1, dmin); \
-				freq[k * 4 + 1] = vaddq_f64(a2, dmin); \
-				freq[k * 4 + 2] = vaddq_f64(a3, dmin); \
-				freq[k * 4 + 3] = vaddq_f64(a4, dmin); \
-				\
-				sumfreq[0] = vaddq_f64(sumfreq[0], freq[k * 4 + 0]); \
-				sumfreq[1] = vaddq_f64(sumfreq[1], freq[k * 4 + 1]); \
-				sumfreq[2] = vaddq_f64(sumfreq[2], freq[k * 4 + 2]); \
-				sumfreq[3] = vaddq_f64(sumfreq[3], freq[k * 4 + 3]); \
-				\
-				t1 = vaddq_f64(t1, addr_inc); \
-				t2 = vaddq_f64(t2, addr_inc); \
-				t3 = vaddq_f64(t3, addr_inc); \
-				t4 = vaddq_f64(t4, addr_inc); \
-			} \
-			/* draw z */ \
-			rng.Poly(freq, sumfreq, K, zid); \
-			\
-			type1 = vandq_u64(type1, mask01);\
-			type2 = vandq_u64(type2, mask01);\
-			type3 = vandq_u64(type3, mask01);\
-			type4 = vandq_u64(type4, mask01);\
-			\
-			switch (pad) \
-			{ /* update mi, ni */ \
-			case 0: k2 = vgetq_lane_u64(zid1, 0); m0[k2] += vgetq_lane_u64(type1, 0); ni[k2 * KT + vgetq_lane_u64(aid1, 0)] += vgetq_lane_u64(type1, 0); \
-			case 1: k2 = vgetq_lane_u64(zid1, 1); m1[k2] += vgetq_lane_u64(type1, 1); ni[k2 * KT + vgetq_lane_u64(aid1, 1)] += vgetq_lane_u64(type1, 1); \
-			case 2: k2 = vgetq_lane_u64(zid2, 0); m2[k2] += vgetq_lane_u64(type2, 0); ni[k2 * KT + vgetq_lane_u64(aid2, 0)] += vgetq_lane_u64(type2, 0); \
-			case 3: k2 = vgetq_lane_u64(zid2, 1); m3[k2] += vgetq_lane_u64(type2, 1); ni[k2 * KT + vgetq_lane_u64(aid2, 1)] += vgetq_lane_u64(type2, 1); \
-			case 4: k2 = vgetq_lane_u64(zid3, 0); m4[k2] += vgetq_lane_u64(type3, 0); ni[k2 * KT + vgetq_lane_u64(aid3, 0)] += vgetq_lane_u64(type3, 0); \
-			case 5: k2 = vgetq_lane_u64(zid3, 1); m5[k2] += vgetq_lane_u64(type3, 1); ni[k2 * KT + vgetq_lane_u64(aid3, 1)] += vgetq_lane_u64(type3, 1); \
-			case 6: k2 = vgetq_lane_u64(zid4, 0); m6[k2] += vgetq_lane_u64(type4, 0); ni[k2 * KT + vgetq_lane_u64(aid4, 0)] += vgetq_lane_u64(type4, 0); \
-			case 7: k2 = vgetq_lane_u64(zid4, 1); m7[k2] += vgetq_lane_u64(type4, 1); ni[k2 * KT + vgetq_lane_u64(aid4, 1)] += vgetq_lane_u64(type4, 1); \
-			}
-
-			switch (maxploidy)
-			{
-			case 10: REP_MID;
-			case  9: REP_MID;
-			case  8: REP_MID;
-			case  7: REP_MID;
-			case  6: REP_MID;
-			case  5: REP_MID;
-			case  4: REP_MID;
-			case  3: REP_MID;
-			case  2: REP_MID;
-			case  1: REP_MID;
-			}
-#undef REP_MID 
-		}
-	}
-}
+template<typename REAL>
+template<bool isadmix, bool fast_fp32>
+TARGETNEO void BAYESIAN<REAL>::RecordNEO(int tid) { }
 
 #endif

@@ -20,55 +20,35 @@ TARGET double LogGamma2(double a, double x);
 TARGET double ChiSquareProb(double x2, double df);
 
 /* Random number generator */
-
+template<typename REAL>
 struct RNG
 {
-public:
+
+};
+
+template<>
+struct RNG<double>
+{
 	uint64 x;
 	uint64 y;
-	uint64 seed;
 
-	double U1, U2;
-	bool state;
+	double U1;
+	double U2;
 
 	/* Initialize rng */
 	TARGET RNG();
 
 	/* Initialize rng */
-	TARGET RNG(uint64 s);
-
-	/* Draw a uniform distriubted interger */
-	TARGET uint64 XorShift128p();
+	TARGET RNG(uint64 s, uint64 salt);
 
 	/* Get a random sequence from 0 ~ n-1 */
 	TARGET void GetRandSeq(int* td, int n);
-
-	/* Shuffle an array */
-	template<typename T>
-	TARGET void Permute(T* val, int n)
-	{
-		//https://lemire.me/blog/2016/06/30/fast-random-shuffling/
-		for (int i = n; i > 1; --i)
-			Swap(val[i - 1], val[Next(i)]);
-	}
-
-	/* Draw a uniform distriubted real number */
-	TARGET double Uniform();
 
 	/* Draw a uniform distriubted real number */
 	TARGET double Uniform(double min, double max);
 
 	/* Draw a uniform distriubted real number */
 	TARGET double Uniform(double max);
-
-	/* Draw a uniform distriubted interger */
-	TARGET int64 Next(int64 min, int64 max);
-
-	/* Draw a uniform distriubted interger */
-	TARGET int64 Next(int64 max);
-
-	/* Draw a uniform distriubted interger and avoid sample av */
-	TARGET int64 NextAvoid(int64 max, int64 av);
 
 	/* Draw a normally distriubted real number */
 	TARGET double Normal();
@@ -77,13 +57,16 @@ public:
 	TARGET double Normal(double mean, double std);
 
 	/* Draw a polynormial distriubted integer */
-	TARGET int Poly(double* a, int n);
+	template<typename T>
+	TARGET int Poly(T* a, int n);
 
 	/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
-	TARGET int PolyLog(double* a, int n);
-	
+	template<typename T>
+	TARGET int PolyLog(T* a, int n);
+
 	/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
-	TARGET int PolyLog(double* a, int n, int sep);
+	template<typename T>
+	TARGET int PolyLog(T* a, int n, int sep);
 
 	/* Draw a real number from gamma distribution */
 	TARGET double Gamma(double alpha, double beta = 1);
@@ -92,16 +75,118 @@ public:
 	TARGET double Beta(double a, double b);
 
 	/* Draw a vector from Dirichlet distribution D(a1 f, a2 f, ...) */
-	TARGET void Dirichlet(double* res, double* a, int n, double f);
+	template<typename T1, typename T2>
+	TARGET void Dirichlet(T1* res, T2* a, int n, double f);
 
 	/* Draw a vector from Dirichlet distribution D(a1, a2, ...) */
-	TARGET void Dirichlet(double* res, double* a, int n);
+	template<typename T1, typename T2>
+	TARGET void Dirichlet(T1* res, T2* a, int n);
 
 	/* Draw a vector from Dirichlet distribution D(a1 + b1, a2 + b2, ...) */
-	TARGET void Dirichlet(double* res, double* a, int64* b, int n);
+	template<typename T1, typename T2, typename T3>
+	TARGET void Dirichlet(T1* res, T2* a, T3* b, int n);
+
+	/* Shuffle an array */
+	template<typename T>
+	TARGET void Permute(T* val, int n);
+
+	/* Draw a uniform distriubted interger */
+	TARGET uint64 XorShift();
+
+	TARGET uint64 Next(uint64 min, uint64 max);
+
+	/* Draw a uniform distriubted interger */
+	TARGET uint64 Next(uint64 max);
+
+	/* Draw a uniform distriubted real number */
+	TARGET double Uniform();
+
+	/* Draw a uniform distriubted interger and avoid sample av */
+	TARGET uint64 NextAvoid(uint64 max, uint64 av);
+};
+
+template<>
+struct RNG<float>
+{
+	uint x;
+	uint y;
+	uint z;
+
+	double U1;
+	double U2;
+
+	/* Initialize rng */
+	TARGET RNG();
+
+	/* Initialize rng */
+	TARGET RNG(uint64 s, uint64 salt);
+
+	/* Get a random sequence from 0 ~ n-1 */
+	TARGET void GetRandSeq(int* td, int n);
+
+	/* Draw a uniform distriubted real number */
+	TARGET float Uniform(float min, float max);
+
+	/* Draw a uniform distriubted real number */
+	TARGET float Uniform(float max);
+
+	/* Draw a normally distriubted real number */
+	TARGET double Normal();
+
+	/* Draw a normally distriubted real number */
+	TARGET double Normal(double mean, double std);
+
+	/* Draw a polynormial distriubted integer
+	TARGET int Poly(double* a, int n); */
+
+	/* Draw a polynormial distriubted integer */
+	TARGET int Poly(float* a, int n);
+
+	/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
+	TARGET int PolyLog(float* a, int n);
+
+	/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
+	TARGET int PolyLog(double* a, int n);
+
+	/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
+	TARGET int PolyLog(float* a, int n, int sep);
+
+	/* Draw a real number from gamma distribution */
+	TARGET double Gamma(double alpha, double beta = 1);
+
+	/* Draw a real number from beta distribution */
+	TARGET double Beta(double a, double b);
+
+	/* Draw a vector from Dirichlet distribution D(a1 f, a2 f, ...) */
+	template<typename T1, typename T2>
+	TARGET void Dirichlet(T1* res, T2* a, int n, double f);
+
+	/* Draw a vector from Dirichlet distribution D(a1, a2, ...) */
+	template<typename T1, typename T2>
+	TARGET void Dirichlet(T1* res, T2* a, int n);
 
 	/* Draw a vector from Dirichlet distribution D(a1 + b1, a2 + b2, ...) */
-	TARGET void Dirichlet(double* res, double* a, int* b, int n);
+	template<typename T1, typename T2, typename T3>
+	TARGET void Dirichlet(T1* res, T2* a, T3* b, int n);
+
+	/* Shuffle an array */
+	template<typename T>
+	TARGET void Permute(T* val, int n);
+
+	/* Draw a uniform distriubted interger */
+	TARGET uint XorShift();
+
+	/* Draw a uniform distriubted real number */
+	TARGET float Uniform();
+
+	/* Draw a uniform distriubted interger */
+	TARGET uint Next(uint min, uint max);
+
+	/* Draw a uniform distriubted interger */
+	TARGET uint Next(uint max);
+
+	/* Draw a uniform distriubted interger and avoid sample av */
+	TARGET uint NextAvoid(uint max, uint av);
 };
 
 /* Chi-square test, combine tables with any grid with an expectition < 5 */

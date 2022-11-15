@@ -7,124 +7,291 @@
 #define Min(a,b)            (((a) < (b)) ? (a) : (b))
 
 /* Get square root of val, account some slightly negative input */
-TARGET double MySqrt(double val);
+template<typename REAL>
+TARGET REAL MySqrt(REAL val)
+{
+	if (val > 0)
+		return sqrt(val);
+	else if (val > -MIN_FREQ)
+		return 0;
+	else
+		return NAN;
+}
+
+/* Power of x with a integer index */
+template<typename REAL>
+TARGET REAL IntegerPower(REAL x, int index)
+{
+	switch (index)
+	{
+	case 0: return 1;
+	case 1: return x;
+	case 2: return x * x;
+	case 3: return x * x * x;
+	case 4:
+	{
+		REAL x2 = x * x;
+		return x2 * x2;
+	}
+	case 5:
+	{
+		REAL x2 = x * x;
+		return x2 * x2 * x;
+	}
+	case 6:
+	{
+		REAL x3 = x * x * x;
+		return x3 * x3;
+	}
+	case 7:
+	{
+		REAL x3 = x * x * x;
+		return x3 * x3 * x;
+	}
+	case 8:
+	{
+		REAL x2 = x * x, x4 = x2 * x2;
+		return x4 * x4;
+	}
+	case 9:
+	{
+		REAL x3 = x * x * x;
+		return x3 * x3 * x3;
+	}
+	case 10:
+	{
+		REAL x2 = x * x, x4 = x2 * x2;
+		return x4 * x4 * x2;
+	}
+	default: return pow(x, (REAL)index);
+	}
+}
 
 /* Get 1D lower triangular index */
 TARGET int GetLowerTriangularId(int id1, int id2, int n);
 
-/* Power of x with a integer index */
-TARGET double IntegerPower(double x, int index);
-
 /* Is an erroneous real number */
 TARGET bool IsError(double x);
+
+/* Is an erroneous real number */
+TARGET bool IsError(float x);
 
 /* Is a normal real number */
 TARGET bool IsNormal(double x);
 
+/* Is a normal real number */
+TARGET bool IsNormal(float x);
+
 /* Find the index of the mimumum element */
-TARGETMMX int64 GetMinIdx(double* A, int64 n, double& val);
+TARGET int64 GetMinIdx(double* A, int64 n, double& val);
+
+/* Find the index of the mimumum element */
+TARGET int64 GetMinIdx(float* A, int64 n, float& val);
 
 /* Find maximum and minimum element of A */
-TARGETMMX void GetMinMaxVal(double* A, int64 n, double& minv, double& maxv);
+TARGET void GetMinMaxVal(double* A, int64 n, double& minv, double& maxv);
+
+/* Find maximum and minimum element of A */
+TARGET void GetMinMaxVal(float* A, int64 n, float& minv, float& maxv);
 
 /* Find minimum element of A */
-TARGETMMX double GetMinVal(double* A, int64 n);
+TARGET double GetMinVal(double* A, int64 n);
 
 /* Find minimum element of A */
-TARGETMMX int64 GetMinVal(int64* A, int64 n);
+TARGET float GetMinVal(float* A, int64 n);
+
+/* Find minimum element of A */
+TARGET int64 GetMinVal(int64* A, int64 n);
 
 /* Find Maximum element of A */
-TARGETMMX double GetMaxVal(double* A, int64 n);
+TARGET double GetMaxVal(double* A, int64 n);
 
 /* Find Maximum element of A */
-TARGETMMX double GetMaxVal(double* A, int64 n, int64 sep);
+TARGET float GetMaxVal(float* A, int64 n);
+
+/* Find Maximum element of A */
+TARGET double GetMaxVal(double* A, int64 n, int64 sep);
+
+/* Find Maximum element of A */
+TARGET float GetMaxVal(float* A, int64 n, int64 sep);
 
 /* A[i] = B[i] */
-TARGETMMX void SetVal(uint* A, ushort* B, int64 n);
+TARGET void SetVal(uint* A, ushort* B, int64 n);
 
 /* log(prod(A[i++])) */
-TARGETMMX double LogProd(double* A, int64 n);
+TARGET double LogProd(double* A, int64 n);
+
+/* log(prod(A[i++])) */
+TARGET double LogProd(float* A, int64 n);
 
 /* log(prod(A[i += sep])) */
-TARGETMMX double LogProd(double* A, int64 n, int64 sep);
+TARGET double LogProd(double* A, int64 n, int64 sep);
+
+/* log(prod(A[i += sep])) */
+TARGET double LogProd(float* A, int64 n, int64 sep);
 
 /* log(prod(A[i += sep] / B[i += sep])) */
-TARGETMMX double LogProdDiv(double* A, double* B, int64 n, int64 sep);
+TARGET double LogProdDiv(double* A, double* B, int64 n, int64 sep);
+
+/* log(prod(A[i += sep] / B[i += sep])) */
+TARGET double LogProdDiv(float* A, float* B, int64 n, int64 sep);
 
 /* Count non-zero elements */
-TARGETMMX int64 CountNonZero(byte* A, int64 n);
+TARGET int64 CountNonZero(byte* A, int64 n);
 
 /* Sum of A */
-TARGETMMX double Sum(double* A, int64 n);
+TARGET double Sum(double* A, int64 n);
 
 /* Sum of A */
-TARGETMMX int64 Sum(byte* A, int64 n);
+TARGET double Sum(float* A, int64 n);
+
+/* Sum of A */
+TARGET int64 Sum(byte* A, int64 n);
 
 /* re += A[i += sep] */
-TARGETMMX double Sum(double* A, int64 n, int64 sep);
+TARGET double Sum(double* A, int64 n, int64 sep);
+
+/* re += A[i += sep] */
+TARGET double Sum(float* A, int64 n, int64 sep);
 
 /* A[i] = B[0][i] + ... + B[k][i] */
-TARGETMMX void Sum(double* A, double** B, int64 k, int64 n);
+TARGET void Sum(double* A, double** B, int64 k, int64 n);
+
+/* A[i] = B[0][i] + ... + B[k][i] */
+TARGET void Sum(float* A, float** B, int64 k, int64 n);
 
 /* Product of A */
-TARGETMMX double Prod(double* A, int64 n);
+TARGET double Prod(double* A, int64 n);
+
+/* Product of A */
+TARGET double Prod(float* A, int64 n);
 
 /* re *= A[i += sep] */
-TARGETMMX double Prod(double* A, int64 n, int64 sep);
+TARGET double Prod(double* A, int64 n, int64 sep);
+
+/* re *= A[i += sep] */
+TARGET double Prod(float* A, int64 n, int64 sep);
 
 /* Sum of squared A */
-TARGETMMX double SumSquare(double* A, int64 n);
+TARGET double SumSquare(double* A, int64 n);
 
 /* Sum of squared A */
-TARGETMMX int64 SumSquare(byte* A, int64 n);
+TARGET double SumSquare(float* A, int64 n);
+
+/* Sum of squared A */
+TARGET int64 SumSquare(byte* A, int64 n);
 
 /* Sum of A and sum of squared A */
-TARGETMMX void SumSumSquare(double* A, int64 n, double& sum, double& sumsq);
+TARGET void SumSumSquare(double* A, int64 n, double& sum, double& sumsq);
+
+/* Sum of A and sum of squared A */
+TARGET void SumSumSquare(float* A, int64 n, double& sum, double& sumsq);
 
 /* re = sum(A1[i++] * B[j += sep]) / Sum(A2[i++] * B[j += sep]) */
-TARGETMMX double SumProdDiv(double* A1, double* A2, double* B, int64 sep, int64 n);
+TARGET double SumProdDiv(double* A1, double* A2, double* B, int64 sep, int64 n);
+
+/* re = sum(A1[i++] * B[j += sep]) / Sum(A2[i++] * B[j += sep]) */
+TARGET double SumProdDiv(double* A1, float* A2, float* B, int64 sep, int64 n);
+
+/* re = sum(A1[i++] * B[j += sep]) / Sum(A2[i++] * B[j += sep]) */
+TARGET double SumProdDiv(float* A1, float* A2, float* B, int64 sep, int64 n);
 
 /* re = sum(A[i++] * B[j += sep]) */
-TARGETMMX double SumProd(double* A, double* B, int64 sep, int64 n);
+TARGET double SumProd(double* A, double* B, int64 sep, int64 n);
+
+/* re = sum(A[i++] * B[j += sep]) */
+TARGET double SumProd(float* A, float* B, int64 sep, int64 n);
 
 /* re = sum(A[i] * B[i]) */
-TARGETMMX double SumProd(double* A, double* B, int64 n);
+TARGET double SumProd(double* A, double* B, int64 n);
+
+/* re = sum(A[i] * B[i]) */
+TARGET double SumProd(float* A, float* B, int64 n);
 
 /* Add B into A, A[i] += B[i] */
-TARGETMMX void Add(double* A, double* B, int64 n);
+TARGET void Add(double* A, double* B, int64 n);
 
 /* Add B into A, A[i] += B[i] */
-TARGETMMX void Add(int64* A, int64* B, int64 n);
+TARGET void Add(float* A, float* B, int64 n);
 
 /* Add B into A, A[i] += B[i] */
-TARGETMMX void Add(int* A, int* B, int64 n);
+TARGET void Add(int64* A, int64* B, int64 n);
+
+/* Add B into A, A[i] += B[i] */
+TARGET void Add(int* A, int* B, int64 n);
 
 /* Add B into A, A[i] += B */
-TARGETMMX void Add(double* A, double B, int64 n);
+TARGET void Add(double* A, double B, int64 n);
+
+/* Add B into A, A[i] += B */
+TARGET void Add(float* A, float B, int64 n);
 
 /* C[i] = A[i] * B[i] */
-TARGETMMX void Mul(double* C, double* A, double* B, int64 n);
+TARGET void Mul(double* C, double* A, double* B, int64 n);
+
+/* C[i] = A[i] * B[i] */
+TARGET void Mul(float* C, float* A, float* B, int64 n);
 
 /* C[i] = A[i] * B */
-TARGETMMX void Mul(double* C, double* A, double B, int64 n);
+TARGET void Mul(double* C, double* A, double B, int64 n);
+
+/* C[i] = A[i] * B */
+TARGET void Mul(float* C, float* A, float B, int64 n);
 
 /* A[i] *= B */
-TARGETMMX void Mul(double* A, double B, int64 n);
+TARGET void Mul(double* A, double B, int64 n);
+
+/* A[i] *= B */
+TARGET void Mul(float* A, float B, int64 n);
 
 /* C[i] += A[i] * B[i] */
-TARGETMMX void AddProd(double* C, double* A, double* B, int64 n);
+TARGET void AddProd(double* C, double* A, double* B, int64 n);
+
+/* C[i] += A[i] * B[i] */
+TARGET void AddProd(float* C, float* A, float* B, int64 n);
 
 /* C[i] += A[i] * B */
-TARGETMMX void AddProd(double* C, double* A, double B, int64 n);
+TARGET void AddProd(double* C, double* A, double B, int64 n);
+
+/* C[i] += A[i] * B */
+TARGET void AddProd(double* C, float* A, double B, int64 n);
+
+/* C[i] += A[i] * B */
+TARGET void AddProd(float* C, float* A, float B, int64 n);
 
 /* Set the sum of A to one */
-TARGETMMX void Unify(double* A, int64 n);
+TARGET void Unify(double* A, int64 n);
+
+/* Set the sum of A to one */
+TARGET void Unify(float* A, int64 n);
 
 /* Find next position of val in string A*/
-TARGETMMX char* StrNextIdx(char* A, char val, int64 rep, int64 n);
+TARGET char* StrNextIdx(char* A, char val, int64 rep, int64 n);
 
 /* Count val in string A */
-TARGETMMX int64 CountChar(char* A, char val, int64 n);
+TARGET int64 CountChar(char* A, char val, int64 n);
+
+TARGET float LogProdx(float* A, int64 n);
+
+TARGET float LogProdx(float* A, int64 n, int64 sep);
+
+TARGET float LogProdDivx(float* A, float* B, int64 n, int64 sep);
+
+TARGET float Sumx(float* A, int64 n);
+
+TARGET float Sumx(float* A, int64 n, int64 sep);
+
+TARGET float Prodx(float* A, int64 n);
+
+TARGET float Prodx(float* A, int64 n, int64 sep);
+
+TARGET float SumSquarex(float* A, int64 n);
+
+TARGET float SumProdDivx(float* A1, float* A2, float* B, int64 sep, int64 n);
+
+TARGET float SumProdx(float* A, float* B, int64 sep, int64 n);
+
+TARGET float SumProdx(float* A, float* B, int64 n);
 
 /* Find the index of the mimumum element */
 template <typename T>
@@ -227,103 +394,111 @@ TARGET void Truncate(T* A, int64 n)
 TARGET void SetVal(double* A, double B, int64 n, int64 sep);
 
 /* A[i] = B */
-template<typename T>
-TARGET void SetVal(T* A, T B, int64 n)
-{
-	for (int64 i = 0; i < n; ++i)
-		*A++ = B;
-}
+TARGET void SetVal(double* A, double B, int64 n, int64 sep);
 
 /* A[i] = B */
-template<typename T>
-TARGET void SetVal(T* A, T B, int n)
+TARGET void SetVal(float* A, float B, int64 n, int64 sep);
+
+/* A[i] = B */
+TARGET void SetVal(float* A, double* B, int64 n);
+
+/* A[i] = B */
+template<typename T, typename T3>
+TARGET void SetVal(T* A, T B, T3 n)
 {
-	for (int i = 0; i < n; ++i)
+	if constexpr (sizeof(T) == 1)
+	{
+		memset(A, B, n);
+		return;
+	}
+	if constexpr (sizeof(T) == 2)
+	{
+		wmemset(A, B, n);
+		return;
+	}
+
+	for (T3 i = 0; i < n; ++i)
 		*A++ = B;
 }
 
 /* re = sum(A[i] * B[j] * alen[i * k + j]) */
 TARGET double SumProdSMM(ushort* alen, double* A, double* B, int k);
 
+/* re = sum(A[i] * B[j] * alen[i * k + j]) */
+TARGET double SumProdSMM(ushort* alen, float* A, float* B, int k);
+
 /* re += sum(A[i] * alen[i * k]) */
 TARGET double SumProdSMM(ushort* alen, double* A, ushort j, int k);
+
+/* re += sum(A[i] * alen[i * k]) */
+TARGET double SumProdSMM(ushort* alen, float* A, ushort j, int k);
 
 /* Natural logarithm with bounds */
 TARGET double MyLog(double val);
 
 /* Charge a value to fast sum log */
-template<typename T>
-TARGET void OpenLog(T& slog, double& prod)
-{
-	slog = 0;
-	prod = 1;
-}
+TARGET void OpenLog(int64& slog, double& prod);
 
 /* Charge a value to fast sum log */
-template<typename T>
-TARGET void OpenLog(T* slog, double* prod, int64 n)
-{
-	SetZero(slog, n);
-	SetVal(prod, 1.0, n);
-}
+TARGET void OpenLog(int64* slog, double* prod, int64 n);
 
 /* Add exponent to slog2 */
-template<typename T>
-TARGET void AddExponent(T& slog2, double& val)
-{
-	int64& vv = *(int64*)&val;
+TARGET void AddExponent(int64& slog2, double& val);
 
-	// add the exponent to slog2
-	slog2 += ((vv & 0x7FF0000000000000) >> 52) - 1023;
-
-	// set the exponent of val to 0
-	vv = (vv & 0x800FFFFFFFFFFFFF) | 0x3FF0000000000000;
-}
+/* Add exponent to slog2 */
+TARGET void AddExponent(int64& slog2, float& val);
 
 /* Charge a value to fast sum log */
-template<typename T>
-TARGET void ChargeLog(T& slog, double& prod, double val)
-{
-	if (val < DOUBLE_UNDERFLOW || val > DOUBLE_OVERFLOW) [[unlikely]]
-		AddExponent(slog, val);
+TARGET void ChargeLog(int64& slog, double& prod, double val);
 
-	prod *= val;
+/* Charge a value to fast sum log */
+TARGET void ChargeLog(int64& slog, double& prod, float val);
 
-	if (prod < DOUBLE_UNDERFLOW || prod > DOUBLE_OVERFLOW) [[unlikely]]
-		AddExponent(slog, prod);
-}
+/* Charge a value to fast sum log */
+TARGET void ChargeLog(int64* slog, double* prod, double* val, int64 n, int64 sep);
+
+/* Charge a value to fast sum log */
+TARGET void ChargeLog(int64* slog, double* prod, float* val, int64 n, int64 sep);
+
+/* Charge a value to fast sum log */
+TARGET void ChargeLog(int64* slog, double* prod, double* val, int64 n);
+
+/* Charge a value to fast sum log */
+TARGET void ChargeLog(int64* slog, double* prod, float* val, int64 n);
+
+/////////////////////////////////////////////
+
+/* Add exponent to slog2 */
+TARGET void AddExponentAtomic(int64& slog2, double& val);
+
+/* Add exponent to slog2 */
+TARGET void AddExponentAtomic(int64& slog2, float& val);
+
+/* Charge a value to fast sum log */
+TARGET void ChargeLogAtomic(int64& slog, double& prod, double val);
+
+/* Charge a value to fast sum log */
+TARGET void ChargeLogAtomic(int64& slog, double& prod, float val);
+
+/* Charge a value to fast sum log */
+TARGET void ChargeLogAtomic(int64* slog, double* prod, double* val, int64 n, int64 sep);
+
+/* Charge a value to fast sum log */
+TARGET void ChargeLogAtomic(int64* slog, double* prod, float* val, int64 n, int64 sep);
+
+/* Charge a value to fast sum log */
+TARGET void ChargeLogAtomic(int64* slog, double* prod, double* val, int64 n);
+
+/* Charge a value to fast sum log */
+TARGET void ChargeLogAtomic(int64* slog, double* prod, float* val, int64 n);
+
+/////////////////////////////////////////////
 
 /* Charge a value to fast sum log, convert slog to double */
-template<typename T>
-TARGET void CloseLog(T& slog, double& prod)
-{
-	double& slog2 = *(double*)&slog;
-	prod = slog2 = (slog + log2(prod)) * 0.693147180559945;
-}
-
-/* Charge a value to fast sum log */
-template<typename T>
-TARGET void ChargeLog(T* slog, double* prod, double* val, int64 n, int64 sep)
-{
-	for (int64 i = 0; i < n; ++i, val += sep)
-		ChargeLog(slog[i], prod[i], *val);
-}
-
-/* Charge a value to fast sum log */
-template<typename T>
-TARGET void ChargeLog(T* slog, double* prod, double* val, int64 n)
-{
-	for (int64 i = 0; i < n; ++i)
-		ChargeLog(slog[i], prod[i], val[i]);
-}
+TARGET void CloseLog(int64& slog, double& prod);
 
 /* Finalize fast sum log */
-template<typename T>
-TARGET void CloseLog(T* slog, double* prod, int64 n)
-{
-	for (int64 i = 0; i < n; ++i)
-		CloseLog(slog[i], prod[i]);
-}
+TARGET void CloseLog(int64* slog, double* prod, int64 n);
 
 /* Count number of non-zero elements */
 TARGET int64 CountNonZero(double* A, int64 n);
@@ -331,16 +506,25 @@ TARGET int64 CountNonZero(double* A, int64 n);
 /* Set the sum of A to one */
 TARGET void Unify(double* A, int64 m, int64 n);
 
+/* Set the sum of A to one */
+TARGET void Unify(float* A, int64 m, int64 n);
+
 /* Set the sum of A to one, convert int64 to double */
 TARGET void UnifyInt64ToDouble(int64* A, int64 m, int64 n);
 
 /* Calculate SSWP in AMOVA */
 TARGET double SSP(double* p, int64 k, int64 nhap, bool isiam, ushort* alen2);
 
+/* Calculate SSWP in AMOVA */
+TARGET double SSP(float* p, int64 k, int64 nhap, bool isiam, ushort* alen2);
+
 /* Calculate SSTOT in AMOVA */
 TARGET double SSC(double* a, int64 k, bool isiam, ushort* alen2);
 
 /* Calculate SSTOT in AMOVA */
+TARGET double SSC(float* a, int64 k, bool isiam, ushort* alen2);
+
+/* Calculate SSTOT in AMOVA 
 template <typename T>
 TARGET double SSA(T* a, int v, int64 k, bool isiam, ushort* alen2)
 {
@@ -363,6 +547,7 @@ TARGET double SSA(T* a, int v, int64 k, bool isiam, ushort* alen2)
 	}
 	return d / (double)v;
 }
+*/
 
 /* Swap values for two variables */
 template<typename T>
@@ -412,12 +597,31 @@ TARGET void QuickSort(T* arr, int64 left, int64 right)
 }
 
 /* Add a value to sum and add count */
-template <typename T>
-TARGET void ChargeSum(T val, double& mean, int& count)
-{
-	if (IsNormal(val))
-	{
-		mean += val;
-		count++;
-	}
-}
+TARGET void ChargeSum(double val, double& mean, int& count);
+
+/* Add a value to sum and add count */
+TARGET void ChargeSum(float val, float& mean, int& count);
+
+/* Core function of cosine */
+TARGET double CosCore(double x);
+
+/* Core function of sine */
+TARGET double SinCore(double x);
+
+/* Core function of arc sine */
+TARGET double ArcSinCore(double x);
+
+/* Sine function */
+TARGET double MySin(double x);
+
+/* Cosine function */
+TARGET double MyCos(double x);
+
+/* ArcCosine function */
+TARGET double MyArcCos(double x);
+
+/* ArcSine function */
+TARGET double MyArcSin(double x);
+
+/* Tangent function */
+TARGET double MyTan(double x);

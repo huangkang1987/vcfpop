@@ -5,6 +5,18 @@
 
 #pragma pack(push, 1)
 
+struct TEMP_GENOTYPE;
+struct BCFHEADER;
+struct GENOTYPE;
+struct SLOCUS;
+struct LOCUS;
+struct GENO_READER;
+struct GENO_WRITER;
+struct LOCSTAT1;
+template<typename REAL> struct IND;
+template<typename REAL> struct LOCSTAT2;
+template<typename REAL> struct POP;
+
 /* Temporatory genotype, will be compressed into GENOTYPE */
 struct TEMP_GENOTYPE
 {
@@ -15,9 +27,8 @@ struct TEMP_GENOTYPE
 };
 
 /* Header class of BCF file */
-class BCFHEADER
+struct BCFHEADER
 {
-public:
 	int format_gtid;						//Index of GT field
 	int format_gqid;						//Index of GQ field
 	int format_dpid;						//Index of DP field
@@ -95,14 +106,19 @@ struct GENOTYPE
 	/* Genotypic frequency for zygotes under specific double-reduction model */
 	TARGET double GFZ(int DR_MODE, double* f);
 
+	/* Genotypic frequency for zygotes under specific double-reduction model */
+	TARGET double GFZ(int DR_MODE, float* f);
+
 	/* Number of copies of target allele */
 	TARGET int GetAlleleCount(int a);
 
 	/* Frequency of target allele in this genotype */
-	TARGET double GetFreq(int a);
+	template<typename REAL>
+	TARGET REAL GetFreq(int a);
 
 	/* Frequencies of all alleles in this genotype */
-	TARGET void GetFreq(double* p, int k2);
+	template<typename REAL>
+	TARGET void GetFreq(REAL* p, int k2);
 
 	/* Obtain Genepop genotype string */
 	TARGET char* GetGenepopStr();
@@ -129,11 +145,9 @@ struct GENOTYPE
 	TARGET char* GetGenoDiveStr();
 };
 
-class SLOCUS
+struct SLOCUS
 {
 	//small locus, 12 bytes
-
-public:
 	uint64 bits1 : 48;						//Genotype table[ngeno]
 											//alen[k] {for non-vcf SMM distance}
 											//chrom \0 name \0 {(allele identifiers \0)[k] for vcf/bcf)}
@@ -191,10 +205,9 @@ public:
 	TARGET double GetSMMDist(int a, int b);
 };
 
-class LOCUS : public SLOCUS
+struct LOCUS : public SLOCUS
 {
 	//+ 32 + 35 bytes
-public:
 	TABLE<HASH, GENOTYPE*> gftab;			//Genotype table, do not need release
 	char* _chrom;							//Chrom \0 name \0 {(allele identifiers \0)[k] for vcf/bcf)}
 	ushort* _alen;							//alen[k] {for non-vcf SMM distance}
@@ -268,9 +281,8 @@ public:
 	TARGET ushort GetFormatId(char* base, char* fmt_name, ushort* fmt_offset);
 };
 
-class GENO_READER
+struct GENO_READER
 {
-public:
 	uint64* pos;							//Current read pointer
 	uint64 data;							//Readed bits
 	byte size;								//Number of bits a genotype id used
@@ -286,9 +298,8 @@ public:
 	TARGET int Read();
 };
 
-class GENO_WRITER
+struct GENO_WRITER
 {
-public:
 	uint64* pos;							//Current read pointer
 	uint64 data;							//Readed bits
 	byte size;								//Number of bits a genotype id used
@@ -307,9 +318,9 @@ public:
 	TARGET void FinishWrite();
 };
 
-class IND
+template<typename REAL>
+struct IND
 {
-public:
 	int indid;								//Individual id
 	int popid;								//Population id
 	char* name;								//Individual identifier
@@ -327,7 +338,7 @@ public:
 	TARGET IND(char*& title, int id);
 
 	/* Create individual from a reference */
-	TARGET IND(IND& ref);
+	TARGET IND(IND<REAL>& ref);
 
 	/* Unnitialize */
 	TARGET ~IND();
@@ -393,10 +404,10 @@ public:
 	TARGET void genodive(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
 
 	/* Calculate the likelihood of genotype data */
-	TARGET double GenoFreq(POP* grp, int model, int64 loc, double e);
+	TARGET double GenoFreq(POP<REAL>* grp, int model, int64 loc, double e);
 
 	/* Calculate the individual kinship coefficient */
-	TARGET void Theta(POP* grp, double& f_ritland, double& f_loiselle, double& f_weir, double& t_ritland, double& t_loiselle, double& t_weir, int64 loc = -1);
+	TARGET void Theta(POP<REAL>* grp, double& f_ritland, double& f_loiselle, double& f_weir, double& t_ritland, double& t_loiselle, double& t_weir, int64 loc = -1);
 
 	/* Write header row for individual statistics */
 	TARGET static void IndividualStatisticsHeader(FILE* fout);
@@ -411,13 +422,13 @@ public:
 	TARGET void PrintPloidyInference(FILE* fout);
 
 	/* Calculate the likelihood for ploidy inference */
-	TARGET void PloidyInferlnL3(map<int64, SPF>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2);
+	TARGET void PloidyInferlnL3(map<int64, SPF<REAL>>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2);
 
 	/* Calculate the likelihood for ploidy inference */
-	TARGET double PloidyInferlnL(map<int64, SPF>& depth, int v, double f);
+	TARGET double PloidyInferlnL(map<int64, SPF<REAL>>& depth, int v, double f);
 
 	/* Infer the ploidy level from allelic depth distribution */
-	TARGET void PloidyInference(int v, double& lnL, double& f, map<int64, SPF>& depth);
+	TARGET void PloidyInference(int v, double& lnL, double& f, map<int64, SPF<REAL>>& depth);
 
 	/* average genotypic frequency at a diallelic locus given m copies of A */
 	TARGET double AvgG(int v, int m, double f);
@@ -446,13 +457,15 @@ struct LOCSTAT1
 };
 
 /* Statistics of locus */
+template<typename REAL>
 struct LOCSTAT2
 {
-	double s2;								//Sum(pi^2)
-	double s3;								//Sum(pi^3)
-	double s4;								//Sum(pi^4)
+	REAL s2;								//Sum(pi^2)
+	REAL s3;								//Sum(pi^3)
+	REAL s4;								//Sum(pi^4)
 };
 
+template<typename REAL>
 struct POP
 {
 	int id;									//Population id, will be rearrange using tree strucutre of total population
@@ -460,15 +473,15 @@ struct POP
 	char** names;							//Individual names, used during parsing indtext
 	int nind;								//Number of individuals
 	int ind0id;								//Indid of the first individual, used to fast  genotype id iteration in this pop
-	IND* *inds;								//Individuals
+	IND<REAL>** inds;						//Individuals
 
 	LOCSTAT1* loc_stat1;					//Locus diversity and statistics
-	double* allelefreq;						//+ allele_freq_offset[l] is the allele frequency array at locus l
+	REAL* allelefreq;						//+ allele_freq_offset[l] is the allele frequency array at locus l
 	ushort* genocount;						//+ genotype_count_offset[l] is the genotype count array at locus l, consider missing genotype
 
 	int rid;								//Index of the region it belongs
 
-	POP* *vpop;								//Subpopulations
+	POP<REAL>* *vpop;								//Subpopulations
 	int npop;								//Number of subpopulations
 	int nhaplotypes;						//Number of haplotypes, used in amova homoploid method
 
@@ -487,13 +500,16 @@ struct POP
 	TARGET ushort GetGenoCount(int64 l, int id);
 
 	/* Get allele frequencies array */
-	TARGET double* GetFreq(int64 l);
+	TARGET REAL* GetFreq(int64 l);
 
 	/* Get allele frequency of an allele */
-	TARGET double GetFreq(int64 l, int a);
+	TARGET REAL GetFreq(int64 l, int a);
 
-	/* Uninitialize a pop */
-	TARGET void Uninitialize();
+	/* Uninitialize a pop, unalloc memory except population name */
+	TARGET void Uninitialize1();
+
+	/* Uninitialize a pop, unalloc population name */
+	TARGET void Uninitialize2();
 
 	/* Uncllocate memory for locstat, allele frequency, genotype count */
 	TARGET void UnAllocFreq();
@@ -511,80 +527,94 @@ struct POP
 	TARGET void CalcFreqGcount();
 
 	/* Calculate loc_stat2 in a pre-allocated buffer, used in relatedness estimation */
-	TARGET void GetLocStat2(LOCSTAT2* loc_stat2);
+	TARGET void GetLocStat2(LOCSTAT2<REAL>* loc_stat2);
 };
 
 /* Initialize */
+template<typename REAL>
 TARGET void Initialize();
 
 /* UnInitialize */
-TARGET void UnInitialize();
+template<typename REAL>
+TARGET void UnInitialize1();
+
+/* UnInitialize */
+template<typename REAL>
+TARGET void UnInitialize2();
 
 /* Calculate individual minimum and maximum ploidy, and sum ploidy levels */
+template<typename REAL>
 TARGET void AssignPloidy();
 
 /* Calculate allele frequencies for each population and region for further use */
+template<typename REAL>
 TARGET void CalcFreq();
 
 /* Estimate PES model */
+template<typename REAL>
 TARGET void EstimatePES();
 
 /* Calculate genetic diveristy indices */
+template<typename REAL>
 TARGET void CalcDiversity();
 
 /* Calculate various analyses */
+template<typename REAL>
 TARGET void Calculate();
 
 /* Calculate allele frequencies for each population and region */
-THREADH(CalcAlleleFreq);
+THREAD2H(CalcAlleleFreq);
 
 /* Calculate individual minimum and maximum ploidy, and sum ploidy levels */
-THREADH(AssignPloidyThread);
+THREAD2H(AssignPloidyThread);
 
 /* Find the optimal Partial Equational Segregation model for each locus */
-THREADH(GetLocusPESModel);
+THREAD2H(GetLocusPESModel);
 
 /* Functions */
 
 /* Misc */
-extern POP* cpop;									//Current population
-extern ushort missing_array[N_MAX_PLOIDY];			//Allele array of the missing genotypes
-extern GENOTYPE missing_genotype[N_MAX_PLOIDY + 1];	//Missing genotype at different ploidy level
-extern HASH missing_hash[N_MAX_PLOIDY + 1];			//Hash of missing genotype
+extern void* cpop_;													//Current population
+#define cpop (*(POP<REAL>**)&cpop_)
+extern ushort missing_array[N_MAX_PLOIDY];							//Allele array of the missing genotypes
+extern GENOTYPE missing_genotype[N_MAX_PLOIDY + 1];					//Missing genotype at different ploidy level
+extern HASH missing_hash[N_MAX_PLOIDY + 1];							//Hash of missing genotype
 
 /* Global */
-extern SLOCUS* slocus;								//SLocus information
-extern bool useslocus;								//Use small locus
-extern TABLE<HASH, GENOTYPE*> emptygftab;			//Empty genotype table
-
+extern SLOCUS* slocus;												//SLocus information
+extern bool useslocus;												//Use small locus
+extern TABLE<HASH, GENOTYPE*> emptygftab;							//Empty genotype table
 
 /* Load File */
-extern LIST<POP> pop;								//Original input population
-extern LIST<LIST<POP>> reg;							//Original input regions
-extern LOCUS* locus;								//Locus information
+template<typename REAL>
+extern LIST<POP<REAL>> pop;											//Original input population
+template<typename REAL>
+extern LIST<LIST<POP<REAL>>> reg;									//Original input population
 
-extern MEMORY* individual_memory;					//Individual memory class
-extern MEMORY* locus_memory;						//Locus memory class
-extern MEMORY* nvcf_memory;							//Locus memory for first round counting ngeno
-extern TABLE<HASH, uint>* nvcf_gfid;				//Hash table for counting ngeno 
+extern LOCUS* locus;												//Locus information
+
+extern MEMORY* individual_memory;									//Individual memory class
+extern MEMORY* locus_memory;										//Locus memory class
+extern MEMORY* nvcf_memory;											//Locus memory for first round counting ngeno
+extern TABLE<HASH, uint>* nvcf_gfid;								//Hash table for counting ngeno 
 
 /* Allele frequency and genotype count offset */
-extern LOCN* allele_freq_offset;					//Allele frequency array at locus l
-extern int maxK;									//Max number of alleles
-extern int64 KT;									//Total number of alleles
+extern uint64* allele_freq_offset;									//Allele frequency array at locus l
+extern int maxK;													//Max number of alleles
+extern int64 KT;													//Total number of alleles
 
-extern LOCN* genotype_count_offset;					//Genotype count array at locus l
-extern int maxG;									//Max number of genotypes at all loci
-extern int64 GT;									//Total number of genotypes
-
+extern uint64* genotype_count_offset;									//Genotype count array at locus l
+extern int maxG;													//Max number of genotypes at all loci
+extern int64 GT;													//Total number of genotypes
 
 /* Genotype bucket */
-
 extern VMEMORY locus_list;
-extern BUCKET geno_bucket, haplo_bucket, ad_bucket;
+extern BUCKET geno_bucket;
+extern BUCKET haplo_bucket;
+extern BUCKET ad_bucket;
 
 /* Reassign individuals and populations */
-extern bool reassigned;								//Is ploidy assigned, to distiguish diversity filter and diversity estimation
-extern IND** rinds;									//Rearranged individuals according to population source
-
+extern bool reassigned;												//Is ploidy assigned, to distiguish diversity filter and diversity estimation
+extern void* rinds_;												//Rearranged individuals according to population source
+#define rinds (*(IND<REAL>***)&rinds_)
 #pragma pack(pop)

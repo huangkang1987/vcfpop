@@ -1,6 +1,13 @@
 /* Misc */
 
 #include "vcfpop.h"
+
+template TARGET void BUCKET::FilterIndividualGT<double>(BUCKET* obucket, int nfilter, bool progress, int nthread);
+template TARGET void BUCKET::FilterIndividualGT<float >(BUCKET* obucket, int nfilter, bool progress, int nthread);
+template TARGET void BUCKET::FilterIndividualAD<double>(BUCKET* obucket, int nfilter, bool progress, int nthread);
+template TARGET void BUCKET::FilterIndividualAD<float >(BUCKET* obucket, int nfilter, bool progress, int nthread);
+
+
 #pragma pack(push, 1)
 
 /*
@@ -41,15 +48,6 @@ TARGET void ReadWriteLock::unlock()
 }
 
 */
-
-/* Count number of alleles from frequency array*/
-TARGET int CountK(double* fre, int k2)
-{
-	int re = 0;
-	for (int i = 0; i < k2; ++i)
-		if (fre[i] > MIN_FREQ) re++;
-	return re;
-}
 
 /* Set a bit in a variable */
 TARGET void SetBit(byte& b, int pos, bool val)
@@ -243,11 +241,11 @@ TARGET void RunRscript(string script)
 		Exit("\nError: Rscript binary executable is not found.\n");
 
 	if (!FileExists((EXEDIR + "rscripts" + PATH_DELIM + script).c_str()))
-		Exit("\nError: R script %s is not found.\n", script.c_str());
+		Exit("\nError: R script file %s is not found.\n", script.c_str());
 
 	printf("\nPloting figure using %s ... ", script.c_str());
 	string cmd = "\"\"" + g_rscript_val + "\" \"" +
-		EXEDIR + script + "\" \"" +
+		EXEDIR + "rscripts" + PATH_DELIM + script + "\" \"" +
 		OUTFILE + "\"\"";
 
 	std::system(cmd.c_str());
@@ -261,9 +259,8 @@ TARGET void Exit(const char* fmt, ...)
 	{
 		first = false;
 		va_list ap;
-		int n = 0;
 		va_start(ap, fmt);
-		n = vprintf(fmt, ap);
+		vprintf(fmt, ap);
 		va_end(ap);
 		Pause();
 		exit(0);
@@ -271,6 +268,81 @@ TARGET void Exit(const char* fmt, ...)
 	else
 		Sleep(200000);
 }
+
+/* Atomic multiply val to ref */
+TARGET void AtomicMulFloat(volatile double& ref, double val)
+{
+	for (double ov = ref, nv = ov * val;
+#if defined(__clang__) || defined(__GNUC__)
+		!__sync_bool_compare_and_swap((uint64*)&ref, *(uint64*)&ov, *(uint64*)&nv);
+#else
+		* (uint64*)&ov != InterlockedCompareExchange((uint64*)&ref, *(uint64*)&nv, *(uint64*)&ov);
+#endif
+		ov = ref, nv = ov * val);
+}
+
+/* Atomic multiply val to ref */
+TARGET void AtomicMulFloat(volatile float& ref, float val)
+{
+	for (float ov = ref, nv = ov * val;
+#if defined(__clang__) || defined(__GNUC__)
+		!__sync_bool_compare_and_swap((uint*)&ref, *(uint*)&ov, *(uint*)&nv);
+#else
+		* (uint*)&ov != InterlockedCompareExchange((uint*)&ref, *(uint*)&nv, *(uint*)&ov);
+#endif
+		ov = ref, nv = ov * val);
+}
+
+/* Atomic add val to ref */
+TARGET void AtomicAddFloat(volatile double& ref, double val)
+{
+	for (double ov = ref, nv = ov + val;
+#if defined(__clang__) || defined(__GNUC__)
+		!__sync_bool_compare_and_swap((uint64*)&ref, *(uint64*)&ov, *(uint64*)&nv);
+#else
+		* (uint64*)&ov != InterlockedCompareExchange((uint64*)&ref, *(uint64*)&nv, *(uint64*)&ov);
+#endif
+		ov = ref, nv = ov + val);
+}
+
+/* Atomic add val to ref */
+TARGET void AtomicAddFloat(volatile float& ref, float val)
+{
+	for (float ov = ref, nv = ov + val;
+#if defined(__clang__) || defined(__GNUC__)
+		!__sync_bool_compare_and_swap((uint*)&ref, *(uint*)&ov, *(uint*)&nv);
+#else
+		* (uint*)&ov != InterlockedCompareExchange((uint*)&ref, *(uint*)&nv, *(uint*)&ov);
+#endif
+		ov = ref, nv = ov + val);
+}
+
+/* Atomic add val to ref */
+TARGET void AtomicAddFloat(volatile double* ref, double* val, int len)
+{
+	for (int i = 0; i < len; ++i)
+		for (double ov = ref[i], nv = ov + val[i];
+#if defined(__clang__) || defined(__GNUC__)
+			!__sync_bool_compare_and_swap((uint64*)&ref[i], *(uint64*)&ov, *(uint64*)&nv);
+#else
+			* (uint64*)&ov != InterlockedCompareExchange((uint64*)&ref[i], *(uint64*)&nv, *(uint64*)&ov);
+#endif
+			ov = ref[i], nv = ov + val[i]);
+}
+
+/* Atomic add val to ref */
+TARGET void AtomicAddFloat(volatile float* ref, float* val, int len)
+{
+	for (int i = 0; i < len; ++i)
+		for (float ov = ref[i], nv = ov + val[i];
+#if defined(__clang__) || defined(__GNUC__)
+			!__sync_bool_compare_and_swap((uint*)&ref[i], *(uint*)&ov, *(uint*)&nv);
+#else
+			* (uint*)&ov != InterlockedCompareExchange((uint*)&ref[i], *(uint*)&nv, *(uint*)&ov);
+#endif
+			ov = ref[i], nv = ov + val[i]);
+}
+
 
 #ifndef _CPOINT
 TARGET CPOINT::CPOINT(int de)
@@ -518,7 +590,6 @@ TARGET CPOINT CPOINT::DownHillSimplex(int dim, int diff, bool confine, double se
 		xx[i].li = Likelihood(xx[i], Param);
 	}
 
-	double likestop = LIKELIHOOD_TERM;
 	for (int kk = 0; kk < nrep; ++kk)
 	{
 		//Order
@@ -585,7 +656,6 @@ TARGET CPOINT CPOINT::DownHillSimplex(int dim, int diff, bool confine, double se
 
 		//Order
 		sep /= 2;
-		likestop /= 2;
 	}
 
 	CPOINT::Order(xx);
@@ -615,6 +685,7 @@ TARGET MEMORY::~MEMORY()
 	if (blocks) delete[] blocks;
 	blocks = NULL;
 	cblock = 0xFFFFFFFF;
+    if (nblocks) UnInitLock(lock);
 	nblocks = 0;
 }
 
@@ -671,11 +742,11 @@ TARGET byte* MEMORY::Alloc(int size)
 	}
 
 	/* Assign value but do not alloc */
-	TARGET VMEMORY::VMEMORY(int64 size)
+	TARGET VMEMORY::VMEMORY(int64 _size)
 	{
 		//estimate file size
-		int64 decomp_size = size == 0 ?
-			TOTLEN_COMPRESS * (g_format_val < 0 ? 40 : 1) : size;
+		int64 decomp_size = _size == 0 ?
+			TOTLEN_COMPRESS * (g_format_val < 0 ? 40 : 1) : _size;
 
 		if (decomp_size < 0x10000000)		// < 256 MiB
 			blocksize = 0x200000;           // 2 MiB block
@@ -689,14 +760,12 @@ TARGET byte* MEMORY::Alloc(int size)
 
 		size = 0;
 		head_addr = tail_addr = base_addr;
-
-		InitLock(lock);
 	}
 
 	/* Do nothing */
 	TARGET VMEMORY::~VMEMORY()
 	{
-
+        UnInitLock(lock);
 	}
 
 	/* Alloc or Clear a Virtual Memory slot, each have 16 TiB */
@@ -736,10 +805,12 @@ TARGET byte* MEMORY::Alloc(int size)
 #ifdef _WIN64
 			if (!VirtualAlloc(tail_addr, blocksize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE))
 #else		
-			if (mmap(tail_addr, blocksize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0) == (void*)-1)
+			if (mmap(tail_addr, blocksize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0) == (void*)-1)
 #endif	
 				Exit("\nError: cannot alloc %lld Mib memory.", blocksize / 1024 / 1024);
 
+			VMEM_SIZE += blocksize;
+			VMEM_NBLOCK++;
 			tail_addr += blocksize;
 			size += blocksize;
 		}
@@ -776,10 +847,12 @@ TARGET byte* MEMORY::Alloc(int size)
 #ifdef _WIN64
 			if (!VirtualAlloc(taddr, blocksize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE))
 #else		
-			if (mmap(taddr, blocksize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0) == (void*)-1)
+			if (mmap(taddr, blocksize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0) == (void*)-1)
 #endif	
 				Exit("\nError: cannot alloc %lld Mib memory.", blocksize / 1024 / 1024);
 
+			VMEM_SIZE += blocksize;
+			VMEM_NBLOCK++;
 			size += blocksize;
 			flag[i] = true;
 		}
@@ -803,6 +876,8 @@ TARGET byte* MEMORY::Alloc(int size)
 #endif
 				Exit("\nError: cannot unalloc virtual memory at %llx.", tail_addr);
 
+			VMEM_SIZE -= blocksize;
+			VMEM_NBLOCK --;
 			size -= blocksize;
 
 			if (size == 0)
@@ -814,9 +889,9 @@ TARGET byte* MEMORY::Alloc(int size)
 	}
 
 	/* If the data size in a block is zero, call UnAllocAddr */
-	TARGET void VMEMORY::SubUnAlloc(atomic<int>& size, int subv, int blockid)
+	TARGET void VMEMORY::SubUnAlloc(atomic<int>& _size, int subv, int blockid)
 	{
-		if (size.fetch_sub(subv) - subv == 0)
+		if (_size.fetch_sub(subv) - subv == 0)
 			UnAllocAddr(base_addr + blockid * blocksize);
 	}
 
@@ -835,6 +910,8 @@ TARGET byte* MEMORY::Alloc(int size)
 #endif
 				Exit("\nError: cannot unalloc virtual memory at %llx.", head_addr - blocksize);
 
+			VMEM_SIZE -= blocksize;
+			VMEM_NBLOCK--;
 			size -= blocksize;
 
 			if (size == 0)
@@ -851,9 +928,10 @@ TARGET byte* MEMORY::Alloc(int size)
 	/* Do nothing */
 	TARGET BUCKET::BUCKET()
 	{
-		new(this) VMEMORY();
+		//new(this) VMEMORY();
 		coffset = 0;
-		expanding = false;
+		write_count = 0;
+		//expanding = false;
 	}
 
 	/* Release memory */
@@ -868,7 +946,8 @@ TARGET byte* MEMORY::Alloc(int size)
 		base_addr = NULL;
 		tail_addr = NULL;
 		head_addr = NULL;
-		expanding = false;
+		write_count = 0;
+		//expanding = false;
 
 		vector<byte>().swap(flag);
 	}
@@ -880,20 +959,22 @@ TARGET byte* MEMORY::Alloc(int size)
 		new(&offset) LIST<OFFSET>();
 		new(this) VMEMORY(0);
 		coffset = 0;
-		expanding = false;
+		write_count = 0;
+		//expanding = false;
 	}
 
 	/* Create bucket for genotype bucket in haplotype extraction */
 	TARGET void BUCKET::CreateBucketGT(LIST<HAPLO_DUMMY_LOCUS>& hlocus)
 	{
 		coffset = 0;
-		expanding = false;
+		write_count = 0;
+		//expanding = false;
 
 		for (int64 l = 0; l < hlocus.size; ++l)
 		{
-			uint64 gsize = CeilLog2(hlocus[l].gsize);
-			offset.Push(OFFSET { coffset, gsize });
-			coffset += (gsize * nind + 7) >> 3; // xoffset 1
+			uint64 gtsize = CeilLog2(hlocus[l].gsize);
+			offset.Push(OFFSET { coffset, gtsize });
+			coffset += (gtsize * nind + 7) >> 3; //xoffset
 		}
 
 		new(this) VMEMORY(coffset + 7);
@@ -904,13 +985,14 @@ TARGET byte* MEMORY::Alloc(int size)
 	TARGET void BUCKET::CreateBucketGT(LOCUS* loc)
 	{
 		coffset = 0;
-		expanding = false;
+		write_count = 0;
+		//expanding = false;
 
 		for (int64 l = 0; l < nloc; ++l)
 		{
-			uint64 gsize = CeilLog2((int)loc[l].ngeno);//in bits 
-			offset.Push(OFFSET{ coffset, gsize });
-			coffset += (gsize * nind + 7) >> 3;// xoffset 2
+			uint64 gtsize = CeilLog2((int)loc[l].ngeno);//in bits 
+			offset.Push(OFFSET{ coffset, gtsize });
+			coffset += (gtsize * nind + 7) >> 3; //xoffset
 		}
 
 		new(this) VMEMORY(coffset + 7);
@@ -918,82 +1000,141 @@ TARGET byte* MEMORY::Alloc(int size)
 	}
 
 	/* Filter individual for genotype bucket */
+	template<typename REAL>
 	TARGET void BUCKET::FilterIndividualGT(BUCKET* obucket, int nfilt, bool progress, int nthread)
 	{
 		coffset = 0;
-		expanding = false;
+		write_count = 0;
+		//expanding = false;
 
 		for (int64 l = 0; l < nloc; ++l)
 		{
 			uint64 gtsize = geno_bucket.offset[l].size;
 			offset.Push(OFFSET{ coffset, gtsize });
-			coffset += (gtsize * nfilt + 7) >> 3;// xoffset 7
+			coffset += (gtsize * nfilt + 7) >> 3; //xoffset 3
 		}
 
-		//calculate nbytes in each memblock in obucket
-		byte* obase_addr = obucket->base_addr;
-		int64 oblocksize = obucket->blocksize;
-		LIST<OFFSET>& ooffset = obucket->offset;
+		if (true)
+		{
+			//move genotype id and allele depth table
+			new(this) VMEMORY(coffset + 7);
 
-		int nblock = (obucket->tail_addr - obucket->head_addr) / oblocksize;
-		atomic<int>* nbytes = new atomic<int>[nblock];
-		for (int j = 0; j < nblock - 1; ++j)
-			nbytes[j] = oblocksize;
-		nbytes[nblock - 1] = obucket->coffset - oblocksize * (nblock - 1);
+			//dump obucket to a temp file
+			time_t time1;
+			time(&time1);
+			tm* time2 = localtime(&time1);
+			char* tmpname = new char[PATH_LEN];
+			FILE* tmpfile = FOpen(tmpname, "wb+", "%svcfpop_%04d_%02d_%02d_%02d_%02d_%02d%s%d%s",
+				g_tmpdir_val.c_str(), time2->tm_year + 1900, time2->tm_mon + 1, time2->tm_mday, time2->tm_hour, time2->tm_min, time2->tm_sec, ".filter", 1, ".tmp");
+			fwrite(obucket->base_addr, 1, obucket->coffset, tmpfile);
+			fclose(tmpfile);
+			obucket->UnAllocAll();
 
-		new(this) VMEMORY(coffset + 7);
+			//map the temp file to memory
+			FileMapping fmap;
+			obucket->base_addr = fmap.MapingReadOnlyFile(tmpname);
+			LIST<OFFSET>& ooffset = obucket->offset;
 
 #pragma omp parallel  for num_threads(nthread)  schedule(dynamic, 1)
-		for (int64 l = 0; l < nloc; ++l)
-		{
-			threadid = omp_get_thread_num();
-			byte* readpos = obase_addr + ooffset[l].offset;
-
-			//check read pos
-			uint64 gtsize = offset[l].size;
-			uint64 gtlinesize = (gtsize * nfilt + 7) >> 3; //xoffset 11
-			byte* write_pos = base_addr + offset[l].offset, * write_end = write_pos + gtlinesize;
-			AllocRange(write_pos, write_end);
-
-			GENO_READER rg(0, l, obucket);
-			GENO_WRITER wg(l, this);
-
-			for (int i = 0; i < nind; ++i)
+			for (int64 l = 0; l < nloc; ++l)
 			{
-				uint gid = rg.Read();
-				if (ainds[i]) wg.Write(gid);
-			}
-			wg.FinishWrite();
+				threadid = omp_get_thread_num();
 
-			//Release memory if finish read a block
-			int block_st = (readpos - obase_addr) / oblocksize;
-			int block_ed = (readpos + gtlinesize - 1 - obase_addr) / oblocksize;
+				//check read pos
+				uint64 gtsize = offset[l].size;
+				uint64 gtlinesize = (gtsize * nfilt + 7) >> 3; //xoffset 4
+				byte* write_pos = base_addr + offset[l].offset, * write_end = write_pos + gtlinesize;
+				AllocRange(write_pos, write_end);
 
-			if (block_st == block_ed)
-				obucket->SubUnAlloc(nbytes[block_st], gtlinesize, block_st);
-			else
-			{
-				obucket->SubUnAlloc(nbytes[block_st], obase_addr + (block_st + 1) * oblocksize - readpos, block_st);
-				for (int j = block_st + 1; j < block_ed; ++j)
-					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
-				obucket->SubUnAlloc(nbytes[block_ed], readpos + gtlinesize - (obase_addr + block_ed * oblocksize), block_ed);
+				GENO_READER rg(0, l, obucket);
+				GENO_WRITER wg(l, this);
+
+				for (int i = 0; i < nind; ++i)
+				{
+					uint gid = rg.Read();
+					if (ainds[i]) wg.Write(gid);
+				}
+				wg.FinishWrite();
+
+				if (progress) PROGRESS_VALUE++;
 			}
 
-			if (progress) PROGRESS_VALUE++;
+			//unmap the temp file
+			fmap.UnMapingReadOnlyFile();
+
+			//remove the temp file
+			remove(tmpname);
+			delete[] tmpname;
 		}
+		else
+		{
+			//calculate nbytes in each memblock in obucket
+			byte* obase_addr = obucket->base_addr;
+			int64 oblocksize = obucket->blocksize;
+			LIST<OFFSET>& ooffset = obucket->offset;
 
-		for (int j = 0; j < nblock; ++j)
-			if (nbytes[j] > 0)
-				obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
+			int nblock = (obucket->tail_addr - obucket->head_addr) / oblocksize;
+			atomic<int>* nbytes = new atomic<int>[nblock];
+			for (int j = 0; j < nblock - 1; ++j)
+				nbytes[j] = oblocksize;
+			nbytes[nblock - 1] = obucket->coffset - oblocksize * (nblock - 1);
 
-		delete[] nbytes;
+			new(this) VMEMORY(coffset + 7);
+
+#pragma omp parallel  for num_threads(nthread)  schedule(dynamic, 1)
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				threadid = omp_get_thread_num();
+				byte* readpos = obase_addr + ooffset[l].offset;
+
+				//check read pos
+				uint64 gtsize = offset[l].size;
+				uint64 gtlinesize = (gtsize * nfilt + 7) >> 3; //xoffset 4
+				byte* write_pos = base_addr + offset[l].offset, * write_end = write_pos + gtlinesize;
+				AllocRange(write_pos, write_end);
+
+				GENO_READER rg(0, l, obucket);
+				GENO_WRITER wg(l, this);
+
+				for (int i = 0; i < nind; ++i)
+				{
+					uint gid = rg.Read();
+					if (ainds[i]) wg.Write(gid);
+				}
+				wg.FinishWrite();
+
+				//Release memory if finish read a block
+				int block_st = (readpos - obase_addr) / oblocksize;
+				int block_ed = (readpos + gtlinesize - 1 - obase_addr) / oblocksize;
+
+				if (block_st == block_ed)
+					obucket->SubUnAlloc(nbytes[block_st], gtlinesize, block_st);
+				else
+				{
+					obucket->SubUnAlloc(nbytes[block_st], obase_addr + (block_st + 1) * oblocksize - readpos, block_st);
+					for (int j = block_st + 1; j < block_ed; ++j)
+						obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
+					obucket->SubUnAlloc(nbytes[block_ed], readpos + gtlinesize - (obase_addr + block_ed * oblocksize), block_ed);
+				}
+
+				if (progress) PROGRESS_VALUE++;
+			}
+
+			for (int j = 0; j < nblock; ++j)
+				if (nbytes[j] > 0)
+					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
+
+			delete[] nbytes;
+		}
 	}
 
 	/* Filter individual for allele depth bucket */
+	template<typename REAL>
 	TARGET void BUCKET::FilterIndividualAD(BUCKET* obucket, int nfilt, bool progress, int nthread)
 	{
 		coffset = 0;
-		expanding = false;
+		write_count = 0;
+		//expanding = false;
 
 		for (int64 l = 0; l < nloc; ++l)
 		{
@@ -1003,67 +1144,126 @@ TARGET byte* MEMORY::Alloc(int size)
 			coffset += (adsize * k2 * nfilt + 7) >> 3;// xoffset 8
 		}
 
-		//calculate nbytes in each memblock in obucket
-		byte* obase_addr = obucket->base_addr;
-		int64 oblocksize = obucket->blocksize;
-		LIST<OFFSET>& ooffset = obucket->offset;
+		if (true)
+		{
+			//move genotype id and allele depth table
+			new(this) VMEMORY(coffset + 7);
 
-		int nblock = (obucket->tail_addr - obucket->head_addr) / oblocksize;
-		atomic<int>* nbytes = new atomic<int>[nblock];
-		for (int j = 0; j < nblock - 1; ++j)
-			nbytes[j] = oblocksize;
-		nbytes[nblock - 1] = obucket->coffset - oblocksize * (nblock - 1);
+			//dump obucket to a temp file
+			time_t time1;
+			time(&time1);
+			tm* time2 = localtime(&time1);
+			char* tmpname = new char[PATH_LEN];
+			FILE* tmpfile = FOpen(tmpname, "wb+", "%svcfpop_%04d_%02d_%02d_%02d_%02d_%02d%s%d%s",
+				g_tmpdir_val.c_str(), time2->tm_year + 1900, time2->tm_mon + 1, time2->tm_mday, time2->tm_hour, time2->tm_min, time2->tm_sec, ".filter", 1, ".tmp");
+			fwrite(obucket->base_addr, 1, obucket->coffset, tmpfile);
+			fclose(tmpfile);
+			obucket->UnAllocAll();
 
-		new(this) VMEMORY(coffset + 7);
+			//map the temp file to memory
+			FileMapping fmap;
+			obucket->base_addr = fmap.MapingReadOnlyFile(tmpname);
+			LIST<OFFSET>& ooffset = obucket->offset;
 
 #pragma omp parallel  for num_threads(nthread)  schedule(dynamic, 1)
-		for (int64 l = 0; l < nloc; ++l)
-		{
-			threadid = omp_get_thread_num();
-			int k2 = GetLoc(l).k;
-			byte* readpos = obase_addr + ooffset[l].offset;
-
-			//check read pos
-			uint64 adsize = offset[l].size;
-			uint64 adlinesize = (adsize * k2 * nfilt + 7) >> 3; //xoffset 12
-			byte* write_pos = base_addr + offset[l].offset, *write_end = write_pos + adlinesize;
-			AllocRange(write_pos, write_end);
-
-			GENO_READER rd(0, l, obucket);
-			GENO_WRITER wd(l, this);
-
-			for (int i = 0; i < nind; ++i)
+			for (int64 l = 0; l < nloc; ++l)
 			{
-				for (int k = 0; k < k2; ++k)
+				threadid = omp_get_thread_num();
+				int k2 = GetLoc(l).k;
+
+				//check read pos
+				uint64 adsize = offset[l].size;
+				uint64 adlinesize = (adsize * k2 * nfilt + 7) >> 3; //xoffset 12
+				byte* write_pos = base_addr + offset[l].offset, * write_end = write_pos + adlinesize;
+				AllocRange(write_pos, write_end);
+
+				GENO_READER rd(0, l, obucket);
+				GENO_WRITER wd(l, this);
+
+				for (int i = 0; i < nind; ++i)
 				{
-					uint depth = rd.Read();
-					if (ainds[i]) wd.Write(depth);
+					for (int k = 0; k < k2; ++k)
+					{
+						uint depth = rd.Read();
+						if (ainds[i]) wd.Write(depth);
+					}
 				}
-			}
-			wd.FinishWrite();
+				wd.FinishWrite();
 
-			//Release memory if finish read a block
-			int block_st = (readpos - obase_addr) / oblocksize;
-			int block_ed = (readpos + adlinesize - 1 - obase_addr) / oblocksize;
-
-			if (block_st == block_ed)
-				obucket->SubUnAlloc(nbytes[block_st], adlinesize, block_st);
-			else
-			{
-				obucket->SubUnAlloc(nbytes[block_st], obase_addr + (block_st + 1) * oblocksize - readpos, block_st);
-				for (int j = block_st + 1; j < block_ed; ++j)
-					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
-				obucket->SubUnAlloc(nbytes[block_ed], readpos + adlinesize - (obase_addr + block_ed * oblocksize), block_ed);
+				if (progress) PROGRESS_VALUE++;
 			}
 
-			if (progress) PROGRESS_VALUE++;
+			//unmap the temp file
+			fmap.UnMapingReadOnlyFile();
+
+			//remove the temp file
+			remove(tmpname);
+			delete[] tmpname;
 		}
+		else
+		{
+			//calculate nbytes in each memblock in obucket
+			byte* obase_addr = obucket->base_addr;
+			int64 oblocksize = obucket->blocksize;
+			LIST<OFFSET>& ooffset = obucket->offset;
 
-		for (int j = 0; j < nblock; ++j)
-			if (nbytes[j] > 0)
-				obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
+			int nblock = (obucket->tail_addr - obucket->head_addr) / oblocksize;
+			atomic<int>* nbytes = new atomic<int>[nblock];
+			for (int j = 0; j < nblock - 1; ++j)
+				nbytes[j] = oblocksize;
+			nbytes[nblock - 1] = obucket->coffset - oblocksize * (nblock - 1);
 
-		delete[] nbytes;
+			new(this) VMEMORY(coffset + 7);
+
+#pragma omp parallel  for num_threads(nthread)  schedule(dynamic, 1)
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				threadid = omp_get_thread_num();
+				int k2 = GetLoc(l).k;
+				byte* readpos = obase_addr + ooffset[l].offset;
+
+				//check read pos
+				uint64 adsize = offset[l].size;
+				uint64 adlinesize = (adsize * k2 * nfilt + 7) >> 3; //xoffset 12
+				byte* write_pos = base_addr + offset[l].offset, * write_end = write_pos + adlinesize;
+				AllocRange(write_pos, write_end);
+
+				GENO_READER rd(0, l, obucket);
+				GENO_WRITER wd(l, this);
+
+				for (int i = 0; i < nind; ++i)
+				{
+					for (int k = 0; k < k2; ++k)
+					{
+						uint depth = rd.Read();
+						if (ainds[i]) wd.Write(depth);
+					}
+				}
+				wd.FinishWrite();
+
+				//Release memory if finish read a block
+				int block_st = (readpos - obase_addr) / oblocksize;
+				int block_ed = (readpos + adlinesize - 1 - obase_addr) / oblocksize;
+
+				if (block_st == block_ed)
+					obucket->SubUnAlloc(nbytes[block_st], adlinesize, block_st);
+				else
+				{
+					obucket->SubUnAlloc(nbytes[block_st], obase_addr + (block_st + 1) * oblocksize - readpos, block_st);
+					for (int j = block_st + 1; j < block_ed; ++j)
+						obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
+					obucket->SubUnAlloc(nbytes[block_ed], readpos + adlinesize - (obase_addr + block_ed * oblocksize), block_ed);
+				}
+
+				if (progress) PROGRESS_VALUE++;
+			}
+
+			for (int j = 0; j < nblock; ++j)
+				if (nbytes[j] > 0)
+					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
+
+			delete[] nbytes;
+		}
 	}
 
 	/* Filter locus for genotype bucket */
@@ -1071,7 +1271,8 @@ TARGET byte* MEMORY::Alloc(int size)
 	{
 		//genotype id offset
 		coffset = 0;
-		expanding = false;
+		write_count = 0;
+		//expanding = false;
 
 		uint* newid = new uint[nloc];
 		memset(newid, 0xFF, nloc * sizeof(uint));
@@ -1083,69 +1284,125 @@ TARGET byte* MEMORY::Alloc(int size)
 
 			newid[l] = nl++;
 			uint64 gtsize = obucket->offset[l].size;
-			uint64 gtlinesize = (gtsize * nind + 7) >> 3;//xoffset 9
+			uint64 gtlinesize = (gtsize * nind + 7) >> 3; //xoffset
 			offset.Push(OFFSET{ coffset, gtsize });
 			coffset += gtlinesize;
 		}
 
-		//calculate nbytes in each memblock in obucket
-		byte* obase_addr = obucket->base_addr;
-		int64 oblocksize = obucket->blocksize;
-		LIST<OFFSET>& ooffset = obucket->offset;
-
-		int nblock = (obucket->tail_addr - obucket->head_addr) / oblocksize;
-		atomic<int>* nbytes = new atomic<int>[nblock];
-		for (int j = 0; j < nblock - 1; ++j)
-			nbytes[j] = oblocksize;
-		nbytes[nblock - 1] = obucket->coffset - oblocksize * (nblock - 1);
-
-		//move genotype id and allele depth table
-		new(this) VMEMORY(coffset + 7);
+		if (true)
+		{
+			//move genotype id and allele depth table
+			new(this) VMEMORY(coffset + 7);
+            
+			//dump obucket to a temp file
+			time_t time1;
+			time(&time1);
+			tm* time2 = localtime(&time1);
+			char* tmpname = new char[PATH_LEN];
+			FILE* tmpfile = FOpen(tmpname, "wb+", "%svcfpop_%04d_%02d_%02d_%02d_%02d_%02d%s%d%s",
+				g_tmpdir_val.c_str(), time2->tm_year + 1900, time2->tm_mon + 1, time2->tm_mday, time2->tm_hour, time2->tm_min, time2->tm_sec, ".filter", 1, ".tmp");
+			fwrite(obucket->base_addr, 1, obucket->coffset, tmpfile);
+			fclose(tmpfile);
+			obucket->UnAllocAll();
+			
+			//map the temp file to memory
+			FileMapping fmap;
+			byte* obase_addr = fmap.MapingReadOnlyFile(tmpname);
+			LIST<OFFSET>& ooffset = obucket->offset;
 
 #pragma omp parallel  for num_threads(nthread)  schedule(dynamic, 1)
-		for (int64 l = 0; l < nloc; ++l)
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				threadid = omp_get_thread_num();
+				byte* readpos = obase_addr + ooffset[l].offset;
+				uint64 gtsize = ooffset[l].size;
+				uint64 gtlinesize = (gtsize * nind + 7) >> 3; //xoffset
+
+				if (GetLoc(l).flag_pass)
+				{
+					int64 nl = newid[l];
+					byte* write_pos = base_addr + offset[nl].offset, * write_end = write_pos + gtlinesize;
+
+					AllocRange(write_pos, write_end);
+					memcpy(base_addr + offset[nl].offset, readpos, gtlinesize);
+
+					//deep copy locus
+					new(&nslocus[nl]) SLOCUS(mem[threadid], slocus[l]);
+					if (haplotype) nlocus_pos[nl] = GetLocPos(l);
+				}
+
+				if (progress) PROGRESS_VALUE++;
+			}
+
+			//unmap the temp file
+			fmap.UnMapingReadOnlyFile();
+
+			//remove the temp file
+			remove(tmpname);
+			delete[] tmpname;
+		}
+		else 
 		{
-			threadid = omp_get_thread_num();
-			byte* readpos = obase_addr + ooffset[l].offset;
-			uint64 gtsize = ooffset[l].size;
-			uint64 gtlinesize = (gtsize * nind + 7) >> 3; //xoffset 11
+			//calculate nbytes in each memblock in obucket
+			byte* obase_addr = obucket->base_addr;
+			int64 oblocksize = obucket->blocksize;
+			LIST<OFFSET>& ooffset = obucket->offset;
 
-			if (GetLoc(l).flag_pass)
+			int nblock = (obucket->tail_addr - obucket->head_addr) / oblocksize;
+			atomic<int>* nbytes = new atomic<int>[nblock];
+			for (int j = 0; j < nblock - 1; ++j)
+				nbytes[j] = oblocksize;
+			nbytes[nblock - 1] = obucket->coffset - oblocksize * (nblock - 1);
+
+			//move genotype id and allele depth table
+			new(this) VMEMORY(coffset + 7);
+
+#pragma omp parallel  for num_threads(nthread)  schedule(dynamic, 1)
+			for (int64 l = 0; l < nloc; ++l)
 			{
-				int64 nl = newid[l];
-				byte* write_pos = base_addr + offset[nl].offset, *write_end = write_pos + gtlinesize;
+				threadid = omp_get_thread_num();
+				byte* readpos = obase_addr + ooffset[l].offset;
+				uint64 gtsize = ooffset[l].size;
+				uint64 gtlinesize = (gtsize * nind + 7) >> 3; //xoffset
 
-				AllocRange(write_pos, write_end);
-				memmove(base_addr + offset[nl].offset, readpos, gtlinesize);
+				if (GetLoc(l).flag_pass)
+				{
+					int64 nl = newid[l];
+					byte* write_pos = base_addr + offset[nl].offset, * write_end = write_pos + gtlinesize;
 
-				//deep copy locus
-				new(&nslocus[nl]) SLOCUS(mem[threadid], slocus[l]);
-				if (haplotype) nlocus_pos[nl] = GetLocPos(l);
+					AllocRange(write_pos, write_end);
+					memmove(base_addr + offset[nl].offset, readpos, gtlinesize);
+
+					//deep copy locus
+					new(&nslocus[nl]) SLOCUS(mem[threadid], slocus[l]);
+					if (haplotype) nlocus_pos[nl] = GetLocPos(l);
+				}
+
+				//Release memory if finish read a block
+				int block_st = (readpos - obase_addr) / oblocksize;
+				int block_ed = (readpos + gtlinesize - 1 - obase_addr) / oblocksize;
+
+				if (block_st == block_ed)
+					obucket->SubUnAlloc(nbytes[block_st], gtlinesize, block_st);
+				else
+				{
+					obucket->SubUnAlloc(nbytes[block_st], obase_addr + (block_st + 1) * oblocksize - readpos, block_st);
+					for (int j = block_st + 1; j < block_ed; ++j)
+						obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
+					obucket->SubUnAlloc(nbytes[block_ed], readpos + gtlinesize - (obase_addr + block_ed * oblocksize), block_ed);
+				}
+
+				if (progress) PROGRESS_VALUE++;
 			}
 
-			//Release memory if finish read a block
-			int block_st = (readpos - obase_addr) / oblocksize;
-			int block_ed = (readpos + gtlinesize - 1 - obase_addr) / oblocksize;
-
-			if (block_st == block_ed)
-				obucket->SubUnAlloc(nbytes[block_st], gtlinesize, block_st);
-			else
-			{
-				obucket->SubUnAlloc(nbytes[block_st], obase_addr + (block_st + 1) * oblocksize - readpos, block_st);
-				for (int j = block_st + 1; j < block_ed; ++j)
+			for (int j = 0; j < nblock; ++j)
+				if (nbytes[j] > 0)
 					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
-				obucket->SubUnAlloc(nbytes[block_ed], readpos + gtlinesize - (obase_addr + block_ed * oblocksize), block_ed);
-			}
 
-			if (progress) PROGRESS_VALUE++;
+			delete[] nbytes;
 		}
 
-		for (int j = 0; j < nblock; ++j)
-			if (nbytes[j] > 0)
-				obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
-
 		delete[] newid;
-		delete[] nbytes;
 	}
 
 	/* Filter locus for allele depth bucket */
@@ -1153,7 +1410,8 @@ TARGET byte* MEMORY::Alloc(int size)
 	{
 		//genotype id offset
 		coffset = 0;
-		expanding = false;
+		write_count = 0;
+		//expanding = false;
 
 		uint* newid = new uint[nloc];
 		memset(newid, 0xFF, nloc * sizeof(uint));
@@ -1165,74 +1423,128 @@ TARGET byte* MEMORY::Alloc(int size)
 
 			newid[l] = nl++;
 			uint64 adsize = obucket->offset[l].size;
-			uint64 adlinesize = (adsize * GetLoc(l).k * nind + 7) >> 3;//xoffset 10
+			uint64 adlinesize = (adsize * GetLoc(l).k * nind + 7) >> 3;//xoffset
+
 			offset.Push(OFFSET{ coffset, adsize });
 			coffset += adlinesize;
 		}
 
-		//calculate nbytes in each memblock in obucket
-		byte* obase_addr = obucket->base_addr;
-		int64 oblocksize = obucket->blocksize;
-		LIST<OFFSET>& ooffset = obucket->offset;
+		if (true)
+		{
+			//move genotype id and allele depth table
+			new(this) VMEMORY(coffset + 7);
 
-		int nblock = (obucket->tail_addr - obucket->head_addr) / oblocksize;
-		atomic<int>* nbytes = new atomic<int>[nblock];
-		for (int j = 0; j < nblock - 1; ++j)
-			nbytes[j] = oblocksize;
-		nbytes[nblock - 1] = obucket->coffset - oblocksize * (nblock - 1);
+			//dump obucket to a temp file
+			time_t time1;
+			time(&time1);
+			tm* time2 = localtime(&time1);
+			char* tmpname = new char[PATH_LEN];
+			FILE* tmpfile = FOpen(tmpname, "wb+", "%svcfpop_%04d_%02d_%02d_%02d_%02d_%02d%s%d%s",
+				g_tmpdir_val.c_str(), time2->tm_year + 1900, time2->tm_mon + 1, time2->tm_mday, time2->tm_hour, time2->tm_min, time2->tm_sec, ".filter", 1, ".tmp");
+			fwrite(obucket->base_addr, 1, obucket->coffset, tmpfile);
+			fclose(tmpfile);
+			obucket->UnAllocAll();
 
-		//move genotype id and allele depth table
-		new(this) VMEMORY(coffset + 7);
+			//map the temp file to memory
+			FileMapping fmap;
+			byte* obase_addr = fmap.MapingReadOnlyFile(tmpname);
+			LIST<OFFSET>& ooffset = obucket->offset;
 
 #pragma omp parallel  for num_threads(nthread)  schedule(dynamic, 1)
-		for (int64 l = 0; l < nloc; ++l)
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				threadid = omp_get_thread_num();
+				byte* readpos = obase_addr + ooffset[l].offset;
+				uint64 adsize = obucket->offset[l].size;
+				uint64 adlinesize = (adsize * GetLoc(l).k * nind + 7) >> 3; //xoffset
+
+				if (GetLoc(l).flag_pass)
+				{
+					int64 nl = newid[l];
+					byte* write_pos = base_addr + offset[nl].offset, * write_end = write_pos + adlinesize;
+
+					AllocRange(write_pos, write_end);
+					memcpy(base_addr + offset[nl].offset, readpos, adlinesize);
+				}
+
+				if (progress) PROGRESS_VALUE++;
+			}
+
+			//unmap the temp file
+			fmap.UnMapingReadOnlyFile();
+
+			//remove the temp file
+			remove(tmpname);
+			delete[] tmpname;
+		}
+		else 
 		{
-			threadid = omp_get_thread_num();
-			byte* readpos = obase_addr + ooffset[l].offset;
-			uint64 adsize = obucket->offset[l].size;
-			uint64 adlinesize = (adsize * GetLoc(l).k * nind + 7) >> 3; //xoffset 12
+			//calculate nbytes in each memblock in obucket
+			byte* obase_addr = obucket->base_addr;
+			int64 oblocksize = obucket->blocksize;
+			LIST<OFFSET>& ooffset = obucket->offset;
 
-			if (GetLoc(l).flag_pass)
+			int nblock = (obucket->tail_addr - obucket->head_addr) / oblocksize;
+			atomic<int>* nbytes = new atomic<int>[nblock];
+			for (int j = 0; j < nblock - 1; ++j)
+				nbytes[j] = oblocksize;
+			nbytes[nblock - 1] = obucket->coffset - oblocksize * (nblock - 1);
+
+			//move genotype id and allele depth table
+			new(this) VMEMORY(coffset + 7);
+
+#pragma omp parallel  for num_threads(nthread)  schedule(dynamic, 1)
+			for (int64 l = 0; l < nloc; ++l)
 			{
-				int64 nl = newid[l];
-				byte* write_pos = base_addr + offset[nl].offset, *write_end = write_pos + adlinesize;
+				threadid = omp_get_thread_num();
+				byte* readpos = obase_addr + ooffset[l].offset;
+				uint64 adsize = obucket->offset[l].size;
+				uint64 adlinesize = (adsize * GetLoc(l).k * nind + 7) >> 3; //xoffset
 
-				AllocRange(write_pos, write_end);
-				memmove(base_addr + offset[nl].offset, readpos, adlinesize);
+				if (GetLoc(l).flag_pass)
+				{
+					int64 nl = newid[l];
+					byte* write_pos = base_addr + offset[nl].offset, * write_end = write_pos + adlinesize;
+
+					AllocRange(write_pos, write_end);
+					memmove(base_addr + offset[nl].offset, readpos, adlinesize);
+				}
+
+				//Release memory if finish read a block
+				int block_st = (readpos - obase_addr) / oblocksize;
+				int block_ed = (readpos + adlinesize - 1 - obase_addr) / oblocksize;
+
+				if (block_st == block_ed)
+					obucket->SubUnAlloc(nbytes[block_st], adlinesize, block_st);
+				else
+				{
+					obucket->SubUnAlloc(nbytes[block_st], obase_addr + (block_st + 1) * oblocksize - readpos, block_st);
+					for (int j = block_st + 1; j < block_ed; ++j)
+						obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
+					obucket->SubUnAlloc(nbytes[block_ed], readpos + adlinesize - (obase_addr + block_ed * oblocksize), block_ed);
+				}
+
+				if (progress) PROGRESS_VALUE++;
 			}
 
-			//Release memory if finish read a block
-			int block_st = (readpos - obase_addr) / oblocksize;
-			int block_ed = (readpos + adlinesize - 1 - obase_addr) / oblocksize;
-
-			if (block_st == block_ed)
-				obucket->SubUnAlloc(nbytes[block_st], adlinesize, block_st);
-			else
-			{
-				obucket->SubUnAlloc(nbytes[block_st], obase_addr + (block_st + 1) * oblocksize - readpos, block_st);
-				for (int j = block_st + 1; j < block_ed; ++j)
+			for (int j = 0; j < nblock; ++j)
+				if (nbytes[j] > 0)
 					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
-				obucket->SubUnAlloc(nbytes[block_ed], readpos + adlinesize - (obase_addr + block_ed * oblocksize), block_ed);
-			}
 
-			if (progress) PROGRESS_VALUE++;
+			delete[] nbytes;
 		}
 
-		for (int j = 0; j < nblock; ++j)
-			if (nbytes[j] > 0)
-				obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
-
 		delete[] newid;
-		delete[] nbytes;
 	}
 
 	/* Allocate offset for genotype bucket */
-	TARGET OFFSET BUCKET::AddOffsetGT(uint64 gsize, uint64 id)
+	TARGET OFFSET BUCKET::AddOffsetGT(uint64 gtsize, uint64 id)
 	{
 		OFFSET re = OFFSET{ 
-			coffset.fetch_add((gsize * nind + 7) >> 3), 
-			gsize };
-		offset.Place(re, id, lock, expanding);
+			coffset.fetch_add((gtsize * nind + 7) >> 3),
+			gtsize };
+
+		offset.Place(re, id, lock, write_count);
 
 		//insufficient size, expand
 		if (coffset > size)
@@ -1247,7 +1559,8 @@ TARGET byte* MEMORY::Alloc(int size)
 		OFFSET re = OFFSET{
 			coffset.fetch_add((adsize * k * nind + 7) >> 3),
 			adsize };
-		offset.Place(re, id, lock, expanding);
+
+		offset.Place(re, id, lock, write_count);
 
 		//insufficient size, expand
 		if (coffset > size)
@@ -1270,7 +1583,8 @@ TARGET byte* MEMORY::Alloc(int size)
 		head_addr = ref.head_addr;
 
 		coffset = ref.coffset.load();
-		expanding = false;;
+		//expanding = false;
+		write_count = 0;
 		offset = ref.offset;
 		flag.swap(ref.flag);
 
@@ -1281,7 +1595,8 @@ TARGET byte* MEMORY::Alloc(int size)
 		ref.tail_addr = NULL;
 		ref.head_addr = NULL;
 		ref.coffset = 0;
-		ref.expanding = false;
+		ref.write_count = 0;
+		//ref.expanding = false;
 	}
 
 #endif
@@ -1536,20 +1851,20 @@ TARGET void RunThreads(void (*Func) (int), void (*GuardFunc1) (int), void (*Guar
 
 	PROGRESS_CEND = PROGRESS_VALUE + nct;
 	PROGRESS_CSTART = PROGRESS_VALUE;
-	VLA_NEW(hThread, thread, nthreads + 2);
-	VLA_NEW(fThread, bool, nthreads + 2);
+	VLA_NEW(threads, thread, nthreads + 2);
+	VLA_NEW(flags, bool, nthreads + 2);
 
 	for (int i = 0; i < nthreads + 2; ++i)
 	{
-		fThread[i] = true;
+		flags[i] = true;
 		if (i == nthreads && GuardFunc1)
-			hThread[i] = thread(GuardFunc1, i);
+			threads[i] = thread(GuardFunc1, i);
 		else if (i == nthreads + 1 && GuardFunc2)
-			hThread[i] = thread(GuardFunc2, i);
+			threads[i] = thread(GuardFunc2, i);
 		else if (i < nthreads && Func)
-			hThread[i] = thread(Func, i);
+			threads[i] = thread(Func, i);
 		else
-			fThread[i] = false;
+			flags[i] = false;
 	}
 
 	while (PROGRESS_VALUE != PROGRESS_CEND)
@@ -1584,11 +1899,11 @@ TARGET void RunThreads(void (*Func) (int), void (*GuardFunc1) (int), void (*Guar
 	}
 
 	for (int i = 0; i < nthreads + 2; ++i)
-		if (fThread[i])
-			hThread[i].join();
+		if (flags[i])
+			threads[i].join();
 
-	VLA_DELETE(hThread);
-	VLA_DELETE(fThread);
+	VLA_DELETE(threads);
+	VLA_DELETE(flags);
 }
 
 #pragma pack(pop)

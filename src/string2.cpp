@@ -644,8 +644,26 @@ TARGET uint ReadBinInteger(char*& str, int len)
 }
 
 /* Parse a integer from string and move pointer */
-TARGET int ReadInteger(char*& str)
+TARGET int ReadInteger(char*& p)
 {
+	int c = 0, sign = 0, x = 0;
+
+	for (c = *p++; c < '0' || c > '9'; c = *p++)
+	{
+		if (c == '-')
+		{
+			sign = 1;
+			c = *(p++);
+			break;
+		}
+	}
+
+	for (; c >= '0' && c <= '9'; c = *p++)
+		x = (x << 1) + (x << 3) + c - '0';
+
+	p--;
+	return sign ? -x : x;
+	/*
 	while ((*str < '0' || *str > '9') && *str != '-' && *str != '?') str++;
 	
 	if (*str == '?')
@@ -673,11 +691,30 @@ TARGET int ReadInteger(char*& str)
 	while (*str >= '0' && *str <= '9')
 		re = re * 10 + (*str++ - '0');
 	return re * sign;
+	*/
 }
 
 /* Parse a integer from string and do not move pointer */
 TARGET int ReadIntegerKeep(char* str)
 {
+	int c = 0, sign = 0, x = 0;
+	char* p = str;
+
+	for (c = *p++; c < '0' || c > '9'; c = *p++)
+	{ 
+		if (c == '-')
+		{ 
+			sign = 1; 
+			c = *(p++); 
+			break; 
+		} 
+	}
+
+	for (; c >= '0' && c <= '9'; c = *p++)
+		x = (x << 1) + (x << 3) + c - '0';
+	
+	return sign ? -x : x;
+	/*
 	while ((*str < '0' || *str > '9') && *str != '-') str++;
 
 	int sign = 0, re = 0;
@@ -699,6 +736,7 @@ TARGET int ReadIntegerKeep(char* str)
 	while (*str >= '0' && *str <= '9')
 		re = re * 10 + (*str++ - '0');
 	return re * sign;
+	*/
 }
 
 /* Parse a real number from string and move pointer */
@@ -1010,12 +1048,13 @@ TARGET void GetParString(string gpar, const string& ref, bool& parid, int& val)
 	if (idx == -1)
 		Exit("\nError: cannot parse parameter %s, check format.\n", gpar.c_str());
 
-	gpar = gpar.substr(idx + 1);
+	string gpar2 = gpar.substr(idx + 1);
 	vector<string> refs = SplitStr(ref, "|");
 
-	auto it = std::find(refs.begin(), refs.end(), gpar);
+	auto it = std::find(refs.begin(), refs.end(), gpar2);
 	if (it == refs.end())
 		Exit("\nError: Unrecognized parameter: %s.\n ", gpar.c_str());
+
 	val = std::distance(refs.begin(), it) + 1;
 }
 
@@ -1043,6 +1082,7 @@ TARGET void GetParStringMultiSel(string gpar, const string& ref, bool& parid, by
 }
 
 /* Print a real number to a file */
+
 TARGET void WriteReal(FILE* fout, double val)
 {
 	if (IsError(val)) fprintf(fout, "nan");
@@ -1059,6 +1099,27 @@ TARGET void WriteReal(char*& fout, double val)
 
 /* Append a real number to a string */
 TARGET void AppendReal(char* sout, double val)
+{
+	if (IsError(val)) sprintf(sout, "nan");
+	else sprintf(sout, g_decimal_str, val);
+}
+
+TARGET void WriteReal(FILE* fout, float val)
+{
+	if (IsError(val)) fprintf(fout, "nan");
+	else fprintf(fout, g_decimal_str, val);
+}
+
+/* Print a real number to a string */
+TARGET void WriteReal(char*& fout, float val)
+{
+	if (IsError(val)) sprintf(fout, "nan");
+	else sprintf(fout, g_decimal_str, val);
+	fout += strlen(fout);
+}
+
+/* Append a real number to a string */
+TARGET void AppendReal(char* sout, float val)
 {
 	if (IsError(val)) sprintf(sout, "nan");
 	else sprintf(sout, g_decimal_str, val);

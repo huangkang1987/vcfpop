@@ -3,14 +3,14 @@
 #include "vcfpop.h"
 
 #define extern 
+
 /* Global Variables */
+
 extern timepoint EVAL_BEGIN;
 extern LOCK GLOCK1, GLOCK2, *GLOCK3;
-extern double NA;
 extern bool ALLELE_IDENTIFIER;									//No allele name string for non-vcf/bcf input and vcf/bcf that performed haplotype extraction
 extern int SIMD_TYPE;											//Single-instruction-multiple-data instruction used
 extern int GDIST_METHOD;										//Current GD method, 1 genetic distance, 2 pcoa or 3 hierarchical clustering
-extern bool STRUCTURE_DECOMP;									//Decompress model in Bayesian clustering
 
 extern string EXEDIR;											//Executable directory
 extern string CURDIR;											//Current directory
@@ -21,8 +21,6 @@ extern double ALPHA[N_DRE_MODELT + 1][N_MAX_PLOIDY + 1][3];		//Double reduction 
 extern double BINOMIAL[N_MAX_PLOIDY + 1][N_MAX_PLOIDY + 1];		//Binomial coefficients
 
 extern atomic<int64> PROGRESS_VALUE;							//Progress value 
-extern atomic<int64> PROGRESS_VALUE2;							//Progress value 2 
-extern atomic<int64> PROGRESS_VALUE3;							//Progress value 3
 extern int64 PROGRESS_TOTAL;									//Total tasks in this function
 extern int64 PROGRESS_CSTART;									//Start value of this batch
 extern int64 PROGRESS_CEND;										//End value of this batch
@@ -46,6 +44,8 @@ extern const char* DRE_MODEL[] = 								//Double-reduction model names
 /* Virtual Memory */
 
 extern bool BIG_FILE;											//use > 10Gib genotype id memory
+extern atomic<int64> VMEM_SIZE;									//number of bytes allocated
+extern atomic<int64> VMEM_NBLOCK;								//number of virtual memory blocks allocated
 
 
 /* File information and length */
@@ -75,16 +75,23 @@ extern _thread int threadid;									//Thread index
 
 /* Population info */
 
-extern IND** ainds;												//Individuals
-extern POP** apops;												//Rearranged populations
-extern POP*** aregs;											//Rearranged regions
+extern void* ainds_;											//Individuals
+#define ainds (*(IND<REAL>***)&ainds_)
+
+extern void* apops_;											//Rearranged populations
+#define apops (*(POP<REAL>***)&apops_)
+
+extern void* aregs_;											//Rearranged regions
+#define aregs (*(POP<REAL>****)&aregs_)
+
+extern void* total_pop_;										//Total population
+#define total_pop (*(POP<REAL>**)&total_pop_)
 
 extern int npop;												//Number of populations
 extern int lreg;												//Level of regions
 extern int nreg[N_MAX_REG];										//Number of regions in each level
 extern int nregt;												//Total number of regions
 extern int nregt2;												//Total number of region pairs across levels
-extern POP* total_pop;											//Total population
 
 extern LOCN nloc;												//Number of loci
 extern int nind;												//Number of individuals
@@ -92,3 +99,9 @@ extern byte maxploidy;											//Max ploidy in all genotypes
 extern byte minploidy;											//Min ploidy in all genotypes
 extern int64 maxvt;												//Max number of allele copies in an indivdiaul
 extern int64 sumvt;												//Total number of allele copies in all indivdiauls
+															
+/* GPU */
+
+extern int nGPU;												//Number of GPU devices
+
+#undef extern 

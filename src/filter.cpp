@@ -3,6 +3,13 @@
 #pragma once
 #include "vcfpop.h"
 
+template TARGET void ApplyFilter<double>();
+template TARGET void ApplyFilter<float >();
+template TARGET void SetVReg<double>(int rl, int i);
+template TARGET void SetVReg<float >(int rl, int i);
+template TARGET void AssignVInds<double>();
+template TARGET void AssignVInds<float >();
+
 #ifndef _PCOA
 #endif
 
@@ -17,25 +24,26 @@ extern atomic<int> nfilterind;						//Number of filtered individuals
 #undef extern 
 
 /* Applying individual and diversity filters */
+template<typename REAL>
 TARGET void ApplyFilter()
 {
 	EvaluationBegin();
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 
 	//1. Applying individual filter
 	if (individual_filter)
 	{
-		RunThreads(&MarkerIndividual, NULL, NULL, nind + nloc * 2, nind + nloc,
+		RunThreads(&MarkerIndividual<REAL>, NULL, NULL, nind + nloc * 2, nind + nloc,
 			"\nApplying individual filter:\n", 1, true, (int)((nind + nloc) / (nind + nloc * 2) * g_progress_val));
 
-		RunThreads(&RemoveIndividual, NULL, NULL, nind + nloc * 2, nloc,
+		RunThreads(&RemoveIndividual<REAL>, NULL, NULL, nind + nloc * 2, nloc,
 			NULL, 1, false, g_progress_val - (int)((nind + nloc) / (nind + nloc * 2) * g_progress_val));
 	}
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 
 	//Assign individuals into their vpop
-	AssignVInds();
-	CheckGenotypeId();
+	AssignVInds<REAL>();
+	CheckGenotypeId<REAL>();
 
 	//2. Apply diversity filter
 	if (diversity_filter)
@@ -48,10 +56,10 @@ TARGET void ApplyFilter()
 			{
 				bool find = false;
 				for (int i = 0; i < npop; ++i)
-					if (pop[i].name == f_pop_val)
+					if (pop<REAL>[i].name == f_pop_val)
 					{
 						find = true;
-						cpop = &pop[i];
+						cpop = &pop<REAL>[i];
 					}
 
 				if (!find) Exit("\nError: Cannot find target population %d, check parameter -f_pop.\n", f_pop_val.c_str());
@@ -60,12 +68,12 @@ TARGET void ApplyFilter()
 		else if (f_region_b)
 		{
 			bool find = false;
-			for (uint rl = 0; rl < reg.size - 1; ++rl)
-				for (uint i = 0; i < reg[rl].size; ++i)
-					if (reg[rl][i].name == f_region_val)
+			for (uint rl = 0; rl < reg<REAL>.size - 1; ++rl)
+				for (uint i = 0; i < reg<REAL>[rl].size; ++i)
+					if (reg<REAL>[rl][i].name == f_region_val)
 					{
 						find = true;
-						cpop = &reg[rl][i];
+						cpop = &reg<REAL>[rl][i];
 					}
 
 			if (!find) Exit("\nError: Cannot find target region %s, check parameter -f_region.\n", f_region_val.c_str());
@@ -74,8 +82,8 @@ TARGET void ApplyFilter()
 			cpop = total_pop;
 
 		//Temp use allele frequency and genotype count for diversity calculation
-		allele_freq_offset = new LOCN[nloc];
-		genotype_count_offset = new LOCN[nloc];
+		allele_freq_offset = new uint64[nloc];
+		genotype_count_offset = new uint64[nloc];
 		SetFF(allele_freq_offset, nloc);
 		SetFF(genotype_count_offset, nloc);
 
@@ -97,7 +105,7 @@ TARGET void ApplyFilter()
 		if (f_windowsize_b && abs(g_format_val) <= BCF)
 			new(&contig_diversity) TABLE<HASH, TABLE<HASH, pair<LOCN, double>>>(true, NULL);
 
-		RunThreads(&MarkerDiversity, NULL, NULL, nloc, nloc, "\nMarking locus diversity filter:\n", 1, true);
+		RunThreads(&MarkerDiversity<REAL>, NULL, NULL, nloc, nloc, "\nMarking locus diversity filter:\n", 1, true);
 
 		if (f_windowsize_b && abs(g_format_val) <= BCF)
 		{
@@ -123,7 +131,7 @@ TARGET void ApplyFilter()
 		allele_freq_offset = genotype_count_offset = NULL;
 	}
 
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 
 	//Mark monomorphic locus after previous filtering
 	TABLE<int, int>* allele_table = new TABLE<int, int>[g_nthread_val];
@@ -159,7 +167,7 @@ TARGET void ApplyFilter()
 		}
 	}
 	delete[] allele_table;
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 
 	//3. Apply locus filter
 	nfilter = 0;
@@ -176,15 +184,15 @@ TARGET void ApplyFilter()
 		}
 	}
 
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 
 	if (nfilter == 0)
 		Exit("\nError: all %d loci are excluded from analysis, try less strict filters.\n", nloc);
 
 	if (nfilter != nloc)
-		RunThreads(&RemoveLocus, NULL, NULL, nloc * (ad_bucket.base_addr ? 2 : 1), nloc * (ad_bucket.base_addr ? 2 : 1), "\nApplying locus diversity filter:\n", 1, true);
+		RunThreads(&RemoveLocus<REAL>, NULL, NULL, nloc * (ad_bucket.base_addr ? 2 : 1), nloc * (ad_bucket.base_addr ? 2 : 1), "\nApplying locus diversity filter:\n", 1, true);
 
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 
 	if (locus_pos && !haplotype)
 	{
@@ -196,89 +204,91 @@ TARGET void ApplyFilter()
 }
 
 /* Recursive set vid, vpop, ind for each region */
+template<typename REAL>
 TARGET void SetVReg(int rl, int i)
 {
 	if (rl >= 0)
 	{
-		if (reg[rl][i].npop == 0 || reg[rl][i].nind == 0) return;
-		reg[rl][i].id = nreg[rl];
-		reg[rl][i].vpop = rl >= 1 ? aregs[rl - 1] + nreg[rl - 1] : apops + npop;
-		reg[rl][i].inds = rinds + nind;
-		reg[rl][i].ind0id = nind;
-		aregs[rl][nreg[rl]++] = &reg[rl][i];
+		if (reg<REAL>[rl][i].npop == 0 || reg<REAL>[rl][i].nind == 0) return;
+		reg<REAL>[rl][i].id = nreg[rl];
+		reg<REAL>[rl][i].vpop = rl >= 1 ? aregs[rl - 1] + nreg[rl - 1] : apops + npop;
+		reg<REAL>[rl][i].inds = rinds + nind;
+		reg<REAL>[rl][i].ind0id = nind;
+		aregs[rl][nreg[rl]++] = &reg<REAL>[rl][i];
 	}
 
-	if (rl > 0) for (uint j = 0; j < reg[rl - 1].size; ++j)
+	if (rl > 0) for (uint j = 0; j < reg<REAL>[rl - 1].size; ++j)
 	{
-		if (reg[rl - 1][j].rid != i) continue;
-		reg[rl - 1][j].rid = reg[rl][i].id;
-		SetVReg(rl - 1, j);
+		if (reg<REAL>[rl - 1][j].rid != i) continue;
+		reg<REAL>[rl - 1][j].rid = reg<REAL>[rl][i].id;
+		SetVReg<REAL>(rl - 1, j);
 	}
-	else for (uint j = 0; j < pop.size; ++j)
+	else for (uint j = 0; j < pop<REAL>.size; ++j)
 	{
-		if (pop[j].rid != i || pop[j].nind == 0) continue;
+		if (pop<REAL>[j].rid != i || pop<REAL>[j].nind == 0) continue;
 
-		apops[npop] = &pop[j];
-		pop[j].id = npop++;
-		pop[j].rid = reg[rl][i].id;
-		pop[j].vpop = NULL;
-		pop[j].inds = rinds + nind;
-		pop[j].ind0id = nind;
-		nind += pop[j].nind;
+		apops[npop] = &pop<REAL>[j];
+		pop<REAL>[j].id = npop++;
+		pop<REAL>[j].rid = reg<REAL>[rl][i].id;
+		pop<REAL>[j].vpop = NULL;
+		pop<REAL>[j].inds = rinds + nind;
+		pop<REAL>[j].ind0id = nind;
+		nind += pop<REAL>[j].nind;
 	}
 }
 
 /* Sort individuals by population index to rinds array */
+template<typename REAL>
 TARGET void AssignVInds()
 {
 	/* Original order is in ind and should not be changed to correctly obtain genotype index */
 
 	//Assign pop/reg
-	for (uint i = 0; i < pop.size; ++i)
-		pop[i].nind = 0;
+	for (uint i = 0; i < pop<REAL>.size; ++i)
+		pop<REAL>[i].nind = 0;
 
-	for (uint rl = 0; rl < reg.size; ++rl)
-		for (uint i = 0; i < reg[rl].size; ++i)
-			reg[rl][i].npop = reg[rl][i].nind = 0;
+	for (uint rl = 0; rl < reg<REAL>.size; ++rl)
+		for (uint i = 0; i < reg<REAL>[rl].size; ++i)
+			reg<REAL>[rl][i].npop = reg<REAL>[rl][i].nind = 0;
 
 	//First scan, count inds
 	for (int j = 0; j < nind; ++j)
 	{
 		//default pop or input pop
-		int i = (ainds[j]->popid < 1 || ainds[j]->popid >= pop.size) ? 0 : ainds[j]->popid;
-		pop[i].nind++;
+		int i = (ainds[j]->popid < 1 || ainds[j]->popid >= pop<REAL>.size) ? 0 : ainds[j]->popid;
+		pop<REAL>[i].nind++;
 	}
 
 	//Allocate vreg
 	nregt = nregt2 = 0;
-	lreg = reg.size;
-	aregs = new POP * *[reg.size];
-	SetZero(aregs, reg.size);
+	lreg = reg<REAL>.size;
+	aregs = new POP<REAL>**[reg<REAL>.size];
+	SetZero(aregs, reg<REAL>.size);
 	SetZero(nreg, lreg);
 
 	//Add up nind and npop to regions at lay 0
-	for (uint i = 0; i < pop.size; ++i)
+	for (uint i = 0; i < pop<REAL>.size; ++i)
 	{
-		if (pop[i].nind == 0) continue;
-		if (reg.size > 0 && reg[0].size > 0)
+		if (pop<REAL>[i].nind == 0) continue;
+		if (reg<REAL>.size > 0 && reg<REAL>[0].size > 0)
 		{
-			reg[0][pop[i].rid].npop++;
-			reg[0][pop[i].rid].nind += pop[i].nind;
+			reg<REAL>[0][pop<REAL>[i].rid].npop++;
+			reg<REAL>[0][pop<REAL>[i].rid].nind += pop<REAL>[i].nind;
 		}
 	}
 
 	//Add up nind and npop to regions at lay 1+
-	for (uint rl = 0; rl < reg.size; ++rl)
+	for (uint rl = 0; rl < reg<REAL>.size; ++rl)
 	{
-		for (uint i = 0; i < reg[rl].size; ++i)
+		for (uint i = 0; i < reg<REAL>[rl].size; ++i)
 		{
-			if (reg[rl][i].npop > 0)
+			if (reg<REAL>[rl][i].npop > 0)
 			{
 				nreg[rl]++;  nregt++;
-				if (rl < reg.size - 1)
+				if (rl < reg<REAL>.size - 1)
 				{
-					reg[rl + 1][reg[rl][i].rid].npop++;
-					reg[rl + 1][reg[rl][i].rid].nind += reg[rl][i].nind;
+					reg<REAL>[rl + 1][reg<REAL>[rl][i].rid].npop++;
+					reg<REAL>[rl + 1][reg<REAL>[rl][i].rid].nind += reg<REAL>[rl][i].nind;
 				}
 			}
 		}
@@ -296,25 +306,25 @@ TARGET void AssignVInds()
 
 	//Allocate vpop
 	npop = 0;
-	for (uint i = 0; i < pop.size; ++i)
-		if (pop[i].nind > 0)
+	for (uint i = 0; i < pop<REAL>.size; ++i)
+		if (pop<REAL>[i].nind > 0)
 			npop++;
-	apops = new POP * [npop];
+	apops = new POP<REAL>* [npop];
 
 	//Contruct total pop
 	if (lreg == 0 && npop == 1)
 	{
 		lreg = -1;
-		for (uint i = 0; i < pop.size; ++i)
-			if (pop[i].nind > 0)
-				total_pop = &pop[i];
+		for (uint i = 0; i < pop<REAL>.size; ++i)
+			if (pop<REAL>[i].nind > 0)
+				total_pop = &pop<REAL>[i];
 		nregt2 = nregt = 0;
 	}
 	else
 	{
-		for (uint i = 0; i < reg[lreg].size; ++i)
-			if (reg[lreg][i].nind > 0)
-				total_pop = &reg[lreg][i];
+		for (uint i = 0; i < reg<REAL>[lreg].size; ++i)
+			if (reg<REAL>[lreg][i].nind > 0)
+				total_pop = &reg<REAL>[lreg][i];
 	}
 
 	delete[] total_pop->name;
@@ -324,12 +334,12 @@ TARGET void AssignVInds()
 
 	for (int rl = 0; rl <= lreg; ++rl)
 	{
-		aregs[rl] = new POP * [nreg[rl]];
+		aregs[rl] = new POP<REAL>* [nreg[rl]];
 		nreg[rl] = 0;
 	}
 
 	//Allocate rinds
-	rinds = new IND * [nind];
+	rinds = new IND<REAL>* [nind];
 
 	//Recursive arrange vpop, vreg and vind
 	if (lreg == -1)
@@ -344,20 +354,20 @@ TARGET void AssignVInds()
 	else
 	{
 		nind = 0; npop = 0;
-		SetVReg(lreg, total_pop->id);
+		SetVReg<REAL>(lreg, total_pop->id);
 	}
 
 	//Set nind = 0
-	for (uint i = 0; i < pop.size; ++i)
-		pop[i].nind = 0;
+	for (uint i = 0; i < pop<REAL>.size; ++i)
+		pop<REAL>[i].nind = 0;
 
 	//Move ind to pop ind array and assign vpopid
 	bool swap = false;
 	for (int j = 0; j < nind; ++j)
 	{
 		//Default pop or input pop
-		IND& i = *ainds[j];
-		POP& p = pop[(i.popid < 1 || i.popid >= pop.size) ? 0 : i.popid];
+		IND<REAL>& i = *ainds[j];
+		POP<REAL>& p = pop<REAL>[(i.popid < 1 || i.popid >= pop<REAL>.size) ? 0 : i.popid];
 		if (i.indid != p.ind0id + p.nind)
 			swap = true;
 		i.indid = p.ind0id + p.nind;
@@ -428,7 +438,7 @@ TARGET void AssignVInds()
 }
 
 /* Marker individual filtered or not */
-THREAD(MarkerIndividual)
+THREAD2(MarkerIndividual)
 {
 	//Calculate offset
 	maxG = 0;
@@ -447,7 +457,7 @@ THREAD(MarkerIndividual)
 	SetZero(ntype, nind);
 	SetVal((byte*)vmin, (byte)0, nind);
 	SetZero(vmax, nind);
-	CheckGenotypeId();
+	CheckGenotypeId<REAL>();
 
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 	for (int64 l = 0; l < nloc; ++l)
@@ -512,13 +522,13 @@ THREAD(MarkerIndividual)
 }
 
 /* Marker locus filtered or not */
-THREAD(MarkerDiversity)
+THREAD2(MarkerDiversity)
 {
 	bool flag_window = f_windowsize_b && abs(g_format_val) <= BCF;
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 	for (int64 l = 0; l < nloc; ++l)
 	{
-		DIVERSITY d;
+		DIVERSITY<REAL> d;
 		if (GetLoc(l).flag_pass)
 		{
 			d.CalcDiversity(l);
@@ -592,7 +602,7 @@ THREAD(MarkerDiversity)
 }
 
 /* Remove individual fail to pass filter */
-THREAD(RemoveIndividual)
+THREAD2(RemoveIndividual)
 {
 	int nfind = 0;
 	for (int i = 0; i < nind; ++i)
@@ -610,25 +620,27 @@ THREAD(RemoveIndividual)
 	MEMORY* oindividual_memory = individual_memory;
 	individual_memory = new MEMORY[1];
 
-	IND** newind = new IND*[nfind];
+	IND<REAL>** newind = new IND<REAL>*[nfind];
 	for (int i = 0, nid = 0; i < nind; ++i)
 		if (ainds[i])
 		{
-			newind[nid] = new(individual_memory->Alloc(sizeof(IND))) IND(*ainds[i]);
+			newind[nid] = new(individual_memory->Alloc(sizeof(IND<REAL>))) IND<REAL>(*ainds[i]);
 			newind[nid]->indid = nid;
 			nid++;
 		}
 
 	//move genotype
-	BUCKET ngeno_bucket;
-	ngeno_bucket.FilterIndividualGT(&geno_bucket, nfind, true, g_nthread_val);
-	geno_bucket.Replace(ngeno_bucket);
-
+    {
+        BUCKET ngeno_bucket;
+        ngeno_bucket.FilterIndividualGT<REAL>(&geno_bucket, nfind, true, g_nthread_val);
+        geno_bucket.Replace(ngeno_bucket);
+    }
+    
 	//allelic depth
 	if (ad_bucket.base_addr)
 	{
 		BUCKET nad_bucket;
-		nad_bucket.FilterIndividualAD(&ad_bucket, nfind, true, g_nthread_val);
+		nad_bucket.FilterIndividualAD<REAL>(&ad_bucket, nfind, true, g_nthread_val);
 		ad_bucket.Replace(nad_bucket);
 	}
 
@@ -637,7 +649,7 @@ THREAD(RemoveIndividual)
 }
 
 /* Remove locus fail to pass filter */
-THREAD(RemoveLocus)
+THREAD2(RemoveLocus)
 {
 	MEMORY* nlocus_memory = new MEMORY[g_nthread_val];
 	SLOCUS* nslocus = new SLOCUS[nfilter];
@@ -648,10 +660,6 @@ THREAD(RemoveLocus)
 		BUCKET nad_bucket;
 		nad_bucket.FilterLocusAD(&ad_bucket, true, g_nthread_val);
 		ad_bucket.Replace(nad_bucket);
-	}
-
-	{
-		BUCKET ngeno_bucket;
 	}
 
 	{
@@ -669,5 +677,5 @@ THREAD(RemoveLocus)
 	}
 
 	nloc = nfilter;
-	//CheckGenotypeId();
+	//CheckGenotypeId<REAL>();
 }

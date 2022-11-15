@@ -1,592 +1,1236 @@
-/* SSE Instruction Set Functions */
+/* SSE Bayesian clustering functions */
 
 #include "vcfpop.h"
 
+template struct BAYESIAN<double>;
+template struct BAYESIAN<float >;
+
+template TARGETSSE void BAYESIAN<double>::UpdateQNoAdmixSSE(int tid);
+template TARGETSSE void BAYESIAN<float >::UpdateQNoAdmixSSE(int tid);
+
+template TARGETSSE void BAYESIAN<double>::UpdateZNoAdmixSSE(int tid);
+template TARGETSSE void BAYESIAN<float >::UpdateZNoAdmixSSE(int tid);
+
+template TARGETSSE void BAYESIAN<double>::UpdateQMetroSSE<true >(int tid);
+template TARGETSSE void BAYESIAN<double>::UpdateQMetroSSE<false>(int tid);
+template TARGETSSE void BAYESIAN<float >::UpdateQMetroSSE<true >(int tid);
+template TARGETSSE void BAYESIAN<float >::UpdateQMetroSSE<false>(int tid);
+
+template TARGETSSE void BAYESIAN<double>::UpdateZAdmixSSE<true >(int tid);
+template TARGETSSE void BAYESIAN<double>::UpdateZAdmixSSE<false>(int tid);
+template TARGETSSE void BAYESIAN<float >::UpdateZAdmixSSE<true >(int tid);
+template TARGETSSE void BAYESIAN<float >::UpdateZAdmixSSE<false>(int tid);
+
+template TARGETSSE void BAYESIAN<double>::RecordSSE<true , true >(int tid);
+template TARGETSSE void BAYESIAN<double>::RecordSSE<true , false>(int tid);
+template TARGETSSE void BAYESIAN<double>::RecordSSE<false, true >(int tid);
+template TARGETSSE void BAYESIAN<double>::RecordSSE<false, false>(int tid);
+template TARGETSSE void BAYESIAN<float >::RecordSSE<true , true >(int tid);
+template TARGETSSE void BAYESIAN<float >::RecordSSE<true , false>(int tid);
+template TARGETSSE void BAYESIAN<float >::RecordSSE<false, true >(int tid);
+template TARGETSSE void BAYESIAN<float >::RecordSSE<false, false>(int tid);
+
 #ifndef __aarch64__
 
-/* Read allele id from decompressed bucket */
-//ReadAidSSE(BAYESIAN_READER& rt, int size, __m128i* aid, __m128i* type)
-#define ReadAidSSE \
-{ \
-	/* if data is empty */ \
-	if (rt.nbits < size) [[unlikely]] \
-	{ \
-		/* move nbits data to gid */ \
-		aid1 = rt.data128[0]; \
-		aid2 = rt.data128[1]; \
-		aid3 = rt.data128[2]; \
-		aid4 = rt.data128[3]; \
- \
-		/* remain number of bits to read */ \
-		int rbits = size - rt.nbits; \
- \
-		/* read 64 bits to data */ \
-		uint64* tpos = rt.pos; \
- \
-		rt.data64[0] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[1] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[2] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[3] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[4] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[5] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[6] = *tpos; tpos += structure_indnbytes; \
-		rt.data64[7] = *tpos; tpos += structure_indnbytes; \
- \
-		rt.pos++; \
- \
-		/* read rbits from data and concate to higher bits in gid */ \
-		__m128i maskrbits = _mm_set1_epi64x((1u << rbits) - 1u); \
-		__m128i c1, c2, c3, c4; \
- \
-		c1 = _mm_and_si128(rt.data128[0], maskrbits); \
-		c2 = _mm_and_si128(rt.data128[1], maskrbits); \
-		c3 = _mm_and_si128(rt.data128[2], maskrbits); \
-		c4 = _mm_and_si128(rt.data128[3], maskrbits); \
- \
-		c1 = _mm_slli_epi64(c1, rt.nbits); \
-		c2 = _mm_slli_epi64(c2, rt.nbits); \
-		c3 = _mm_slli_epi64(c3, rt.nbits); \
-		c4 = _mm_slli_epi64(c4, rt.nbits); \
- \
-		aid1 = _mm_or_si128(aid1, c1); \
-		aid2 = _mm_or_si128(aid2, c2); \
-		aid3 = _mm_or_si128(aid3, c3); \
-		aid4 = _mm_or_si128(aid4, c4); \
- \
-		/*shift right */ \
-		rt.data128[0] = _mm_srli_epi64(rt.data128[0], rbits); \
-		rt.data128[1] = _mm_srli_epi64(rt.data128[1], rbits); \
-		rt.data128[2] = _mm_srli_epi64(rt.data128[2], rbits); \
-		rt.data128[3] = _mm_srli_epi64(rt.data128[3], rbits); \
- \
-		rt.nbits = 64 - rbits; \
-	} \
-	else [[likely]] \
-	{ \
-		/*read size bits */ \
-		aid1 = _mm_and_si128(rt.data128[0], mask); \
-		aid2 = _mm_and_si128(rt.data128[1], mask); \
-		aid3 = _mm_and_si128(rt.data128[2], mask); \
-		aid4 = _mm_and_si128(rt.data128[3], mask); \
- \
-		/*shift right */ \
-		rt.data128[0] = _mm_srli_epi64(rt.data128[0], size); \
-		rt.data128[1] = _mm_srli_epi64(rt.data128[1], size); \
-		rt.data128[2] = _mm_srli_epi64(rt.data128[2], size); \
-		rt.data128[3] = _mm_srli_epi64(rt.data128[3], size); \
- \
-		rt.nbits -= size; \
-	} \
- \
-	/*typed is 0xFFFFFFFF */ \
-	type1 = _mm_cmpgt_epi64(mask, aid1); \
-	type2 = _mm_cmpgt_epi64(mask, aid2); \
-	type3 = _mm_cmpgt_epi64(mask, aid3); \
-	type4 = _mm_cmpgt_epi64(mask, aid4); \
- \
-	/* set missing to 0 */ \
-	aid1 = _mm_and_si128(aid1, type1); \
-	aid2 = _mm_and_si128(aid2, type2); \
-	aid3 = _mm_and_si128(aid3, type3); \
-	aid4 = _mm_and_si128(aid4, type4); \
+#ifndef _GENO_READERSSE
+template<typename REAL>
+struct GENO_READERSSE
+{
+	__m128i data[16];						//Readed bits
+	__m128i msize;
+	byte* pos;								//Current read pointer
+	uint vindex[64];						//Offset of 16 loci
+	byte size;								//Number of bits a genotype id used
+	byte nbits;								//Number of bits remaining in data
+
+	TARGETSSE GENO_READERSSE()
+	{
+
+	}
+
+	TARGETSSE GENO_READERSSE(int indid, int64 l, int64 num, BUCKET* bucket = NULL)
+	{
+		//set pos and size
+		SetZero(this, 1);
+		num = Min(num, 64);
+
+		//set bucket from default bucket or assigned bucket
+		if (bucket == NULL) bucket = &geno_bucket;
+
+		OFFSET* offset = &bucket->offset.bucket[l];
+		uint64 offset0 = offset[0].offset;
+		pos = (byte*)(bucket->base_addr + offset0);
+
+		for (int i = 0; i < num; ++i)
+			vindex[i] = offset[i].offset - offset0;
+
+		size = offset[0].size;
+
+		msize = _mm_set1_epi32((1u << size) - 1u);
+
+		if (indid)
+		{
+			//skip indid * size bits
+			int nreadbits = indid * size;
+
+			//pos move nreadbits / 32
+			pos += nreadbits >> 5;
+
+			//remain bits to read
+			nreadbits &= 31;
+
+			//read 32 bits to data and read remain bits from data
+			REP(16) data[kk] = _mm_set_epi32(*(uint*)(pos + vindex[3 + (kk << 2)]), *(uint*)(pos + vindex[2 + (kk << 2)]), *(uint*)(pos + vindex[1 + (kk << 2)]), *(uint*)(pos + vindex[0 + (kk << 2)]));
+
+			REP(16) data[kk] = _mm_srli_epi32(data[kk], nreadbits);
+
+			pos += 4;
+
+			//set nbits
+			nbits = 32 - nreadbits;
+		}
+		else
+		{
+			//read 32 bits
+			REP(16) data[kk] = _mm_set_epi32(*(uint*)(pos + vindex[3 + (kk << 2)]), *(uint*)(pos + vindex[2 + (kk << 2)]), *(uint*)(pos + vindex[1 + (kk << 2)]), *(uint*)(pos + vindex[0 + (kk << 2)]));
+
+			pos += 4;
+
+			//set nbits
+			nbits = 32;
+		}
+	}
+
+	__forceinline
+	TARGETSSE void Read(__m128i* gid)
+	{
+		// if data is empty
+		if (nbits < size) [[unlikely]]
+		{
+			// move nbits data to gid
+			memcpy(gid, data, 16 * sizeof(__m128i));
+
+			// remain number of bits to read
+			int rbits = size - nbits;
+			__m128i tmask = _mm_set1_epi32((1u << rbits) - 1u);
+
+			// read 32 bits to data
+			REP(16) data[kk] = _mm_set_epi32(*(uint*)(pos + vindex[3 + (kk << 2)]), *(uint*)(pos + vindex[2 + (kk << 2)]), *(uint*)(pos + vindex[1 + (kk << 2)]), *(uint*)(pos + vindex[0 + (kk << 2)]));
+
+			// read rbits from data and concate to higher bits in gid
+			REP(16) gid[kk] = _mm_or_si128(gid[kk], _mm_slli_epi32(_mm_and_si128(data[kk], tmask), nbits));
+
+			//shift right
+			REP(16) data[kk] = _mm_srli_epi32(data[kk], rbits);
+
+			pos += 4;
+
+			nbits = 32 - rbits;
+		}
+		else [[likely]]
+		{
+			//read size bits
+			REP(16) gid[kk] = _mm_and_si128(data[kk], msize);
+
+			//shift right
+			REP(16) data[kk] = _mm_srli_epi32(data[kk], size);
+
+			nbits -= size;
+		}
+	}
+};
+
+#endif
+
+__forceinline TARGETSSE double _mm_reduce_add_pd(__m128d v2)
+{
+	return simd_f64(v2, 0) + simd_f64(v2, 1);
 }
 
-/* Read allele frequency from decompressed bucket */
-/*
-TARGETSSE void ReadFreqSSE(BAYESIAN_READER& rt, int size, __m128i* slog, __m128d* prod, double* p, int K)
-__m128i maskff = _mm_set1_epi64x(0xFFFFFFFFFFFFFFFF);
-__m128i maskunder = _mm_set1_epi64x(0x1FF0000000000000);
-__m128i mask1 = _mm_set1_epi64x(0x7FF0000000000000);
-__m128i mask2 = _mm_set1_epi64x(0x800FFFFFFFFFFFFF);
-__m128i mask3 = _mm_set1_epi64x(0x3FF0000000000000);
-__m128i subv = _mm_set1_epi64x(1023);
-__m128i addr_inc = _mm_set1_epi64x(KT * sizeof(double));
-__m128d maskone = _mm_set1_pd(1.0);
-*/
-#define ReadFreqSSE \
-{ \
-	__m128i aid1, aid2, aid3, aid4; \
-	__m128i a1, a2, a3, a4; \
-	__m128i b1, b2, b3, b4; \
-	__m128i type1, type2, type3, type4; \
-	__m128d freq1, freq2, freq3, freq4; \
-	__m128i* prodi = (__m128i*)prod; \
- \
-	ReadAidSSE \
- \
-	/* x sizeof(double) to load frequency */ \
-	aid1 = _mm_slli_epi64(aid1, 3); \
-	aid2 = _mm_slli_epi64(aid2, 3); \
-	aid3 = _mm_slli_epi64(aid3, 3); \
-	aid4 = _mm_slli_epi64(aid4, 3); \
- \
-	__m128i addr = _mm_set1_epi64x((uint64)p); \
- \
-	aid1 = _mm_add_epi64(aid1, addr); \
-	aid2 = _mm_add_epi64(aid2, addr); \
-	aid3 = _mm_add_epi64(aid3, addr); \
-	aid4 = _mm_add_epi64(aid4, addr); \
- \
-	for (int k = 0; k < K; ++k) \
-	{ \
-		/* get freq of 8 allele copies for 8 individuals in cluster k */ \
-		freq1 = _mm_set_pd(*(double*)simd_u64(aid1, 1), *(double*)simd_u64(aid1, 0)); \
-		freq2 = _mm_set_pd(*(double*)simd_u64(aid2, 1), *(double*)simd_u64(aid2, 0)); \
-		freq3 = _mm_set_pd(*(double*)simd_u64(aid3, 1), *(double*)simd_u64(aid3, 0)); \
-		freq4 = _mm_set_pd(*(double*)simd_u64(aid4, 1), *(double*)simd_u64(aid4, 0)); \
- \
-		/* set missing freq to one */ \
-		freq1 = _mm_blendv_pd(maskone, freq1, _mm_castsi128_pd(type1)); \
-		freq2 = _mm_blendv_pd(maskone, freq2, _mm_castsi128_pd(type2)); \
-		freq3 = _mm_blendv_pd(maskone, freq3, _mm_castsi128_pd(type3)); \
-		freq4 = _mm_blendv_pd(maskone, freq4, _mm_castsi128_pd(type4)); \
- \
-		/* mul to prod */ \
-		prod[k * 4 + 0] = _mm_mul_pd(prod[k * 4 + 0], freq1); \
-		prod[k * 4 + 1] = _mm_mul_pd(prod[k * 4 + 1], freq2); \
-		prod[k * 4 + 2] = _mm_mul_pd(prod[k * 4 + 2], freq3); \
-		prod[k * 4 + 3] = _mm_mul_pd(prod[k * 4 + 3], freq4); \
- \
-		aid1 = _mm_add_epi64(aid1, addr_inc); \
-		aid2 = _mm_add_epi64(aid2, addr_inc); \
-		aid3 = _mm_add_epi64(aid3, addr_inc); \
-		aid4 = _mm_add_epi64(aid4, addr_inc); \
- \
-		a1 = _mm_cmpgt_epi64(maskunder, _mm_castpd_si128(prod[k * 4 + 0])); \
-		a2 = _mm_cmpgt_epi64(maskunder, _mm_castpd_si128(prod[k * 4 + 1])); \
-		a3 = _mm_cmpgt_epi64(maskunder, _mm_castpd_si128(prod[k * 4 + 2])); \
-		a4 = _mm_cmpgt_epi64(maskunder, _mm_castpd_si128(prod[k * 4 + 3])); \
- \
-		a1 = _mm_or_si128(a1, a2); \
-		a3 = _mm_or_si128(a3, a4); \
-		a1 = _mm_or_si128(a1, a3); \
- \
-		/* check underflow */ \
-		if (!(simd_u64(a1, 0) || simd_u64(a1, 1))) [[likely]] continue; \
- \
-		/* add exponent */ \
-		a1 = _mm_and_si128(prodi[k * 4 + 0], mask1); \
-		a2 = _mm_and_si128(prodi[k * 4 + 1], mask1); \
-		a3 = _mm_and_si128(prodi[k * 4 + 2], mask1); \
-		a4 = _mm_and_si128(prodi[k * 4 + 3], mask1); \
- \
-		b1 = _mm_and_si128(prodi[k * 4 + 0], mask2); \
-		b2 = _mm_and_si128(prodi[k * 4 + 1], mask2); \
-		b3 = _mm_and_si128(prodi[k * 4 + 2], mask2); \
-		b4 = _mm_and_si128(prodi[k * 4 + 3], mask2); \
- \
-		a1 = _mm_srli_epi64(a1, 52); \
-		a2 = _mm_srli_epi64(a2, 52); \
-		a3 = _mm_srli_epi64(a3, 52); \
-		a4 = _mm_srli_epi64(a4, 52); \
- \
-		prodi[k * 4 + 0] = _mm_or_si128(b1, mask3); \
-		prodi[k * 4 + 1] = _mm_or_si128(b2, mask3); \
-		prodi[k * 4 + 2] = _mm_or_si128(b3, mask3); \
-		prodi[k * 4 + 3] = _mm_or_si128(b4, mask3); \
- \
-		a1 = _mm_sub_epi64(a1, subv); \
-		a2 = _mm_sub_epi64(a2, subv); \
-		a3 = _mm_sub_epi64(a3, subv); \
-		a4 = _mm_sub_epi64(a4, subv); \
- \
-		slog[k * 4 + 0] = _mm_add_epi64(slog[k * 4 + 0], a1); \
-		slog[k * 4 + 1] = _mm_add_epi64(slog[k * 4 + 1], a2); \
-		slog[k * 4 + 2] = _mm_add_epi64(slog[k * 4 + 2], a3); \
-		slog[k * 4 + 3] = _mm_add_epi64(slog[k * 4 + 3], a4); \
- \
-	} \
+__forceinline TARGETSSE double _mm_reduce_mul_pd(__m128d v2)
+{
+	return simd_f64(v2, 0) * simd_f64(v2, 1);
+}
+
+__forceinline TARGETSSE float _mm_reduce_add_ps(__m128 v2)
+{
+	__m128 v3 = _mm_add_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
+	return simd_f32(v3, 0) + simd_f32(v3, 1);
+}
+
+__forceinline TARGETSSE float _mm_reduce_mul_ps(__m128 v2)
+{
+	__m128 v3 = _mm_mul_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
+	return simd_f32(v3, 0) * simd_f32(v3, 1);
+}
+
+__forceinline TARGETSSE double _mm_reduce_add_psd(__m128 v2)
+{
+	__m128d v2b = _mm_add_pd(_mm_cvtps_pd(v2),
+		_mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8))));
+	return simd_f64(v2b, 0) + simd_f64(v2b, 1);
+}
+
+__forceinline TARGETSSE double _mm_reduce_mul_psd(__m128 v2)
+{
+	__m128d v2b = _mm_mul_pd(_mm_cvtps_pd(v2),
+		_mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8))));
+	return simd_f64(v2b, 0) * simd_f64(v2b, 1);
+}
+
+/* Update a priori ancetral proportion for non-admix model */
+template<typename REAL>
+TARGETSSE void BAYESIAN<REAL>::UpdateQNoAdmixSSE(int tid)
+{
+	if (tid == -1)
+	{
+		SetZero(Q, N * K);
+		OpenLog((int64*)bufNK1, bufNK2, N * K * structure_nsubthread);
+
+		//add priori probability
+		double* buf1 = bufNK1, * buf2 = bufNK2;
+		if (locpriori) for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
+		{
+			if (ainds[i]->vt == 0) continue;
+			ChargeLog((int64*)buf1, buf2, Gamma + ainds[i]->popid * K, K);
+		}
+
+		//////////////////////////////////////////////////////////
+
+		SetZero((int64*)l_atomic, 32);
+
+		UpdateQNoAdmixSSE(0);
+
+		//avoid thread-conflict
+		for (int i = 1; i < structure_nsubthread; ++i)
+			Add(bufNK1, bufNK1 + N * K * i, N * K);
+
+		buf1 = bufNK1;
+		REAL* q = Q;
+		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		for (int i = 0; i < N; ++i, buf1 += K, q += K)
+		{
+			if (ainds[i]->vt == 0) continue;
+			ushort k2 = (ushort)rng.PolyLog(buf1, K);
+			q[k2] = 1;
+			Z[i] = k2;
+		}
+
+		return;
+	}
+
+	static __m128d maskoned = _mm_set1_pd(1.0);
+	static __m128  maskones = _mm_set1_ps(1.0);
+	static __m128i mask00 = _mm_set1_epi32(0);
+	static __m128i maskff = _mm_set1_epi32(0xFFFFFFFF);
+	static __m128i mask24 = _mm_set1_epi32(0xFFFFFF);
+	static __m128i mask01 = _mm_set1_epi32(1);
+	static __m128i mask02 = _mm_set1_epi32(2);
+	static __m128i maskidx[16] = {
+		_mm_set_epi32( 3,  2,  1,  0), _mm_set_epi32( 7,  6,  5,  4), _mm_set_epi32(11, 10,  9,  8), _mm_set_epi32(15, 14, 13, 12),
+		_mm_set_epi32(19, 18, 17, 16), _mm_set_epi32(23, 22, 21, 20), _mm_set_epi32(27, 26, 25, 24), _mm_set_epi32(31, 30, 29, 28), 
+		_mm_set_epi32(35, 34, 33, 32), _mm_set_epi32(39, 38, 37, 36), _mm_set_epi32(43, 42, 41, 40), _mm_set_epi32(47, 46, 45, 44), 
+		_mm_set_epi32(51, 50, 49, 48), _mm_set_epi32(55, 54, 53, 52), _mm_set_epi32(59, 58, 57, 56), _mm_set_epi32(63, 62, 61, 60) };
+	static int PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
+		{
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
+
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
+			{
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				REAL* p = Freq + allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				__m128i gtab[16];
+				for (int64 k = 0, lt = l; k < 16; ++k, lt += 4)
+					gtab[k] = _mm_set_epi32(GetLocTabDiff(lt + 3), GetLocTabDiff(lt + 2), GetLocTabDiff(lt + 1), GetLocTabDiff(lt + 0));
+
+				__m128i lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull, lmaskt = lmask0;
+				REP(16)
+				{
+					lmask[kk] = _mm_castps_si128(_mm_blendv_ps(
+						_mm_castsi128_ps(mask00),
+						_mm_castsi128_ps(maskff),
+						_mm_castsi128_ps(_mm_set_epi32(lmaskt << 28, lmaskt << 29, lmaskt << 30, lmaskt << 31))));
+					lmaskt >>= 4;
+					lmaskidx[kk] = _mm_and_si128(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERSSE<REAL> rt(0, l, lend - l);
+
+				__m128i oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+				REP(16) oindex[kk] = _mm_set_epi32(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01, toffset[lmaskidx2[2 + (kk << 2)]] - oindex01, toffset[lmaskidx2[1 + (kk << 2)]] - oindex01, toffset[lmaskidx2[0 + (kk << 2)]] - oindex01);
+
+				__m128i gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], typed[16], typed64[32];
+				int* allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+				__m128d freq[32];
+
+				int64* buf1 = (int64*)bufNK1 + N * K * tid; double* buf2 = bufNK2 + N * K * tid;
+
+				for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
+				{
+					rt.Read(gtaddr);
+
+					REP(16) gtaddr[kk] = _mm_add_epi32(gtab[kk], _mm_slli_epi32(gtaddr[kk], 2));
+
+					REP(16) gtlow[kk] = _mm_set_epi32(*(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]));
+
+					REP(16) gtploidy[kk] = _mm_and_si128(lmask[kk], _mm_srli_epi32(gtlow[kk], 24));
+
+					REP(16) gtlow[kk] = _mm_and_si128(gtlow[kk], mask24);
+
+					REP(16) gtploidy[kk] = _mm_set_epi32(PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]]);
+
+					REP(16) gtals[kk] = _mm_add_epi32(gtaddr[kk], gtlow[kk]);
+
+					int maxv = maxploidy;
+					if (maxploidy != minploidy)
+					{
+						__m128i maxv1 =
+							_mm_max_epi32(
+								_mm_max_epi32(
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[0], gtploidy[1]),
+										_mm_max_epi32(gtploidy[2], gtploidy[3])),
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[4], gtploidy[5]),
+										_mm_max_epi32(gtploidy[6], gtploidy[7]))),
+								_mm_max_epi32(
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[8], gtploidy[9]),
+										_mm_max_epi32(gtploidy[10], gtploidy[11])),
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[12], gtploidy[13]),
+										_mm_max_epi32(gtploidy[14], gtploidy[15]))));
+						int* maxv2 = (int*)&maxv1;
+						maxv = Max(Max(maxv2[0], maxv2[1]), Max(maxv2[2], maxv2[3]));
+					}
+
+					__m128i ai = _mm_set1_epi32(0);
+					for (int a = 0; a < maxv; ++a, ai = _mm_add_epi32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = _mm_cmpgt_epi32(gtploidy[kk], ai);
+
+							if constexpr (sizeof(REAL) == 8)
+							{
+								typed64[0 + (kk << 1)] = _mm_cvtepi32_epi64(typed[kk]);
+								typed64[1 + (kk << 1)] = _mm_cvtepi32_epi64(_mm_shuffle_epi32(typed[kk], _MM_SHUFFLE(1, 0, 3, 2)));
+							}
+
+							__m128i als3 = _mm_and_si128(gtals[kk], typed[kk]);
+
+							allele[kk] = _mm_set_epi32(
+								*(ushort*)(gtab_base + simd_i32(als3, 3)),
+								*(ushort*)(gtab_base + simd_i32(als3, 2)),
+								*(ushort*)(gtab_base + simd_i32(als3, 1)),
+								*(ushort*)(gtab_base + simd_i32(als3, 0)));
+
+							gtals[kk] = _mm_add_epi32(gtals[kk], mask02);
+
+							allele[kk] = _mm_add_epi32(allele[kk], oindex[kk]);
+
+							allele[kk] = _mm_and_si128(allele[kk], typed[kk]);
+						}
+
+						REAL* p2 = p;
+						for (int k = 0; k < K; ++k, p2 += KT)
+						{
+							if constexpr (sizeof(REAL) == 8)
+							{
+								REP(32)
+								{
+									__m128d v1 = _mm_set_pd(p2[allele2[1 + (kk << 1)]], p2[allele2[0 + (kk << 1)]]);
+									freq[kk] = _mm_blendv_pd(maskoned, v1, _mm_castsi128_pd(typed64[kk]));
+								}
+							}
+							else
+							{
+								REP(16)
+								{
+									__m128 v1 = _mm_set_ps(p2[allele2[3 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[0 + (kk << 2)]]);
+									v1 = _mm_blendv_ps(maskones, v1, _mm_castsi128_ps(typed[kk]));
+									freq[0 + (kk << 1)] = _mm_cvtps_pd(v1);
+									freq[1 + (kk << 1)] = _mm_cvtps_pd(_mm_shuffle_ps(v1, v1, _MM_SHUFFLE(1, 0, 3, 2)));
+								}
+							}
+
+							for (int K = sizeof(freq) / sizeof(freq[0]) / 2; K >= 1; K >>= 1)
+								REP(K) freq[kk] = _mm_mul_pd(freq[kk], freq[kk + K]);
+
+							ChargeLog(buf1[k], buf2[k], simp_f64(freq, 0) * simp_f64(freq, 1));
+						}
+					}
+				}
+			}
+		}
+
+		//avoid thread-conflict
+		CloseLog((int64*)bufNK1 + N * K * tid, bufNK2 + N * K * tid, N * K);
+	}
 }
 
 /* Update individual or allele origin when ancetral proportion is binary */
-TARGETSSE void UpdateZBinarySSE(int* Ni, ushort* Z)
+template<typename REAL>
+TARGETSSE void BAYESIAN<REAL>::UpdateZNoAdmixSSE(int tid)
 {
-	__m128i Kt = _mm_set1_epi64x(KT);
-	__m128i mask01 = _mm_set1_epi64x(1);
-
-	for (int i = 0, pad = 0; i < nind; i += STRUCTURE_NPACK)
+	if (tid == -1)
 	{
-		if (i + STRUCTURE_NPACK >= nind) //fix i for the last several
+		SetZero(Mi, N * K);
+		SetZero(Ni, K * KT);
+
+		for (int i = 0; i < N; ++i)
+			Mi[i * K + Z[i]] = ainds[i]->vt;
+
+		//////////////////////////////////////////////////////////
+
+		SetZero((int64*)l_atomic, 32);
+
+		UpdateZNoAdmixSSE(0);
+
+		return;
+	}
+
+	static __m128i mask00 = _mm_set1_epi32(0);
+	static __m128i maskff = _mm_set1_epi32(0xFFFFFFFF);
+	static __m128i mask24 = _mm_set1_epi32(0xFFFFFF);
+	static __m128i mask01 = _mm_set1_epi32(1);
+	static __m128i mask02 = _mm_set1_epi32(2);
+	static __m128i maskidx[16] = {
+		_mm_set_epi32( 3,  2,  1,  0), _mm_set_epi32( 7,  6,  5,  4), _mm_set_epi32(11, 10,  9,  8), _mm_set_epi32(15, 14, 13, 12),
+		_mm_set_epi32(19, 18, 17, 16), _mm_set_epi32(23, 22, 21, 20), _mm_set_epi32(27, 26, 25, 24), _mm_set_epi32(31, 30, 29, 28), 
+		_mm_set_epi32(35, 34, 33, 32), _mm_set_epi32(39, 38, 37, 36), _mm_set_epi32(43, 42, 41, 40), _mm_set_epi32(47, 46, 45, 44), 
+		_mm_set_epi32(51, 50, 49, 48), _mm_set_epi32(55, 54, 53, 52), _mm_set_epi32(59, 58, 57, 56), _mm_set_epi32(63, 62, 61, 60) };
+	static int PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
-			pad = STRUCTURE_NPACK - (nind - i);
-			i = nind - STRUCTURE_NPACK;
-		}
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
 
-		__m128i ZxKT1, ZxKT2, ZxKT3, ZxKT4;
-
-		ZxKT1 = _mm_loadu_si128((__m128i*)&Z[i + 0]);
-		ZxKT2 = _mm_loadu_si128((__m128i*)&Z[i + 2]);
-		ZxKT3 = _mm_loadu_si128((__m128i*)&Z[i + 4]);
-		ZxKT4 = _mm_loadu_si128((__m128i*)&Z[i + 6]);
-
-		ZxKT1 = _mm_cvtepi16_epi64(ZxKT1);
-		ZxKT2 = _mm_cvtepi16_epi64(ZxKT2);
-		ZxKT3 = _mm_cvtepi16_epi64(ZxKT3);
-		ZxKT4 = _mm_cvtepi16_epi64(ZxKT4);
-
-		ZxKT1 = _mm_mul_epu32(Kt, ZxKT1);
-		ZxKT2 = _mm_mul_epu32(Kt, ZxKT2);
-		ZxKT3 = _mm_mul_epu32(Kt, ZxKT3);
-		ZxKT4 = _mm_mul_epu32(Kt, ZxKT4);
-
-		ZxKT1 = _mm_slli_epi64(ZxKT1, 2);
-		ZxKT2 = _mm_slli_epi64(ZxKT2, 2);
-		ZxKT3 = _mm_slli_epi64(ZxKT3, 2);
-		ZxKT4 = _mm_slli_epi64(ZxKT4, 2);
-
-		BAYESIAN_READER rt(i);
-		int* ni = Ni;
-
-		for (int64 l = 0; l < nloc; ++l, ni += GetLoc(l).k)
-		{
-			int size = structure_size[l];
-			__m128i mask = _mm_set1_epi64x((1u << size) - 1u); 
-			__m128i aid1, aid2, aid3, aid4;
-			__m128i type1, type2, type3, type4;
-			__m128i npio2 = _mm_set1_epi64x((int64)ni);
-			__m128i a1, a2, a3, a4;
-			__m128i b1, b2, b3, b4;
-
-			a1 = _mm_add_epi64(ZxKT1, npio2);
-			a2 = _mm_add_epi64(ZxKT2, npio2);
-			a3 = _mm_add_epi64(ZxKT3, npio2);
-			a4 = _mm_add_epi64(ZxKT4, npio2);
-
-#define REP_MID \
-			ReadAidSSE/*(rt, size, aid, type);*/ \
-			\
-			b1 = _mm_slli_epi64(aid1, 2); \
-			b2 = _mm_slli_epi64(aid2, 2); \
-			b3 = _mm_slli_epi64(aid3, 2); \
-			b4 = _mm_slli_epi64(aid4, 2); \
-			\
-			b1 = _mm_add_epi64(a1, b1); \
-			b2 = _mm_add_epi64(a2, b2); \
-			b3 = _mm_add_epi64(a3, b3); \
-			b4 = _mm_add_epi64(a4, b4); \
-			\
-			type1 = _mm_and_si128(type1, mask01);\
-			type2 = _mm_and_si128(type2, mask01);\
-			type3 = _mm_and_si128(type3, mask01);\
-			type4 = _mm_and_si128(type4, mask01);\
-			\
-			switch (pad) \
-			{ /* Z and Mi is updated before call, update Ni here */ \
-			case 0: (*(int*)simd_u64(b1, 0)) += simd_u64(type1, 0); \
-			case 1: (*(int*)simd_u64(b1, 1)) += simd_u64(type1, 1); \
-			case 2: (*(int*)simd_u64(b2, 0)) += simd_u64(type2, 0); \
-			case 3: (*(int*)simd_u64(b2, 1)) += simd_u64(type2, 1); \
-			case 4: (*(int*)simd_u64(b3, 0)) += simd_u64(type3, 0); \
-			case 5: (*(int*)simd_u64(b3, 1)) += simd_u64(type3, 1); \
-			case 6: (*(int*)simd_u64(b4, 0)) += simd_u64(type4, 0); \
-			case 7: (*(int*)simd_u64(b4, 1)) += simd_u64(type4, 1); \
-			}
-
-			switch (maxploidy)
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
 			{
-			case 10: REP_MID;
-			case  9: REP_MID;
-			case  8: REP_MID;
-			case  7: REP_MID;
-			case  6: REP_MID;
-			case  5: REP_MID;
-			case  4: REP_MID;
-			case  3: REP_MID;
-			case  2: REP_MID;
-			case  1: REP_MID;
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				int64 o = allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				__m128i gtab[16];
+				for (int64 k = 0, lt = l; k < 16; ++k, lt += 4)
+					gtab[k] = _mm_set_epi32(GetLocTabDiff(lt + 3), GetLocTabDiff(lt + 2), GetLocTabDiff(lt + 1), GetLocTabDiff(lt + 0));
+
+				__m128i lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull, lmaskt = lmask0;
+				REP(16)
+				{
+					lmask[kk] = _mm_castps_si128(_mm_blendv_ps(
+						_mm_castsi128_ps(mask00),
+						_mm_castsi128_ps(maskff),
+						_mm_castsi128_ps(_mm_set_epi32(lmaskt << 28, lmaskt << 29, lmaskt << 30, lmaskt << 31))));
+					lmaskt >>= 4;
+					lmaskidx[kk] = _mm_and_si128(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERSSE<REAL> rt(0, l, lend - l);
+
+				__m128i oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+				REP(16) oindex[kk] = _mm_set_epi32(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01, toffset[lmaskidx2[2 + (kk << 2)]] - oindex01, toffset[lmaskidx2[1 + (kk << 2)]] - oindex01, toffset[lmaskidx2[0 + (kk << 2)]] - oindex01);
+
+				__m128i gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], typed[16];
+				int* typed2 = (int*)typed, * allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+
+				for (int i = 0; i < N; i++)
+				{
+					rt.Read(gtaddr);
+
+					REP(16) gtaddr[kk] = _mm_add_epi32(gtab[kk], _mm_slli_epi32(gtaddr[kk], 2));
+
+					REP(16) gtlow[kk] = _mm_set_epi32(*(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]));
+
+					REP(16) gtploidy[kk] = _mm_and_si128(lmask[kk], _mm_srli_epi32(gtlow[kk], 24));
+
+					REP(16) gtlow[kk] = _mm_and_si128(gtlow[kk], mask24);
+
+					REP(16) gtploidy[kk] = _mm_set_epi32(PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]]);
+
+					REP(16) gtals[kk] = _mm_add_epi32(gtaddr[kk], gtlow[kk]);
+
+					int maxv = maxploidy;
+					if (maxploidy != minploidy)
+					{
+						__m128i maxv1 =
+							_mm_max_epi32(
+								_mm_max_epi32(
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[0], gtploidy[1]),
+										_mm_max_epi32(gtploidy[2], gtploidy[3])),
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[4], gtploidy[5]),
+										_mm_max_epi32(gtploidy[6], gtploidy[7]))),
+								_mm_max_epi32(
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[8], gtploidy[9]),
+										_mm_max_epi32(gtploidy[10], gtploidy[11])),
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[12], gtploidy[13]),
+										_mm_max_epi32(gtploidy[14], gtploidy[15]))));
+						int* maxv2 = (int*)&maxv1;
+						maxv = Max(Max(maxv2[0], maxv2[1]), Max(maxv2[2], maxv2[3]));
+					}
+
+					int* ni = Ni + Z[i] * KT + o;
+					__m128i ai = _mm_set1_epi32(0);
+					for (int a = 0; a < maxv; ++a, ai = _mm_add_epi32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = _mm_cmpgt_epi32(gtploidy[kk], ai);
+
+							__m128i als3 = _mm_and_si128(gtals[kk], typed[kk]);
+
+							allele[kk] = _mm_set_epi32(
+								*(ushort*)(gtab_base + simd_i32(als3, 3)),
+								*(ushort*)(gtab_base + simd_i32(als3, 2)),
+								*(ushort*)(gtab_base + simd_i32(als3, 1)),
+								*(ushort*)(gtab_base + simd_i32(als3, 0)));
+
+							allele[kk] = _mm_add_epi32(allele[kk], oindex[kk]);
+
+							gtals[kk] = _mm_add_epi32(gtals[kk], mask02);
+
+							allele[kk] = _mm_and_si128(allele[kk], typed[kk]);
+						}
+
+						REP(64) ni[allele2[kk]] -= typed2[kk];
+					}
+				}
 			}
-#undef REP_MID
 		}
 	}
 }
 
 /* Update a priori ancetral proportion for non-admix model */
-TARGETSSE void UpdateQNoAdmixSSE(double* Q, int K, double* bufNK1, double* bufNK2, double* Gamma, RNGSSE& rng, bool locpriori, double* Base, ushort* Z)
+template<typename REAL>
+template<bool fast_fp32>
+TARGETSSE void BAYESIAN<REAL>::UpdateQMetroSSE(int tid)
 {
-	__m128i maskff = _mm_set1_epi64x(0xFFFFFFFFFFFFFFFF); 
-	__m128i maskunder = _mm_set1_epi64x(0x1FF0000000000000);
-	__m128i mask1 = _mm_set1_epi64x(0x7FF0000000000000);
-	__m128i mask2 = _mm_set1_epi64x(0x800FFFFFFFFFFFFF);
-	__m128i mask3 = _mm_set1_epi64x(0x3FF0000000000000);
-	__m128i subv = _mm_set1_epi64x(1023);
-	__m128i addr_inc = _mm_set1_epi64x(KT * sizeof(double));
-	__m128d maskone = _mm_set1_pd(1.0);
-
-	double* q = Q;
-
-	for (int i = 0, pad = 0; i < nind; i += STRUCTURE_NPACK)
+	if (tid == -1)
 	{
-		if (i + STRUCTURE_NPACK >= nind) //fix i for the last several
+		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		REAL* bufi = (REAL*)bufNK1;
+		REAL* q = NULL;
+
+		for (int i = 0; i < N; ++i, bufi += K)
 		{
-			pad = STRUCTURE_NPACK - (nind - i);
-			i = nind - STRUCTURE_NPACK;
+			if (ainds[i]->vt == 0) continue;
+			if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds[i]->popid * K, K);
+			else           rng.Dirichlet(bufi, Alpha, K);
 		}
 
-		//K elements, each save NPACK log or likelihood
-		__m128i* slog = AlignSIMD((__m128i*)bufNK1);
-		__m128d* prod = AlignSIMD((__m128d*)bufNK2);
+		OpenLog((int64*)bufN1, bufN2, N * structure_nsubthread);
 
-		//slog and prod at K clusters
-		OpenLog((int64*)slog, (double*)prod, K * STRUCTURE_NPACK);
+		//////////////////////////////////////////////////////////
 
-		//add priori probability
-		if (locpriori) for (int k = 0; k < K; ++k)
+		SetZero((int64*)l_atomic, 32);
+
+		g_fastsingle_val == 1 ? UpdateQMetroSSE<true >(0) : UpdateQMetroSSE<false>(0);
+
+		//avoid thread-conflict
+		for (int i = 1; i < structure_nsubthread; ++i)
+			Add(bufN1, bufN1 + N * i, N);
+
+		bufi = (REAL*)bufNK1; q = Q;
+		for (int i = 0; i < N; ++i, q += K, bufi += K)
 		{
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 0), *((double*)prod + k * STRUCTURE_NPACK + 0), Gamma[ainds[i + 0]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 1), *((double*)prod + k * STRUCTURE_NPACK + 1), Gamma[ainds[i + 1]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 2), *((double*)prod + k * STRUCTURE_NPACK + 2), Gamma[ainds[i + 2]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 3), *((double*)prod + k * STRUCTURE_NPACK + 3), Gamma[ainds[i + 3]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 4), *((double*)prod + k * STRUCTURE_NPACK + 4), Gamma[ainds[i + 4]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 5), *((double*)prod + k * STRUCTURE_NPACK + 5), Gamma[ainds[i + 5]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 6), *((double*)prod + k * STRUCTURE_NPACK + 6), Gamma[ainds[i + 6]->popid * K + k]);
-			ChargeLog(*((int64*)slog + k * STRUCTURE_NPACK + 7), *((double*)prod + k * STRUCTURE_NPACK + 7), Gamma[ainds[i + 7]->popid * K + k]);
+			if (ainds[i]->vt == 0) continue;
+			if (bufN1[i] >= NZERO || rng.Uniform() < exp(bufN1[i]))
+				SetVal(q, bufi, K);
 		}
+		return;
+	}
+	
+	static __m128d maskoned = _mm_set1_pd(1.0);
+	static __m128  maskones = _mm_set1_ps(1.0);
+	static __m128i mask00 = _mm_set1_epi32(0);
+	static __m128i maskff = _mm_set1_epi32(0xFFFFFFFF);
+	static __m128i mask24 = _mm_set1_epi32(0xFFFFFF);
+	static __m128i mask01 = _mm_set1_epi32(1);
+	static __m128i mask02 = _mm_set1_epi32(2);
+	static __m128i maskidx[16] = {
+		_mm_set_epi32( 3,  2,  1,  0), _mm_set_epi32( 7,  6,  5,  4), _mm_set_epi32(11, 10,  9,  8), _mm_set_epi32(15, 14, 13, 12),
+		_mm_set_epi32(19, 18, 17, 16), _mm_set_epi32(23, 22, 21, 20), _mm_set_epi32(27, 26, 25, 24), _mm_set_epi32(31, 30, 29, 28), 
+		_mm_set_epi32(35, 34, 33, 32), _mm_set_epi32(39, 38, 37, 36), _mm_set_epi32(43, 42, 41, 40), _mm_set_epi32(47, 46, 45, 44), 
+		_mm_set_epi32(51, 50, 49, 48), _mm_set_epi32(55, 54, 53, 52), _mm_set_epi32(59, 58, 57, 56), _mm_set_epi32(63, 62, 61, 60) };
+	static int PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-		double* p = Base;
-		BAYESIAN_READER rt(i);
-		for (int64 l = 0; l < nloc; ++l, p += GetLoc(l).k)
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
-			int size = structure_size[l];
-			__m128i mask = _mm_set1_epi64x((1u << size) - 1u);
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
 
-			switch (maxploidy)
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
 			{
-			case 10: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
-			case  9: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
-			case  8: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
-			case  7: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
-			case  6: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
-			case  5: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
-			case  4: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
-			case  3: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
-			case  2: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
-			case  1: ReadFreqSSE/* (rt, size, slog, prod, p, K) */;
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				REAL* p = Freq + allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				__m128i gtab[16];
+				for (int64 k = 0, lt = l; k < 16; ++k, lt += 4)
+					gtab[k] = _mm_set_epi32(GetLocTabDiff(lt + 3), GetLocTabDiff(lt + 2), GetLocTabDiff(lt + 1), GetLocTabDiff(lt + 0));
+
+				__m128i lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull, lmaskt = lmask0;
+				REP(16)
+				{
+					lmask[kk] = _mm_castps_si128(_mm_blendv_ps(
+						_mm_castsi128_ps(mask00),
+						_mm_castsi128_ps(maskff),
+						_mm_castsi128_ps(_mm_set_epi32(lmaskt << 28, lmaskt << 29, lmaskt << 30, lmaskt << 31))));
+					lmaskt >>= 4;
+					lmaskidx[kk] = _mm_and_si128(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERSSE<REAL> rt(0, l, lend - l);
+
+				__m128i oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+				REP(16) oindex[kk] = _mm_set_epi32(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01, toffset[lmaskidx2[2 + (kk << 2)]] - oindex01, toffset[lmaskidx2[1 + (kk << 2)]] - oindex01, toffset[lmaskidx2[0 + (kk << 2)]] - oindex01);
+
+				__m128i gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], typed[16], typed64[32];
+				int* allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+				__m128d f1[32], f2[32];
+				__m128 f1s[16], f2s[16];
+
+				REAL* bufi = (REAL*)bufNK1, * q = Q;
+				//avoid thread-conflict
+				double* buf1 = bufN1 + N * tid, * buf2 = bufN2 + N * tid;
+
+				for (int i = 0; i < N; ++i, q += K, bufi += K, buf1++, buf2++)
+				{
+					rt.Read(gtaddr);
+
+					REP(16) gtaddr[kk] = _mm_add_epi32(gtab[kk], _mm_slli_epi32(gtaddr[kk], 2));
+
+					REP(16) gtlow[kk] = _mm_set_epi32(*(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]));
+
+					REP(16) gtploidy[kk] = _mm_and_si128(lmask[kk], _mm_srli_epi32(gtlow[kk], 24));
+
+					REP(16) gtlow[kk] = _mm_and_si128(gtlow[kk], mask24);
+
+					REP(16) gtploidy[kk] = _mm_set_epi32(PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]]);
+
+					REP(16) gtals[kk] = _mm_add_epi32(gtaddr[kk], gtlow[kk]);
+
+					int maxv = maxploidy;
+					if (maxploidy != minploidy)
+					{
+						__m128i maxv1 =
+							_mm_max_epi32(
+								_mm_max_epi32(
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[0], gtploidy[1]),
+										_mm_max_epi32(gtploidy[2], gtploidy[3])),
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[4], gtploidy[5]),
+										_mm_max_epi32(gtploidy[6], gtploidy[7]))),
+								_mm_max_epi32(
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[8], gtploidy[9]),
+										_mm_max_epi32(gtploidy[10], gtploidy[11])),
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[12], gtploidy[13]),
+										_mm_max_epi32(gtploidy[14], gtploidy[15]))));
+						int* maxv2 = (int*)&maxv1;
+						maxv = Max(Max(maxv2[0], maxv2[1]), Max(maxv2[2], maxv2[3]));
+					}
+
+					__m128i ai = _mm_set1_epi32(0);
+					for (int a = 0; a < maxv; ++a, ai = _mm_add_epi32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = _mm_cmpgt_epi32(gtploidy[kk], ai);
+
+							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							{
+								typed64[0 + (kk << 1)] = _mm_cvtepi32_epi64(typed[kk]);
+								typed64[1 + (kk << 1)] = _mm_cvtepi32_epi64(_mm_shuffle_epi32(typed[kk], _MM_SHUFFLE(1, 0, 3, 2)));
+							}
+
+							__m128i als3 = _mm_and_si128(gtals[kk], typed[kk]);
+
+							allele[kk] = _mm_set_epi32(
+								*(ushort*)(gtab_base + simd_i32(als3, 3)),
+								*(ushort*)(gtab_base + simd_i32(als3, 2)),
+								*(ushort*)(gtab_base + simd_i32(als3, 1)),
+								*(ushort*)(gtab_base + simd_i32(als3, 0)));
+
+							gtals[kk] = _mm_add_epi32(gtals[kk], mask02);
+
+							allele[kk] = _mm_add_epi32(allele[kk], oindex[kk]);
+
+							allele[kk] = _mm_and_si128(allele[kk], typed[kk]);
+						}
+
+						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+						{
+							REP(32) f1[kk] = _mm_setzero_pd();
+							REP(32) f2[kk] = _mm_setzero_pd();
+						}
+						else
+						{
+							REP(16) f1s[kk] = _mm_setzero_ps();
+							REP(16) f2s[kk] = _mm_setzero_ps();
+						}
+
+						REAL* p2 = p;
+						for (int k = 0; k < K; ++k, p2 += KT)
+						{
+							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							{
+								__m128d pp[32], qq = _mm_set1_pd(q[k]), ii = _mm_set1_pd(bufi[k]);
+
+								REP(32)
+								{
+									pp[kk] = _mm_set_pd(p2[allele2[1 + (kk << 1)]], p2[allele2[0 + (kk << 1)]]);
+									f1[kk] = _mm_add_pd(f1[kk], _mm_mul_pd(pp[kk], ii));
+									f2[kk] = _mm_add_pd(f2[kk], _mm_mul_pd(pp[kk], qq));
+								}
+							}
+							else
+							{
+								__m128 pp[16], v1[16], v2[16], qq = _mm_set1_ps(q[k]), ii = _mm_set1_ps(bufi[k]);
+
+								REP(16)
+								{
+									pp[kk] = _mm_set_ps(p2[allele2[3 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[0 + (kk << 2)]]);
+									v1[kk] = _mm_mul_ps(pp[kk], ii);
+									v2[kk] = _mm_mul_ps(pp[kk], qq);
+									f1s[kk] = _mm_add_ps(f1s[kk], v1[kk]);
+									f2s[kk] = _mm_add_ps(f2s[kk], v2[kk]);
+								}
+							}
+						}
+
+						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						{
+							REP(16) f1s[kk] = _mm_div_ps(f1s[kk], f2s[kk]);
+							REP(16) f1s[kk] = _mm_blendv_ps(maskones, f1s[kk], _mm_castsi128_ps(typed[kk]));
+							REP(16)
+							{
+								f1[0 + (kk << 1)] = _mm_cvtps_pd(f1s[kk]);
+								f1[1 + (kk << 1)] = _mm_cvtps_pd(_mm_shuffle_ps(f1s[kk], f1s[kk], _MM_SHUFFLE(1, 0, 3, 2)));
+							}
+						}
+						else
+						{
+							REP(32)
+							{
+								//f2[kk] = _mm_blendv_pd(maskoned, f2[kk], _mm_castsi128_pd(typed64[kk]));
+								f1[kk] = _mm_div_pd(f1[kk], f2[kk]);
+								f1[kk] = _mm_blendv_pd(maskoned, f1[kk], _mm_castsi128_pd(typed64[kk]));
+							}
+						}
+
+						for (int K = sizeof(f1) / sizeof(f1[0]) / 2; K >= 1; K >>= 1)
+							REP(K) f1[kk] = _mm_mul_pd(f1[kk], f1[kk + K]);
+
+						ChargeLog(*(int64*)buf1, *buf2, simp_f64(f1, 0) * simp_f64(f1, 1));
+					}
+				}
 			}
 		}
 
-		CloseLog((int64*)slog, (double*)prod, K * STRUCTURE_NPACK);
+		//avoid thread-conflict
+		CloseLog((int64*)bufN1 + N * tid, bufN2 + N * tid, N);
+	}
+}
 
-		__m128i ki[4];
-		rng.PolyLog(prod, K, ki);
+/* Update individual or allele origin when ancetral proportion */
+template<typename REAL>
+template<bool fast_fp32>
+TARGETSSE void BAYESIAN<REAL>::UpdateZAdmixSSE(int tid)
+{
+	if (tid == -1)
+	{
+		SetZero(Mi, N * K * structure_nsubthread);
+		SetZero(Ni, K * KT);
 
-		for (int j = pad, ii = i + pad; j < STRUCTURE_NPACK; ++j, ++ii, q += K)
+		//////////////////////////////////////////////////////////
+
+		SetZero((int64*)l_atomic, 32);
+
+		g_fastsingle_val == 1 ? UpdateZAdmixSSE<true >(0) : UpdateZAdmixSSE<false>(0);
+
+		//avoid thread-conflict
+		for (int i = 1; i < structure_nsubthread; ++i)
+			Add(Mi, Mi + N * K * i, N * K);
+
+		return;
+	}
+
+	static __m128i mask00 = _mm_set1_epi32(0);
+	static __m128i maskff = _mm_set1_epi32(0xFFFFFFFF);
+	static __m128i mask24 = _mm_set1_epi32(0xFFFFFF);
+	static __m128i mask01 = _mm_set1_epi32(1);
+	static __m128i mask02 = _mm_set1_epi32(2);
+	static __m128i maskidx[16] = {
+		_mm_set_epi32( 3,  2,  1,  0), _mm_set_epi32( 7,  6,  5,  4), _mm_set_epi32(11, 10,  9,  8), _mm_set_epi32(15, 14, 13, 12),
+		_mm_set_epi32(19, 18, 17, 16), _mm_set_epi32(23, 22, 21, 20), _mm_set_epi32(27, 26, 25, 24), _mm_set_epi32(31, 30, 29, 28), 
+		_mm_set_epi32(35, 34, 33, 32), _mm_set_epi32(39, 38, 37, 36), _mm_set_epi32(43, 42, 41, 40), _mm_set_epi32(47, 46, 45, 44), 
+		_mm_set_epi32(51, 50, 49, 48), _mm_set_epi32(55, 54, 53, 52), _mm_set_epi32(59, 58, 57, 56), _mm_set_epi32(63, 62, 61, 60) };
+	static __m128d minfreqd = _mm_set1_pd(MIN_FREQ);
+	static __m128 minfreqs = _mm_set1_ps(MIN_FREQ);
+	static int PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		//64 * K  * sizeof(double)
+		__m128d* bufkd = (__m128d*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
+		__m128* bufks = (__m128*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
-			ushort k2 = simp_u64(ki, j);
-			q[k2] = 1;
-			Z[ii] = k2;
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
+
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
+			{
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				REAL* p = Freq + allele_freq_offset[l];
+				int* ni = Ni + allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				__m128i gtab[16];
+				for (int64 k = 0, lt = l; k < 16; ++k, lt += 4)
+					gtab[k] = _mm_set_epi32(GetLocTabDiff(lt + 3), GetLocTabDiff(lt + 2), GetLocTabDiff(lt + 1), GetLocTabDiff(lt + 0));
+
+				__m128i lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull, lmaskt = lmask0;
+				REP(16)
+				{
+					lmask[kk] = _mm_castps_si128(_mm_blendv_ps(
+						_mm_castsi128_ps(mask00),
+						_mm_castsi128_ps(maskff),
+						_mm_castsi128_ps(_mm_set_epi32(lmaskt << 28, lmaskt << 29, lmaskt << 30, lmaskt << 31))));
+					lmaskt >>= 4;
+					lmaskidx[kk] = _mm_and_si128(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERSSE<REAL> rt(0, l, lend - l);
+
+				__m128i oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+				REP(16) oindex[kk] = _mm_set_epi32(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01, toffset[lmaskidx2[2 + (kk << 2)]] - oindex01, toffset[lmaskidx2[1 + (kk << 2)]] - oindex01, toffset[lmaskidx2[0 + (kk << 2)]] - oindex01);
+
+				__m128i gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], allele64[32], k2[32], typed[16], typed64[32];
+				int* typed2 = (int*)typed, * allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+				uint64* k22 = (uint64*)&k2;
+
+				RNGSSE<double> rngd; RNGSSE<float > rngs;
+
+				if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+					new (&rngd) RNGSSE<double>(seed + m * L + l, RNG_SALT_UPDATEZ);
+				else
+					new (&rngs) RNGSSE<float >(seed + m * L + l, RNG_SALT_UPDATEZ);
+
+				REAL* q = Q;
+				//avoid thread-conflict
+				int64* mi = Mi + N * K * tid;
+
+				for (int i = 0; i < N; ++i, q += K, mi += K)
+				{
+					rt.Read(gtaddr);
+
+					REP(16) gtaddr[kk] = _mm_add_epi32(gtab[kk], _mm_slli_epi32(gtaddr[kk], 2));
+
+					REP(16) gtlow[kk] = _mm_set_epi32(*(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]));
+
+					REP(16) gtploidy[kk] = _mm_and_si128(lmask[kk], _mm_srli_epi32(gtlow[kk], 24));
+
+					REP(16) gtlow[kk] = _mm_and_si128(gtlow[kk], mask24);
+
+					REP(16) gtploidy[kk] = _mm_set_epi32(PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]]);
+
+					REP(16) gtals[kk] = _mm_add_epi32(gtaddr[kk], gtlow[kk]);
+
+					int maxv = maxploidy;
+
+					__m128i ai = _mm_set1_epi32(0);
+					for (int a = 0; a < maxv; ++a, ai = _mm_add_epi32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = _mm_cmpgt_epi32(gtploidy[kk], ai);
+
+							__m128i als3 = _mm_and_si128(gtals[kk], typed[kk]);
+
+							allele[kk] = _mm_set_epi32(
+								*(ushort*)(gtab_base + simd_i32(als3, 3)),
+								*(ushort*)(gtab_base + simd_i32(als3, 2)),
+								*(ushort*)(gtab_base + simd_i32(als3, 1)),
+								*(ushort*)(gtab_base + simd_i32(als3, 0)));
+
+							gtals[kk] = _mm_add_epi32(gtals[kk], mask02);
+
+							allele[kk] = _mm_add_epi32(allele[kk], oindex[kk]);
+
+							allele[kk] = _mm_and_si128(allele[kk], typed[kk]);
+						}
+
+						REP(16)
+						{
+							allele64[0 + (kk << 1)] = _mm_cvtepi32_epi64(allele[kk]);
+							allele64[1 + (kk << 1)] = _mm_cvtepi32_epi64(_mm_shuffle_epi32(allele[kk], _MM_SHUFFLE(1, 0, 3, 2)));
+
+							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							{
+								typed64[0 + (kk << 1)] = _mm_cvtepi32_epi64(typed[kk]);
+								typed64[1 + (kk << 1)] = _mm_cvtepi32_epi64(_mm_shuffle_epi32(typed[kk], _MM_SHUFFLE(1, 0, 3, 2)));
+							}
+						}
+
+						REAL* p2 = p;
+						for (int k = 0; k < K; ++k, p2 += KT)
+						{
+							__m128d qd; __m128 qs;
+
+							if constexpr (sizeof(REAL) == 8)
+							{
+								qd = _mm_set1_pd(q[k]);
+
+								REP(32) bufkd[kk + (k << 5)] = _mm_set_pd(p2[allele2[1 + (kk << 1)]], p2[allele2[0 + (kk << 1)]]);
+								REP(32) bufkd[kk + (k << 5)] = _mm_mul_pd(bufkd[kk + (k << 5)], qd);
+								REP(32) bufkd[kk + (k << 5)] = _mm_add_pd(bufkd[kk + (k << 5)], minfreqd);
+								REP(32) bufkd[kk + (k << 5)] = _mm_and_pd(bufkd[kk + (k << 5)], _mm_castsi128_pd(typed64[kk]));
+							}
+							else if constexpr (fast_fp32)
+							{
+								qs = _mm_set1_ps(q[k]);
+
+								REP(16) bufks[kk + (k << 4)] = _mm_set_ps(p2[allele2[3 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[0 + (kk << 2)]]);
+								REP(16) bufks[kk + (k << 4)] = _mm_mul_ps(bufks[kk + (k << 4)], qs);
+								REP(16) bufks[kk + (k << 4)] = _mm_add_ps(bufks[kk + (k << 4)], minfreqs);
+								REP(16) bufks[kk + (k << 4)] = _mm_and_ps(bufks[kk + (k << 4)], _mm_castsi128_ps(typed[kk]));
+							}
+							else
+							{
+								qd = _mm_set1_pd(q[k]);
+								REP(16)
+								{
+									__m128 v1 = _mm_set_ps(p2[allele2[3 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[0 + (kk << 2)]]);
+									bufkd[0 + (kk << 1) + (k << 5)] = _mm_cvtps_pd(v1);
+									bufkd[1 + (kk << 1) + (k << 5)] = _mm_cvtps_pd(_mm_shuffle_ps(v1, v1, _MM_SHUFFLE(1, 0, 3, 2)));
+								}
+
+								REP(32) bufkd[kk + (k << 5)] = _mm_mul_pd(bufkd[kk + (k << 5)], qd);
+								REP(32) bufkd[kk + (k << 5)] = _mm_add_pd(bufkd[kk + (k << 5)], minfreqd);
+								REP(32) bufkd[kk + (k << 5)] = _mm_and_pd(bufkd[kk + (k << 5)], _mm_castsi128_pd(typed64[kk]));
+							}
+						}
+
+						//draw cluster for each allele copy
+						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							rngd.Poly<64>(bufkd, K, k2);
+						else
+							rngs.Poly<64>(bufks, K, k2);
+
+						//Update Mi
+						REP(64) mi[k22[kk]] -= typed2[kk];
+
+						REP(32) k2[kk] = _mm_set_epi64x(k22[1 + (kk << 1)] * KT, k22[0 + (kk << 1)] * KT);
+
+						REP(32) k2[kk] = _mm_add_epi64(k2[kk], allele64[kk]);
+
+						//ni[k2 * KT + als[a]]++;
+						REP(64) ni[k22[kk]] -= typed2[kk];
+					}
+				}
+			}
 		}
 	}
 }
 
-/* Update a priori ancetral proportion by Metropolis-Hastings for admix model */
-TARGETSSE void UpdateQMetroSSE(double* Q, int K, double* bufNK1, double* bufN1, double* bufN2, double* Base)
+/* Record updated MCMC parameters */
+template<typename REAL>
+template<bool isadmix, bool fast_fp32>
+TARGETSSE void BAYESIAN<REAL>::RecordSSE(int tid)
 {
-	//add priori probability
-	double* p = NULL, * q0 = Q, * b0 = bufNK1;
-	OpenLog((int64*)bufN1, bufN2, nind);
-
-	for (int i = 0, pad = 0; i < nind; i += STRUCTURE_NPACK, b0 += STRUCTURE_NPACK * K, q0 += STRUCTURE_NPACK * K)
+	if (tid == -1)
 	{
-		if (i + STRUCTURE_NPACK >= nind) //fix i for the last several
+		Add(MiSum, Mi, N * K);
+
+		//////////////////////////////////////////////////////////
+
+		SetZero((int64*)l_atomic, 32);
+
+		switch ((int)binaryq * 10 + g_fastsingle_val)
 		{
-			pad = STRUCTURE_NPACK - (nind - i);
-			i = nind - STRUCTURE_NPACK;
-			q0 = Q + i * K;
-			b0 = bufNK1 + i * K;
+		case 01: BAYESIAN<REAL>::RecordSSE<true , true >(0); break;
+		case 02: BAYESIAN<REAL>::RecordSSE<true , false>(0); break;
+		case 11: BAYESIAN<REAL>::RecordSSE<false, true >(0); break;
+		case 12: BAYESIAN<REAL>::RecordSSE<false, false>(0); break;
 		}
 
-		BAYESIAN_READER rt(i);
-		p = Base;
-		double* q1 = q0 + K, * q2 = q1 + K, * q3 = q2 + K, * q4 = q3 + K, * q5 = q4 + K, * q6 = q5 + K, * q7 = q6 + K;
-		double* b1 = b0 + K, * b2 = b1 + K, * b3 = b2 + K, * b4 = b3 + K, * b5 = b4 + K, * b6 = b5 + K, * b7 = b6 + K;
-
-		for (int64 l = 0; l < nloc; ++l, p += GetLoc(l).k)
-		{
-			int size = structure_size[l];
-			__m128i mask = _mm_set1_epi64x((1u << size) - 1u);
-			__m128i aid1, aid2, aid3, aid4;
-			__m128i type1, type2, type3, type4;
-			__m128i paddr = _mm_set1_epi64x((uint64)p);
-
-#define REP_MID \
-			ReadAidSSE/*(rt, size, aid, type)*/; \
-			\
-			aid1 = _mm_slli_epi64(aid1, 3); \
-			aid2 = _mm_slli_epi64(aid2, 3); \
-			aid3 = _mm_slli_epi64(aid3, 3); \
-			aid4 = _mm_slli_epi64(aid4, 3); \
-			\
-			aid1 = _mm_add_epi64(paddr, aid1); \
-			aid2 = _mm_add_epi64(paddr, aid2); \
-			aid3 = _mm_add_epi64(paddr, aid3); \
-			aid4 = _mm_add_epi64(paddr, aid4); \
-			\
-			switch (pad) \
-			{ \
-			case 0: if (simd_u64(type1, 0)) ChargeLog(*(int64*)&bufN1[i + 0], bufN2[i + 0], SumProdDiv(b0, q0, (double*)simd_u64(aid1, 0), KT, K)); \
-			case 1: if (simd_u64(type1, 1)) ChargeLog(*(int64*)&bufN1[i + 1], bufN2[i + 1], SumProdDiv(b1, q1, (double*)simd_u64(aid1, 1), KT, K)); \
-			case 2: if (simd_u64(type2, 0)) ChargeLog(*(int64*)&bufN1[i + 2], bufN2[i + 2], SumProdDiv(b2, q2, (double*)simd_u64(aid2, 0), KT, K)); \
-			case 3: if (simd_u64(type2, 1)) ChargeLog(*(int64*)&bufN1[i + 3], bufN2[i + 3], SumProdDiv(b3, q3, (double*)simd_u64(aid2, 1), KT, K)); \
-			case 4: if (simd_u64(type3, 0)) ChargeLog(*(int64*)&bufN1[i + 4], bufN2[i + 4], SumProdDiv(b4, q4, (double*)simd_u64(aid3, 0), KT, K)); \
-			case 5: if (simd_u64(type3, 1)) ChargeLog(*(int64*)&bufN1[i + 5], bufN2[i + 5], SumProdDiv(b5, q5, (double*)simd_u64(aid3, 1), KT, K)); \
-			case 6: if (simd_u64(type4, 0)) ChargeLog(*(int64*)&bufN1[i + 6], bufN2[i + 6], SumProdDiv(b6, q6, (double*)simd_u64(aid4, 0), KT, K)); \
-			case 7: if (simd_u64(type4, 1)) ChargeLog(*(int64*)&bufN1[i + 7], bufN2[i + 7], SumProdDiv(b7, q7, (double*)simd_u64(aid4, 1), KT, K)); \
-			}
-
-			switch (maxploidy)
-			{
-			case 10: REP_MID;
-			case  9: REP_MID;
-			case  8: REP_MID;
-			case  7: REP_MID;
-			case  6: REP_MID;
-			case  5: REP_MID;
-			case  4: REP_MID;
-			case  3: REP_MID;
-			case  2: REP_MID;
-			case  1: REP_MID;
-			}
-#undef REP_MID 
-		}
+		bufNK1[0] = Sum(bufNK1, structure_nsubthread);
+		return;
 	}
-	CloseLog((int64*)bufN1, bufN2, nind);
+
+	static __m128d maskoned = _mm_set1_pd(1.0);
+	static __m128i mask00 = _mm_set1_epi32(0);
+	static __m128i maskff = _mm_set1_epi32(0xFFFFFFFF);
+	static __m128i mask24 = _mm_set1_epi32(0xFFFFFF);
+	static __m128i mask01 = _mm_set1_epi32(1);
+	static __m128i mask02 = _mm_set1_epi32(2);
+	static __m128i maskidx[16] = {
+		_mm_set_epi32(3,  2,  1,  0), _mm_set_epi32(7,  6,  5,  4), _mm_set_epi32(11, 10,  9,  8), _mm_set_epi32(15, 14, 13, 12),
+		_mm_set_epi32(19, 18, 17, 16), _mm_set_epi32(23, 22, 21, 20), _mm_set_epi32(27, 26, 25, 24), _mm_set_epi32(31, 30, 29, 28),
+		_mm_set_epi32(35, 34, 33, 32), _mm_set_epi32(39, 38, 37, 36), _mm_set_epi32(43, 42, 41, 40), _mm_set_epi32(47, 46, 45, 44),
+		_mm_set_epi32(51, 50, 49, 48), _mm_set_epi32(55, 54, 53, 52), _mm_set_epi32(59, 58, 57, 56), _mm_set_epi32(63, 62, 61, 60) };
+	static int PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
+	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+	atomic<int> thread_counter = 0;
+#pragma omp parallel num_threads(structure_nsubthread)
+	{
+		int tid = thread_counter.fetch_add(1);
+
+		int64 slog = 0; double prod = 1;
+		OpenLog(slog, prod);
+
+		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
+		{
+			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
+			int64 lend0 = (lend - lstart + 63) / 64;
+
+			for (int64 ia = l_atomic[lsize].fetch_add(1); ia < lend0; ia = l_atomic[lsize].fetch_add(1))
+			{
+				int64 l = lstart + (ia * structure_loc_coprime64[lsize] % lend0 << 6);
+				REAL* p = Freq + allele_freq_offset[l];
+				int64 gtab_base = (int64)GetLoc(l).GetGtab();
+
+				__m128i gtab[16];
+				for (int64 k = 0, lt = l; k < 16; ++k, lt += 4)
+					gtab[k] = _mm_set_epi32(GetLocTabDiff(lt + 3), GetLocTabDiff(lt + 2), GetLocTabDiff(lt + 1), GetLocTabDiff(lt + 0));
+
+				__m128i lmask[16], lmaskidx[16];
+				uint64 lmask0 = lend - l >= 64 ? 0xFFFFFFFFFFFFFFFF : (1ull << (lend - l)) - 1ull, lmaskt = lmask0;
+				REP(16)
+				{
+					lmask[kk] = _mm_castps_si128(_mm_blendv_ps(
+						_mm_castsi128_ps(mask00),
+						_mm_castsi128_ps(maskff),
+						_mm_castsi128_ps(_mm_set_epi32(lmaskt << 28, lmaskt << 29, lmaskt << 30, lmaskt << 31))));
+					lmaskt >>= 4;
+					lmaskidx[kk] = _mm_and_si128(lmask[kk], maskidx[kk]);
+				}
+
+				GENO_READERSSE<REAL> rt(0, l, lend - l);
+
+				__m128i oindex[16];
+				uint64* toffset = allele_freq_offset + l;
+				uint64 oindex01 = toffset[0];
+				int* lmaskidx2 = (int*)lmaskidx;
+
+				REP(16) oindex[kk] = _mm_set_epi32(toffset[lmaskidx2[3 + (kk << 2)]] - oindex01, toffset[lmaskidx2[2 + (kk << 2)]] - oindex01, toffset[lmaskidx2[1 + (kk << 2)]] - oindex01, toffset[lmaskidx2[0 + (kk << 2)]] - oindex01);
+
+				__m128i gtaddr[16], gtlow[16], gtploidy[16], gtals[16], allele[16], allele64[32], typed[16], typed64[32];
+				int* allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
+				__m128d f2[32];
+				__m128 f2s[16];
+
+				REAL* q = Q;
+
+				for (int i = 0; i < N; ++i, q += K)
+				{
+					rt.Read(gtaddr);
+
+					REP(16) gtaddr[kk] = _mm_add_epi32(gtab[kk], _mm_slli_epi32(gtaddr[kk], 2));
+
+					REP(16) gtlow[kk] = _mm_set_epi32(*(uint*)(gtab_base + gtaddr2[3 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[2 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[1 + (kk << 2)]), *(uint*)(gtab_base + gtaddr2[0 + (kk << 2)]));
+
+					REP(16) gtploidy[kk] = _mm_and_si128(lmask[kk], _mm_srli_epi32(gtlow[kk], 24));
+
+					REP(16) gtlow[kk] = _mm_and_si128(gtlow[kk], mask24);
+
+					REP(16) gtploidy[kk] = _mm_set_epi32(PT_PLOIDYxNALLELES[gtploidy2[3 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[2 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[1 + (kk << 2)]], PT_PLOIDYxNALLELES[gtploidy2[0 + (kk << 2)]]);
+
+					REP(16) gtals[kk] = _mm_add_epi32(gtaddr[kk], gtlow[kk]);
+
+					int maxv = maxploidy;
+					if (maxploidy != minploidy)
+					{
+						__m128i maxv1 =
+							_mm_max_epi32(
+								_mm_max_epi32(
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[0], gtploidy[1]),
+										_mm_max_epi32(gtploidy[2], gtploidy[3])),
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[4], gtploidy[5]),
+										_mm_max_epi32(gtploidy[6], gtploidy[7]))),
+								_mm_max_epi32(
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[8], gtploidy[9]),
+										_mm_max_epi32(gtploidy[10], gtploidy[11])),
+									_mm_max_epi32(
+										_mm_max_epi32(gtploidy[12], gtploidy[13]),
+										_mm_max_epi32(gtploidy[14], gtploidy[15]))));
+						int* maxv2 = (int*)&maxv1;
+						maxv = Max(Max(maxv2[0], maxv2[1]), Max(maxv2[2], maxv2[3]));
+					}
+
+					__m128i ai = _mm_set1_epi32(0);
+					for (int a = 0; a < maxv; ++a, ai = _mm_add_epi32(ai, mask01))
+					{
+						REP(16)
+						{
+							typed[kk] = _mm_cmpgt_epi32(gtploidy[kk], ai);
+
+							__m128i als3 = _mm_and_si128(gtals[kk], typed[kk]);
+
+							allele[kk] = _mm_set_epi32(
+								*(ushort*)(gtab_base + simd_i32(als3, 3)),
+								*(ushort*)(gtab_base + simd_i32(als3, 2)),
+								*(ushort*)(gtab_base + simd_i32(als3, 1)),
+								*(ushort*)(gtab_base + simd_i32(als3, 0)));
+
+							gtals[kk] = _mm_add_epi32(gtals[kk], mask02);
+
+							allele[kk] = _mm_add_epi32(allele[kk], oindex[kk]);
+
+							allele[kk] = _mm_and_si128(allele[kk], typed[kk]);
+						}
+
+						REP(16)
+						{
+							allele64[0 + (kk << 1)] = _mm_cvtepi32_epi64(allele[kk]);
+							allele64[1 + (kk << 1)] = _mm_cvtepi32_epi64(_mm_shuffle_epi32(allele[kk], _MM_SHUFFLE(1, 0, 3, 2)));
+
+							typed64[0 + (kk << 1)] = _mm_cvtepi32_epi64(typed[kk]);
+							typed64[1 + (kk << 1)] = _mm_cvtepi32_epi64(_mm_shuffle_epi32(typed[kk], _MM_SHUFFLE(1, 0, 3, 2)));
+						}
+
+						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							REP(32) f2[kk] = _mm_setzero_pd();
+						else
+							REP(16) f2s[kk] = _mm_setzero_ps();
+
+						if constexpr (!isadmix)
+						{
+							REAL* p2 = p + Z[i] * KT;
+
+							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+								REP(32) f2[kk] = _mm_set_pd(p2[allele2[1 + (kk << 1)]], p2[allele2[0 + (kk << 1)]]);
+							else
+								REP(16) f2s[kk] = _mm_set_ps(p2[allele2[3 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[0 + (kk << 2)]]);
+						}
+						else
+						{
+							REAL* p2 = p;
+							for (int k = 0; k < K; ++k, p2 += KT)
+							{
+								//disable fmadd
+								if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+								{
+									__m128d pp[32], qq = _mm_set1_pd(q[k]);
+
+									REP(32) pp[kk] = _mm_set_pd(p2[allele2[1 + (kk << 1)]], p2[allele2[0 + (kk << 1)]]);
+									REP(32) f2[kk] = _mm_add_pd(f2[kk], _mm_mul_pd(pp[kk], qq));
+								}
+								else
+								{
+									__m128 pp[16], qq = _mm_set1_ps(q[k]);
+
+									REP(16) pp[kk] = _mm_set_ps(p2[allele2[3 + (kk << 2)]], p2[allele2[2 + (kk << 2)]], p2[allele2[1 + (kk << 2)]], p2[allele2[0 + (kk << 2)]]);
+									REP(16) f2s[kk] = _mm_add_ps(f2s[kk], _mm_mul_ps(pp[kk], qq));
+								}
+							}
+						}
+
+						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						{
+							REP(16)
+							{
+								f2[0 + (kk << 1)] = _mm_cvtps_pd(f2s[kk]);
+								f2[1 + (kk << 1)] = _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(f2s[kk]), 8)));
+							}
+						}
+
+						REP(32) f2[kk] = _mm_blendv_pd(maskoned, f2[kk], _mm_castsi128_pd(typed64[kk]));
+
+						for (int K = sizeof(f2) / sizeof(f2[0]) / 2; K >= 1; K >>= 1)
+							REP(K) f2[kk] = _mm_mul_pd(f2[kk], f2[kk + K]);
+
+						ChargeLog(slog, prod, simp_f64(f2, 0) * simp_f64(f2, 1));
+					}
+				}
+			}
+		}
+
+		CloseLog(slog, prod);
+		bufNK1[tid] = prod;
+	}
 }
 
-/* Update individual or allele origin for admix model */
-TARGETSSE void UpdateZAdmixSSE(double* Q, int K, int64* Mi, int* Ni, double* bufNK1, double* bufNK2, double* Base, RNGSSE& rng)
-{
-	__m128i mask01 = _mm_set1_epi64x(1);
-	__m128d maskone = _mm_set1_pd(1.0);
-	__m128d* freq = AlignSIMD((__m128d*)bufNK1);
-	__m128d* qq = AlignSIMD((__m128d*)bufNK2);
-	__m128d dmin = _mm_set1_pd(MIN_FREQ);
-	__m128i addr_inc = _mm_set1_epi64x(KT * sizeof(double));
+#else
 
-	for (int i = 0, pad = 0; i < nind; i += STRUCTURE_NPACK)
-	{
-		if (i + STRUCTURE_NPACK >= nind) //fix i for the last several
-		{
-			pad = STRUCTURE_NPACK - (nind - i);
-			i = nind - STRUCTURE_NPACK;
-		}
+template<typename REAL>
+TARGETSSE void BAYESIAN<REAL>::UpdateQNoAdmixSSE(int tid) { }
 
-		double* q0 = Q + i * K, * q1 = q0 + K, * q2 = q1 + K, * q3 = q2 + K, * q4 = q3 + K, * q5 = q4 + K, * q6 = q5 + K, * q7 = q6 + K;
-		int64* m0 = Mi + i * K, * m1 = m0 + K, * m2 = m1 + K, * m3 = m2 + K, * m4 = m3 + K, * m5 = m4 + K, * m6 = m5 + K, * m7 = m6 + K;
+template<typename REAL>
+TARGETSSE void BAYESIAN<REAL>::UpdateZNoAdmixSSE(int tid) { }
 
-		for (int k = 0; k < K; ++k)
-		{
-			qq[k * 4 + 0] = _mm_set_pd(q1[k], q0[k]);
-			qq[k * 4 + 1] = _mm_set_pd(q3[k], q2[k]);
-			qq[k * 4 + 2] = _mm_set_pd(q5[k], q4[k]);
-			qq[k * 4 + 3] = _mm_set_pd(q7[k], q6[k]);
-		}
+template<typename REAL>
+template<bool fast_fp32>
+TARGETSSE void BAYESIAN<REAL>::UpdateQMetroSSE(int tid) { }
 
-		int* ni = Ni;
-		double* p = Base;
-		BAYESIAN_READER rt(i);
+template<typename REAL>
+template<bool fast_fp32>
+TARGETSSE void BAYESIAN<REAL>::UpdateZAdmixSSE(int tid) { }
 
-		for (int64 l = 0; l < nloc; ++l, ni += GetLoc(l).k, p += GetLoc(l).k)
-		{
-			int size = structure_size[l];
-			__m128i mask = _mm_set1_epi64x((1u << size) - 1u);
-			__m128i type[4];
-			__m128i aid1, aid2, aid3, aid4;
-			__m128i& type1 = type[0];
-			__m128i& type2 = type[1];
-			__m128i& type3 = type[2];
-			__m128i& type4 = type[3];
-			__m128i t1, t2, t3, t4;
-			__m128i addr = _mm_set1_epi64x((uint64)p);
-			__m128d sumfreq[4];
-			__m128d a1, a2, a3, a4;
-			__m128i zid[4];
-			__m128i& zid1 = zid[0];
-			__m128i& zid2 = zid[1];
-			__m128i& zid3 = zid[2];
-			__m128i& zid4 = zid[3];
-			ushort k2;
-
-#define REP_MID \
-			ReadAidSSE/*(rt, size, aid, type)*/; \
-			\
-			sumfreq[0] = _mm_setzero_pd(); \
-			sumfreq[1] = _mm_setzero_pd(); \
-			sumfreq[2] = _mm_setzero_pd(); \
-			sumfreq[3] = _mm_setzero_pd(); \
-			\
-			t1 = _mm_slli_epi64(aid1, 3); \
-			t2 = _mm_slli_epi64(aid2, 3); \
-			t3 = _mm_slli_epi64(aid3, 3); \
-			t4 = _mm_slli_epi64(aid4, 3); \
-			\
-			t1 = _mm_add_epi64(t1, addr); \
-			t2 = _mm_add_epi64(t2, addr); \
-			t3 = _mm_add_epi64(t3, addr); \
-			t4 = _mm_add_epi64(t4, addr); \
-			\
-			for (int k = 0; k < K; ++k) \
-			{ \
-				a1 = _mm_set_pd(*(double*)simd_u64(t1, 1), *(double*)simd_u64(t1, 0)); \
-				a2 = _mm_set_pd(*(double*)simd_u64(t2, 1), *(double*)simd_u64(t2, 0)); \
-				a3 = _mm_set_pd(*(double*)simd_u64(t3, 1), *(double*)simd_u64(t3, 0)); \
-				a4 = _mm_set_pd(*(double*)simd_u64(t4, 1), *(double*)simd_u64(t4, 0)); \
-				\
-				a1 = _mm_mul_pd(qq[k * 4 + 0], a1); \
-				a2 = _mm_mul_pd(qq[k * 4 + 1], a2); \
-				a3 = _mm_mul_pd(qq[k * 4 + 2], a3); \
-				a4 = _mm_mul_pd(qq[k * 4 + 3], a4); \
-				\
-				freq[k * 4 + 0] = _mm_add_pd(a1, dmin); \
-				freq[k * 4 + 1] = _mm_add_pd(a2, dmin); \
-				freq[k * 4 + 2] = _mm_add_pd(a3, dmin); \
-				freq[k * 4 + 3] = _mm_add_pd(a4, dmin); \
-				\
-				sumfreq[0] = _mm_add_pd(sumfreq[0], freq[k * 4 + 0]); \
-				sumfreq[1] = _mm_add_pd(sumfreq[1], freq[k * 4 + 1]); \
-				sumfreq[2] = _mm_add_pd(sumfreq[2], freq[k * 4 + 2]); \
-				sumfreq[3] = _mm_add_pd(sumfreq[3], freq[k * 4 + 3]); \
-				\
-				t1 = _mm_add_epi64(t1, addr_inc); \
-				t2 = _mm_add_epi64(t2, addr_inc); \
-				t3 = _mm_add_epi64(t3, addr_inc); \
-				t4 = _mm_add_epi64(t4, addr_inc); \
-			} \
-			/* draw z */ \
-			rng.Poly(freq, sumfreq, K, zid); \
-			\
-			type1 = _mm_and_si128(type1, mask01);\
-			type2 = _mm_and_si128(type2, mask01);\
-			type3 = _mm_and_si128(type3, mask01);\
-			type4 = _mm_and_si128(type4, mask01);\
-			\
-			switch (pad) \
-			{ /* update mi, ni */ \
-			case 0: k2 = simd_u64(zid1, 0); m0[k2] += simd_u64(type1, 0); ni[k2 * KT + simd_u64(aid1, 0)] += simd_u64(type1, 0); \
-			case 1: k2 = simd_u64(zid1, 1); m1[k2] += simd_u64(type1, 1); ni[k2 * KT + simd_u64(aid1, 1)] += simd_u64(type1, 1); \
-			case 2: k2 = simd_u64(zid2, 0); m2[k2] += simd_u64(type2, 0); ni[k2 * KT + simd_u64(aid2, 0)] += simd_u64(type2, 0); \
-			case 3: k2 = simd_u64(zid2, 1); m3[k2] += simd_u64(type2, 1); ni[k2 * KT + simd_u64(aid2, 1)] += simd_u64(type2, 1); \
-			case 4: k2 = simd_u64(zid3, 0); m4[k2] += simd_u64(type3, 0); ni[k2 * KT + simd_u64(aid3, 0)] += simd_u64(type3, 0); \
-			case 5: k2 = simd_u64(zid3, 1); m5[k2] += simd_u64(type3, 1); ni[k2 * KT + simd_u64(aid3, 1)] += simd_u64(type3, 1); \
-			case 6: k2 = simd_u64(zid4, 0); m6[k2] += simd_u64(type4, 0); ni[k2 * KT + simd_u64(aid4, 0)] += simd_u64(type4, 0); \
-			case 7: k2 = simd_u64(zid4, 1); m7[k2] += simd_u64(type4, 1); ni[k2 * KT + simd_u64(aid4, 1)] += simd_u64(type4, 1); \
-			}
-
-			switch (maxploidy)
-			{
-			case 10: REP_MID;
-			case  9: REP_MID;
-			case  8: REP_MID;
-			case  7: REP_MID;
-			case  6: REP_MID;
-			case  5: REP_MID;
-			case  4: REP_MID;
-			case  3: REP_MID;
-			case  2: REP_MID;
-			case  1: REP_MID;
-			}
-#undef REP_MID 
-		}
-	}
-}
+template<typename REAL>
+template<bool isadmix, bool fast_fp32>
+TARGETSSE void BAYESIAN<REAL>::RecordSSE(int tid) { }
 
 #endif

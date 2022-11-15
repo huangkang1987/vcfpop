@@ -2,6 +2,9 @@
 
 #include "vcfpop.h"
 
+template TARGET void HashHaplotype<double>(IND<double>* ti, int64 st, int64 ed, HASH* hash, int& ploidy);
+template TARGET void HashHaplotype<float >(IND<float >* ti, int64 st, int64 ed, HASH* hash, int& ploidy);
+
 /* Get crc32 for 64 bits data*/
 uint crc32_u64(uint prev, uint64 val)
 {
@@ -363,7 +366,8 @@ TARGET HASH HashDyadGenotypeIndex(HASH ha)
 }
 
 /* Get hash of a haplotype */
-TARGET void HashHaplotype(IND* ti, int64 st, int64 ed, HASH* hash, int& ploidy)
+template<typename REAL>
+TARGET void HashHaplotype(IND<REAL>* ti, int64 st, int64 ed, HASH* hash, int& ploidy)
 {
 	//allele should be sorted
 #ifdef HASH64
@@ -416,4 +420,53 @@ TARGET void HashHaplotype(IND* ti, int64 st, int64 ed, HASH* hash, int& ploidy)
 	}
 
 	SetVal(hash, Seed1, ploidy);
+}
+
+/* 32 bit Integer Hashing */
+TARGET uint MurmurHash2(uint data, uint seed)
+{
+	uint m = 0x5bd1e995;
+	uint s = seed ^ sizeof(uint);
+
+	uint a = data;
+
+	a *= m;
+	a ^= a >> 24;
+	a *= m;
+	s *= m;
+	a ^= s;
+
+	a ^= a >> 13;
+	a *= m;
+	a ^= a >> 15;
+
+	return a;
+}
+
+/* 64 bit Integer Hashing */
+TARGET uint64 MurmurHash64(uint64 data, uint64 seed)
+{
+	uint* d = (uint*)&data;
+	uint* s = (uint*)&seed;
+
+	d[1] = (~d[0]) ^ d[1];
+	s[1] = (~s[0]) ^ s[1];
+
+	return ((uint64)MurmurHash2(d[1], s[1]) << 32) |
+		((uint64)MurmurHash2(d[0], s[0]));
+}
+
+/* 64 bit Integer Hashing */
+TARGET uint MurmurHash32(uint64 data, uint64 seed)
+{
+	uint a32 = (~(uint)data) ^ ((uint)(data >> 32));
+	uint s32 = (~(uint)seed) ^ ((uint)(seed >> 32));
+
+	return MurmurHash2(a32, s32);
+}
+
+/* Mix high and low 32 bits */
+TARGET uint Mix(uint64 x)
+{
+	return (~(uint)x) ^ ((uint)(x >> 32));
 }

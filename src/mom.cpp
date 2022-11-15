@@ -2,6 +2,23 @@
 
 #include "vcfpop.h"
 
+template TARGET void MOMRelatednessAssign<double>(int p, int refmode, double* e, double* f, int* xx);
+template TARGET void MOMRelatednessAssign<float >(int p, int refmode, double* e, float * f, int* xx);
+template TARGET void MOMRelatednessAssign1<double>(int refmode, double* e, double* f, int* xx);
+template TARGET void MOMRelatednessAssign1<float >(int refmode, double* e, float * f, int* xx);
+template TARGET void MOMRelatednessAssign2<double>(int refmode, double* e, double* f, int* xx);
+template TARGET void MOMRelatednessAssign2<float >(int refmode, double* e, float * f, int* xx);
+template TARGET void MOMRelatednessAssign3<double>(int refmode, double* e, double* f, int* xx);
+template TARGET void MOMRelatednessAssign3<float >(int refmode, double* e, float * f, int* xx);
+template TARGET void MOMRelatednessAssign4<double>(int refmode, double* e, double* f, int* xx);
+template TARGET void MOMRelatednessAssign4<float >(int refmode, double* e, float * f, int* xx);
+template TARGET void MOMRelatednessAssign5<double>(int refmode, double* e, double* f, int* xx);
+template TARGET void MOMRelatednessAssign5<float >(int refmode, double* e, float * f, int* xx);
+template TARGET void MOMRelatednessAssign6<double>(int refmode, double* e, double* f, int* xx);
+template TARGET void MOMRelatednessAssign6<float >(int refmode, double* e, float * f, int* xx);
+template TARGET void MOMRelatednessAssign7<double>(int refmode, double* e, double* f, int* xx);
+template TARGET void MOMRelatednessAssign7<float >(int refmode, double* e, float * f, int* xx);
+
 /* Power of a real number */
 TARGET double mp(double base, int index)
 {
@@ -12,7 +29,8 @@ TARGET double mp(double base, int index)
 }
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign(int p, int refmode, double* e, double* f, int* xx)
+template<typename REAL>
+TARGET void MOMRelatednessAssign(int p, int refmode, double* e, REAL* f, int* xx)
 {
 	switch(p)
 	{
@@ -28,7 +46,8 @@ TARGET void MOMRelatednessAssign(int p, int refmode, double* e, double* f, int* 
 }
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign1(int refmode, double* e, double* f, int* xx)
+template<typename REAL>
+TARGET void MOMRelatednessAssign1(int refmode, double* e, REAL* f, int* xx)
 {
 	double pi = 0, px;
 	switch(refmode)
@@ -49,7 +68,8 @@ TARGET void MOMRelatednessAssign1(int refmode, double* e, double* f, int* xx)
 }
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign2(int refmode, double* e, double* f, int* xx)
+template<typename REAL>
+TARGET void MOMRelatednessAssign2(int refmode, double* e, REAL* f, int* xx)
 {
 	double pi = 0, pj = 0, px;
 	double pi2, pj2, px2;
@@ -100,7 +120,8 @@ TARGET void MOMRelatednessAssign2(int refmode, double* e, double* f, int* xx)
 }
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign3(int refmode, double* e, double* f, int* xx)
+template<typename REAL>
+TARGET void MOMRelatednessAssign3(int refmode, double* e, REAL* f, int* xx)
 {
 	double pi = 0, pj = 0, pk = 0, px;
 	double pi2, pj2, pk2, px2;
@@ -203,7 +224,8 @@ TARGET void MOMRelatednessAssign3(int refmode, double* e, double* f, int* xx)
 }
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign4(int refmode, double* e, double* f, int* xx)
+template<typename REAL>
+TARGET void MOMRelatednessAssign4(int refmode, double* e, REAL* f, int* xx)
 {
 	double pi = 0, pj = 0, pk = 0, pl = 0, px;
 	double pi2, pj2, pk2, pl2, px2;
@@ -418,7 +440,8 @@ TARGET void MOMRelatednessAssign4(int refmode, double* e, double* f, int* xx)
 }
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign5(int refmode, double* e, double* f, int* xx)
+template<typename REAL>
+TARGET void MOMRelatednessAssign5(int refmode, double* e, REAL* f, int* xx)
 {
 #ifdef ENABLE_RELATEDNESS
 	double pi = 0, pj = 0, pk = 0, pl = 0, pm = 0, px;
@@ -809,7 +832,8 @@ TARGET void MOMRelatednessAssign5(int refmode, double* e, double* f, int* xx)
 }
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign6(int refmode, double* e, double* f, int* xx)
+template<typename REAL>
+TARGET void MOMRelatednessAssign6(int refmode, double* e, REAL* f, int* xx)
 {
 #ifdef ENABLE_RELATEDNESS
 	double pi = 0, pj = 0, pk = 0, pl = 0, pm = 0, pn = 0, px;
@@ -1545,7 +1569,8 @@ TARGET void MOMRelatednessAssign6(int refmode, double* e, double* f, int* xx)
 }
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
-TARGET void MOMRelatednessAssign7(int refmode, double* e, double* f, int* xx)
+template<typename REAL>
+TARGET void MOMRelatednessAssign7(int refmode, double* e, REAL* f, int* xx)
 {
 #ifdef ENABLE_RELATEDNESS
 	double pi = 0, pj = 0, pk = 0, pl = 0, pm = 0, pn = 0, po = 0, px;

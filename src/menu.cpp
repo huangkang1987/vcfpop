@@ -2,6 +2,9 @@
 
 #include "vcfpop.h"
 
+template TARGET void SimdBenchmark<double>();
+template TARGET void SimdBenchmark<float >();
+
 /* Print help information */
 TARGET bool PrintHelp()
 {
@@ -103,6 +106,12 @@ TARGET bool PrintHelp()
 		printf("-g_simd=none|sse|avx|avx512, integer, default:avx\n");
 		printi("SIMD (Single Instruction Multiple Data) instruction sets to accelerate float point or vector operations, where mmx, sse (using SSE1.0 to SSE4.2 instructions), avx (using AVX, AVX2 and FMA instructions) and avx512 (using AVX512 F & BW instructions) can handle 64, 128, 256, 512 bits simultaneously, respectively.\n");
 #endif
+		printf("-g_gpu=none|cuda, integer, default:none\n");
+		printi("Use GPU to accelerate the calculation (Bayesian clustering), will override some SIMD accelerations.\n");
+		printf("-g_float=single|double, integer, default:double\n");
+		printi("Float point number precision, double use 64 bits and float use 32 bits, where float is faster but in lower precision.\n");
+		printf("-g_fastsingle=yes|no, string, default:yes\n");
+		printi("Use single precision float point number in calculation (otherwise convert into double precision float point number before calculation).\n");
 		printf("-g_seed=0~2147483647, integer, default:0\n");
 		printi("Random number generator seed, 0 denotes using system time as the seed.\n");
 		printf("-g_tmpdir=path, string, default:current_directory\n");
@@ -445,10 +454,12 @@ TARGET bool PrintHelp()
 		printf("15. Bayesian clustering\n");
 		printf("-structure\n");
 		printi("Perform Bayesian clustering. Results are saved in *.structure.txt and *.structure.k=?.rep=?_id=?.txt. The former is the summary and the latter is the result of each run.\n");
+		printf("-structure_nstream=1~32, integer, default:4\n");
+		printi("Number of tasks simultaneously run, each task uses ceil(g_nthread / structure_nstream) CPU threads.\n");
 		printf("-structure_plot=yes|no, string, default:no\n");
 		printi("Draws barplots for the results of Bayesian clustering. Results are saved in *.structure.pdf.\n");
-		printf("-structure_decompress=yes|no, string, default:no\n");
-		printi("Decompresses allele copies to accelerate calculations.\n");
+		printf("-structure_writelnl=yes|no, string, default:no\n");
+		printi("Write log likelihood for each run. Results are saved in *.lnl.txt.\n");
 
 		printf("Model:\n");
 		printf("-structure_admix=yes|no, string, default:no\n");
@@ -548,27 +559,29 @@ TARGET bool PrintHelp()
 }
 
 /* Run benchmark for SIMD instruction set */
+template<typename REAL>
 TARGET void SimdBenchmark()
 {
 	printf("Begin SIMD benchmark test...\n");
 	int SIMDTYPEBAK = SIMD_TYPE;
-	RNG rng(g_seed_val);
+	RNG<REAL> rng(0, RNG_SALT_SIMDBENCHMARK);
 
 #ifdef __aarch64__
 	const char* simdstr[] = { "", "compile" , "   neon" };
 #else
-	const char* simdstr[] = { "", "compile" , "    sse" , "    avx" , " avx512" };
+	const char* simdstr[] = { "   cuda", "compile" , "    sse" , "    avx" , " avx512" };
 #endif
 
 	InitCryptTable();
 	int len = 65535, sep = 1023, rep = 500;
 
-	double* a = new double[len];
-	double* b = new double[len * sep];
-	double* c = new double[len * sep];
-	byte* ploidy = new byte[len * sep];
+	double* dbl = new double[len * sep * 2];
+	REAL* a = new REAL[len * 2];
+	REAL* b = new REAL[len * sep * 2];
+	REAL* c = new REAL[len * sep * 2];
+	byte* ploidy = new byte[len * sep * 2];
 
-	double* cc[] = {
+	REAL* cc[] = {
 		c + sep * 0, c + sep * 1, c + sep * 2, c + sep * 3,
 		c + sep * 4, c + sep * 5, c + sep * 6, c + sep * 7,
 		c + sep * 8, c + sep * 9, c + sep * 10, c + sep * 11,
@@ -579,7 +592,7 @@ TARGET void SimdBenchmark()
 		c + sep * 28, c + sep * 29, c + sep * 30, c + sep * 31
 	};
 
-	double* cc2[] = {
+	REAL* cc2[] = {
 		c + sep * 0, c + sep * 1, c + sep * 2, c + sep * 3,
 		c + sep * 4, c + sep * 5, c + sep * 6, c + sep * 7,
 		c + sep * 8, c + sep * 9, c + sep * 10, c + sep * 11,
@@ -589,79 +602,72 @@ TARGET void SimdBenchmark()
 		c + sep * 24, c + sep * 25, c + sep * 26, c + sep * 27,
 		c + sep * 28, c + sep * 29, c + sep * 30, c + sep * 31
 	};
+
+	char* typestr = sizeof(REAL) == 8 ? (char*)"double" : (char*)"float";
 
 	SetVal(ploidy, (byte)10, len * sep);
 	for (int i = 0; i < len; ++i)
 	{
 		a[i] = rng.Uniform();
 		b[i] = rng.Uniform();
+		dbl[i] = rng.Uniform();
+		dbl[i * sep] = rng.Uniform();
 		c[i] = rng.Uniform();
 		b[i * sep] = rng.Uniform();
 		c[i * sep] = rng.Uniform();
-		c[i + sep * 0] = rng.Uniform();
-		c[i + sep * 1] = rng.Uniform();
-		c[i + sep * 2] = rng.Uniform();
-		c[i + sep * 3] = rng.Uniform();
-		c[i + sep * 4] = rng.Uniform();
-		c[i + sep * 5] = rng.Uniform();
-		c[i + sep * 6] = rng.Uniform();
-		c[i + sep * 7] = rng.Uniform();
-		c[i + sep * 8] = rng.Uniform();
-		c[i + sep * 9] = rng.Uniform();
-		c[i + sep * 10] = rng.Uniform();
-		c[i + sep * 11] = rng.Uniform();
-		c[i + sep * 12] = rng.Uniform();
-		c[i + sep * 13] = rng.Uniform();
-		c[i + sep * 14] = rng.Uniform();
-		c[i + sep * 15] = rng.Uniform();
+		for (int j = 0; j < 32; ++j)
+			c[i + sep * j] = rng.Uniform();
 		ploidy[i] = (byte)rng.Next(10);
 	}
 
 	timepoint begin;
-	
-	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
-	{
-		begin = GetNow();
-
-		uint* A = (uint*)a;
-		ushort* C = (ushort*)b;
-		double re = 0;
-		SetZero(A, len);
-		C[0] = 0;
-		for (int j = 0; j < rep * 200; ++j)
-		{
-			C[0] ++;
-			SetVal(A, C, len);
-			re += A[0] + A[1] + A[2] + A[3] + A[len - 4] + A[len - 3] + A[len - 2] + A[len - 1];
-		}
-		re += Sum((byte*)A, len * 4);
-		double duration = GetElapse(begin);
-		printf("SetVal (ushort to uint) %s: %0.5lf s, res = %u\n", simdstr[SIMD_TYPE], duration, *(uint*)(a + 32));
-	}
-	printf("\n");
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
 		b[0] = 3;
-		double val = 0;
+		REAL val = 0;
 		uint64 re = 0;
 		for (int j = 0; j < rep * 50; ++j)
 		{
 			b[0]++;
 			re += GetMinIdx(b, len, val);
 		}
-		double duration = GetElapse(begin);
-		printf("GetMinIdx %s: %0.5lf s, res = %lld, val = %.16le\n", simdstr[SIMD_TYPE], duration, re, val);
+
+		printf("GetMinIdx (%s, step 1) %s: %0.5f s, res = %lld, val = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re, val);
 	}
 	printf("\n");
-	
+
+	if constexpr (sizeof(REAL) == 8)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+
+			int64 re = 0;
+			uint* A = (uint*)a;
+			ushort* C = (ushort*)b;
+			SetZero(A, len);
+			C[0] = 0;
+			for (int j = 0; j < rep * 200; ++j)
+			{
+				C[0] ++;
+				SetVal(A, C, len);
+				re += A[0] + A[1] + A[2] + A[3] + A[len - 4] + A[len - 3] + A[len - 2] + A[len - 1];
+			}
+			re += Sum((byte*)A, len * sizeof(uint));
+
+			printf("SetVal (ushort to uint, step 1) %s: %0.5f s, res = %u\n", simdstr[SIMD_TYPE], GetElapse(begin), *(uint*)(a + 32));
+		}
+		printf("\n");
+	}
+
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
 		b[0] = 3;
-		double val1 = 0, val2 = 0;
-		double v1 = 0, v2 = 0;
+		REAL val1 = 0, val2 = 0;
+		REAL v1 = 0, v2 = 0;
 		for (int j = 0; j < rep * 150; ++j)
 		{
 			b[0]++;
@@ -669,23 +675,23 @@ TARGET void SimdBenchmark()
 			val1 += v1;
 			val2 += v2;
 		}
-		double duration = GetElapse(begin);
-		printf("GetMinMaxVal %s: %0.5lf s, res = %.16le, %.16le\n", simdstr[SIMD_TYPE], duration, val1, val2);
+
+		printf("GetMinMaxVal (%s, step 1)  %s: %0.5f s, res = %.16e, %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), val1, val2);
 	}
 	printf("\n");
-	
+
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
 		b[0] = 3;
-		double val = 0;
+		REAL val = 0;
 		for (int j = 0; j < rep * 150; ++j)
 		{
 			b[0]++;
 			val += GetMinVal(b, len);
 		}
-		double duration = GetElapse(begin);
-		printf("GetMinVal %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, val);
+
+		printf("GetMinVal (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), val);
 	}
 	printf("\n");
 
@@ -693,14 +699,15 @@ TARGET void SimdBenchmark()
 	{
 		begin = GetNow();
 		b[0] = 3;
-		int64 val = 0;
+		int64* bb = (int64*)b;
+		int64 v64 = 0;
 		for (int j = 0; j < rep * 150; ++j)
 		{
-			b[0]++;
-			val += GetMinVal((int64*)b, len);
+			bb[0]++;
+			v64 += GetMinVal(bb, len / 2);
 		}
-		double duration = GetElapse(begin);
-		printf("GetMinVal %s: %0.5lf s, res = %lld\n", simdstr[SIMD_TYPE], duration, val);
+
+		printf("GetMinVal (int64, step 1) %s: %0.5f s, res = %lld\n", simdstr[SIMD_TYPE], GetElapse(begin), v64);
 	}
 	printf("\n");
 
@@ -708,116 +715,172 @@ TARGET void SimdBenchmark()
 	{
 		begin = GetNow();
 		b[0] = 3;
-		double val = 0;
+		REAL val = 0;
 		for (int j = 0; j < rep * 150; ++j)
 		{
 			b[0]++;
 			val += GetMaxVal(b, len);
 		}
-		double duration = GetElapse(begin);
-		printf("GetMaxVal (step = 1) %s: %0.5lf s, val = %.16le\n", simdstr[SIMD_TYPE], duration, val);
+
+		printf("GetMaxVal (%s step 1) %s: %0.5f s, val = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), val);
 	}
 	printf("\n");
-	
+
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
 		b[0] = 3;
-		double val = 0;
+		REAL val = 0;
 		for (int j = 0; j < rep * 3; ++j)
 		{
 			b[0]++;
 			val += GetMaxVal(b, len, sep);
 		}
-		double duration = GetElapse(begin);
-		printf("GetMaxVal (step = %d) %s: %0.5lf s, val = %.16le\n", sep, simdstr[SIMD_TYPE], duration, val);
+
+		printf("GetMaxVal (%s, step %d) %s: %0.5f s, val = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), val);
 	}
 	printf("\n");
 
-	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+	if constexpr (sizeof(REAL) == 8)
 	{
-		begin = GetNow();
-		int64 re = 0;
-		ploidy[0] = 0;
-		for (int j = 0; j < rep / 22.7; ++j)
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 		{
-			ploidy[0] = (ploidy[0] % 10) + 1;
-			re += CountNonZero(ploidy, len * sep);
-		}
-		double duration = GetElapse(begin);
-		printf("CountNonZero %s: %0.5lf s, res = %lld\n", simdstr[SIMD_TYPE], duration, re);
-	}
-	printf("\n");
+			begin = GetNow();
+			volatile double re = 0;
+			ploidy[0] = 0;
+			for (int j = 0; j < rep * 180; ++j)
+			{
+				ploidy[0] = 10;
+				re = Sum(ploidy, len);
+			}
 
+			printf("Sum (byte, step 1) %s: %0.5f s, res = %.16e\n", simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			int64 re = 0;
+			ploidy[0] = 0;
+			for (int j = 0; j < rep / 22.7; ++j)
+			{
+				ploidy[0] = (ploidy[0] % 10) + 1;
+				re += CountNonZero(ploidy, len * sep);
+			}
+
+			printf("CountNonZero %s: %0.5f s, res = %lld\n", simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			volatile double re = 0;
+			ploidy[0] = 0;
+			//memset(ploidy, 10, len);
+
+			for (int j = 0; j < rep * 500; ++j)
+			{
+				ploidy[0] = (ploidy[0] + 1) % 11;
+				re = SumSquare(ploidy, len);
+			}
+
+			printf("SumSquare (byte, step 1) %s: %0.5f s, res = %.16e\n", simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
+	
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
-		double re = 0;
+		volatile double re = 0;
 		b[0] = 0;
 		for (int j = 0; j < rep * 240; ++j)
 		{
 			b[0] ++;
 			re += Sum(b, len);
 		}
-		double duration = GetElapse(begin);
-		printf("Sum (double) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("Sum (%s, step 1) %s: %0.5f s, res = %0.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
+	
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			volatile double re = 0;
+			b[0] = 0;
+			for (int j = 0; j < rep * 240; ++j)
+			{
+				b[0] ++;
+				re += Sumx(b, len);
+			}
+
+			printf("Sumx (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
-		double re = 0;
+		volatile double re = 0;
 		c[0] = 0;
 		for (int j = 0; j < rep * 3; ++j)
 		{
 			c[0] ++;
 			re = Sum(c, len, sep);
 		}
-		double duration = GetElapse(begin);
-		printf("Sum (double, step = %d) %s: %0.5lf s, res = %.16le\n", sep, simdstr[SIMD_TYPE], duration, re);
+
+		printf("Sum (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
 
-	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+	if constexpr (sizeof(REAL) == 4)
 	{
-		begin = GetNow();
-		double re = 0;
-		ploidy[0] = 0;
-		for (int j = 0; j < rep * 180; ++j)
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 		{
-			ploidy[0] = 10;
-			re = Sum(ploidy, len);
-		}
-		double duration = GetElapse(begin);
-		printf("Sum (byte) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
-	}
-	printf("\n");
+			begin = GetNow();
+			volatile double re = 0;
+			c[0] = 0;
+			for (int j = 0; j < rep * 3; ++j)
+			{
+				c[0] ++;
+				re = Sumx(c, len, sep);
+			}
 
+			printf("Sumx (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
+	
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		c[0] = 0;
-		SetZero(a, len);
+		//SetZero(a, len);
 		begin = GetNow();
-		double re = 0;
+		volatile double re = 0;
 		for (int j = 0; j < rep * 2; ++j)
 		{
-			c[0] ++;
+			//c[0] ++;
 			Sum(a, cc, 32, len);
 			SetVal(cc, cc2, 32);
-			re += a[0 * 11] + a[1 * 11] + a[2 * 11] + a[3 * 11] + a[4 * 11] + a[5 * 11] + a[6 * 11] + a[7 * 11];
+			REP(8) re += a[kk * 11];
 		}
 		re += Sum(a, len);
-		double duration = GetElapse(begin);
-		printf("Sum (double, 32 arrays) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("Sum (%s, 32 arrays) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
 
 	SIMD_TYPE = 1;
-	Add(b, 0.542, len);//avoid prod being zero
+	Add(b, sizeof(REAL) == 8 ? 0.542 : 0.543, len);//avoid prod being zero
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
-		double re = 0;
+		volatile double re = 0;
 		b[0] = 0;
 		begin = GetNow();
 		for (int j = 0; j < rep * 180; ++j)
@@ -825,134 +888,250 @@ TARGET void SimdBenchmark()
 			b[0] ++;
 			re += Prod(b, len);
 		}
-		double duration = GetElapse(begin);
-		printf("Prod (double) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("Prod (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
+	
+	if constexpr (sizeof(REAL) == 4)
+	{
+		SIMD_TYPE = 1;
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			volatile double re = 0;
+			b[0] = 0;
+			begin = GetNow();
+			for (int j = 0; j < rep * 180; ++j)
+			{
+				b[0] ++;
+				re += Prodx(b, len);
+			}
+
+			printf("Prodx (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
 
 	SIMD_TYPE = 1;
-	Add(c, 0.542, len * sep);//avoid prod being zero
+	Add(c, (REAL)0.544, len * sep);//avoid prod being zero
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
-		double re = 0;
+		volatile double re = 0;
 		c[0] = 0;
-		for (int j = 0; j < rep * 3; ++j)
+		for (int j = 0; j < rep * 10; ++j)
 		{
 			c[0] ++;
 			re = Prod(c, len, sep);
 		}
-		double duration = GetElapse(begin);
-		printf("Prod (double, step = %d) %s: %0.5lf s, res = %0.16le\n", sep, simdstr[SIMD_TYPE], duration, re);
+
+		printf("Prod (%s, step %d) %s: %0.5f s, res = %.16le\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
 
-	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+	if constexpr (sizeof(REAL) == 4)
 	{
-		begin = GetNow();
-		double re = 0;
-		ploidy[0] = 0;
-		for (int j = 0; j < rep * 160; ++j)
+		SIMD_TYPE = 1;
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 		{
-			ploidy[0] = 10;
-			re = SumSquare(ploidy, len);
+			begin = GetNow();
+			volatile float re = 0;
+			c[0] = 0;
+			for (int j = 0; j < rep * 90; ++j)
+			{
+				c[0] ++;
+				re += Prodx(c, 15000, sep);
+			}
+
+			printf("Prodx (%s, step %d) %s: %0.5f s, res = %.16le\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
 		}
-		double duration = GetElapse(begin);
-		printf("SumSquare (byte) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+		printf("\n");
 	}
-	printf("\n");
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
-		double re = 0;
+		volatile double re = 0;
 		b[0] = 0;
 		for (int j = 0; j < rep * 300; ++j)
 		{
 			b[0] ++;
 			re = SumSquare(b, len);
 		}
-		double duration = GetElapse(begin);
-		printf("SumSquare (double) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("SumSquare (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
-	printf("\n"); 
+	printf("\n");
+
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			volatile double re = 0;
+			b[0] = 0;
+			for (int j = 0; j < rep * 300; ++j)
+			{
+				b[0] ++;
+				re = SumSquarex(b, len);
+			}
+
+			printf("SumSquarex (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
 		double s1 = 0, s2 = 0;
+		double v1 = 0, v2 = 0;
 		b[0] = 0;
-		for (int j = 0; j < rep * 35; ++j)
+		for (int j = 0; j < rep * 80; ++j)
 		{
 			b[0] ++;
-			SumSumSquare(b, len, s1, s2);
+			SumSumSquare(b, len, v1, v2);
+			s1 += v1;
+			s2 += v2;
 		}
-		double duration = GetElapse(begin);
-		printf("SumSumSquare (double) %s: %0.5lf s, res = %.16le, %.16le\n", simdstr[SIMD_TYPE], duration, s1, s2);
+
+		printf("SumSumSquare (%s, step 1) %s: %0.5f s, res = %.16e, %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), s1, s2);
 	}
 	printf("\n");
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
-		double re = 0;
-		c[0] = 0;
-		for (int j = 0; j < rep * 3; ++j)
-		{
-			c[0]++;
-			re = SumProdDiv(a, b, c, sep, len);
-		}
-		double duration = GetElapse(begin);
-		printf("SumProdDiv (double, step = %d) %s: %0.5lf s, res = %.16le\n", sep, simdstr[SIMD_TYPE], duration, log(re));
-	}
-	printf("\n");
-
-	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
-	{
-		begin = GetNow();
-		double re = 0;
+		volatile double re = 0;
 		c[0] = 0;
 		for (int j = 0; j < rep * 200; ++j)
 		{
 			c[0]++;
 			re = SumProd(b, c, len);
 		}
-		double duration = GetElapse(begin);
-		printf("SumProd (double, step = 1) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("SumProd (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
+
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			volatile double re = 0;
+			c[0] = 0;
+			for (int j = 0; j < rep * 200; ++j)
+			{
+				c[0]++;
+				re = SumProdx(b, c, len);
+			}
+
+			printf("SumProdx (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
-		double re = 0;
+		volatile double re = 0;
 		c[0] = 0;
-		for (int j = 0; j < rep * 3.5; ++j)
+		for (int j = 0; j < rep * 7; ++j)
 		{
 			c[0]++;
 			re = SumProd(b, c, sep, len);
 		}
-		double duration = GetElapse(begin);
-		printf("SumProd (double, step = %d) %s: %0.5lf s, res = %.16le\n", sep, simdstr[SIMD_TYPE], duration, re);
+
+		printf("SumProd (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
+
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			volatile double re = 0;
+			c[0] = 0;
+			for (int j = 0; j < rep * 3.5; ++j)
+			{
+				c[0]++;
+				re = SumProdx(b, c, sep, len);
+			}
+
+			printf("SumProdx (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
+
+	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+	{
+		begin = GetNow();
+		volatile double re = 0;
+		c[0] = 1;
+		for (int j = 0; j < rep * 15; ++j)
+		{
+			c[0]++;
+			re = SumProdDiv(a, b, c, sep, len);
+		}
+
+		printf("SumProdDiv (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), log(abs(re)));
+	}
+	printf("\n");
+
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			volatile double re = 0;
+			c[0] = 1;
+			for (int j = 0; j < rep * 15; ++j)
+			{
+				c[0]++;
+				re = SumProdDivx(a, b, c, sep, len);
+			}
+
+			printf("SumProdDivx (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), log(abs(re)));
+		}
+		printf("\n");
+	}
+
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			volatile double re = 0;
+			c[0] = 0;
+			for (int j = 0; j < rep * 15; ++j)
+			{
+				c[0]++;
+				re = SumProdDiv(dbl, b, c, sep, len);
+			}
+
+			printf("SumProdDiv (mix, step %d) %s: %0.5f s, res = %.16e\n", sep, simdstr[SIMD_TYPE], GetElapse(begin), log(re));
+		}
+		printf("\n");
+	}
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		SetZero(a, len);
 		begin = GetNow();
 		c[0] = 0;
-		double re = 0;
+		volatile double re = 0;
 		for (int j = 0; j < rep * 150; ++j)
 		{
 			c[0] ++;
 			SetZero(a, len);
 			Add(a, c, len);
-			re += a[0] + a[1] + a[2] + a[3] + a[len - 4] + a[len - 3] + a[len - 2] + a[len - 1];
+			{ REP(4) re += a[kk]; } { REP(4) re += a[len - 1 - kk]; }
 		}
 		re += Sum(a, len);
-		double duration = GetElapse(begin);
-		printf("Add (double, array) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("Add (%s, array, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
 
@@ -961,75 +1140,82 @@ TARGET void SimdBenchmark()
 		SetZero(a, len);
 		begin = GetNow();
 		c[0] = 0;
-		double re = 0;
+		volatile double re = 0;
 		for (int j = 0; j < rep * 150; ++j)
 		{
 			c[0] ++;
 			SetZero(a, len);
 			Add(a, c[0], len);
-			re += a[0] + a[1] + a[2] + a[3] + a[len - 4] + a[len - 3] + a[len - 2] + a[len - 1];
+			{ REP(4) re += a[kk]; } { REP(4) re += a[len - 1 - kk]; }
 		}
 		re += Sum(a, len);
-		double duration = GetElapse(begin);
-		printf("Add (double, constant) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("Add (%s, constant, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
 
-	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+	if constexpr (sizeof(REAL) == 8)
 	{
-		SetZero(a, len);
-		begin = GetNow();
-		int64 re = 0;
-		int* A = (int*)a, * C = (int*)c;
-		C[0] = 0;
-		for (int j = 0; j < rep * 150; ++j)
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 		{
-			C[0] ++;
-			SetZero(A, len);
-			Add(A, C, len);
-			re += A[0] + A[1] + A[2] + A[3] + A[len - 4] + A[len - 3] + A[len - 2] + A[len - 1];
-		}
-		re += HashString((char*)A, len * 8);
-		double duration = GetElapse(begin);
-		printf("Add (int, array) %s: %0.5lf s, res = %lld\n", simdstr[SIMD_TYPE], duration, re);
-	}
-	printf("\n");
+			SetZero(a, len);
+			begin = GetNow();
+			int64 re = 0;
+			int* A = (int*)a, * C = (int*)c;
+			C[0] = 0;
+			for (int j = 0; j < rep * 150; ++j)
+			{
+				C[0] ++;
+				SetZero(A, len);
+				Add(A, C, len);
+				re += A[0] + A[1] + A[2] + A[3] + A[len - 4] + A[len - 3] + A[len - 2] + A[len - 1];
+			}
+			re += HashString((char*)A, len * sizeof(REAL));
 
-	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+			printf("Add (int, array, step 1) %s: %0.5f s, res = %lld\n", simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
+
+	if constexpr (sizeof(REAL) == 8)
 	{
-		SetZero(a, len);
-		begin = GetNow();
-		int64 re = 0;
-		int64* A = (int64*)a, * C = (int64*)c;
-		C[0] = 0;
-		for (int j = 0; j < rep * 100; ++j)
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 		{
-			C[0] ++;
-			SetZero(A, len);
-			Add(A, C, len);
-			re += A[0] + A[1] + A[2] + A[3] + A[len - 4] + A[len - 3] + A[len - 2] + A[len - 1];
+			SetZero(a, len);
+			begin = GetNow();
+			int64 re = 0;
+			int64* A = (int64*)a, * C = (int64*)c;
+			C[0] = 0;
+			for (int j = 0; j < rep * 100; ++j)
+			{
+				C[0] ++;
+				SetZero(A, len);
+				Add(A, C, len);
+				re += A[0] + A[1] + A[2] + A[3] + A[len - 4] + A[len - 3] + A[len - 2] + A[len - 1];
+			}
+			re += HashString((char*)A, len * sizeof(REAL));
+
+			printf("Add (int64, array, step 1) %s: %0.5f s, res = %lld\n", simdstr[SIMD_TYPE], GetElapse(begin), re);
 		}
-		re += HashString((char*)A, len * 8);
-		double duration = GetElapse(begin);
-		printf("Add (int64, array) %s: %0.5lf s, res = %lld\n", simdstr[SIMD_TYPE], duration, re);
+		printf("\n");
 	}
-	printf("\n");
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
-		SetZero(a, len);
+		b[0] = 40000;
+		SetZero(a, len); 
 		SetVal(a, b, len);
 		begin = GetNow();
-		double re = 0;
+		volatile double re = 0;
 		for (int j = 0; j < rep * 120; ++j)
 		{
 			a[0] ++;
-			Mul(a, 1.000001, len);
-			re += a[0] + a[1] + a[2] + a[3] + a[len - 4] + a[len - 3] + a[len - 2] + a[len - 1];
+			Mul(a, (REAL)1.000001, len);
+			{ REP(4) re += a[kk]; } { REP(4) re += a[len - 1 - kk]; }
 		}
 		re += Sum(a, len);
-		double duration = GetElapse(begin);
-		printf("Mul (double, constant) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("Mul (%s, constant, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
 
@@ -1038,97 +1224,152 @@ TARGET void SimdBenchmark()
 		SetZero(a, len);
 		begin = GetNow();
 		b[0] = 0;
-		double re = 0;
+		volatile double re = 0;
 		for (int j = 0; j < rep * 100; ++j)
 		{
 			b[0] ++;
-			Mul(a, b, 1.41421356237, len);
-			re += a[0] + a[1] + a[2] + a[3] + a[len - 4] + a[len - 3] + a[len - 2] + a[len - 1];
+			Mul(a, b, (REAL)1.41421356237, len);
+			{ REP(4) re += a[kk]; } { REP(4) re += a[len - 1 - kk]; }
 		}
 		re += Sum(a, len);
-		double duration = GetElapse(begin);
-		printf("Mul (double, 1 array) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("Mul (%s, 1 array, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
+
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		SetZero(a, len);
 		begin = GetNow();
 		b[0] = 0;
-		double re = 0;
+		volatile double re = 0;
 		for (int j = 0; j < rep * 70; ++j)
 		{
 			b[0] ++;
 			Mul(a, b, c, len);
-			re += a[0] + a[1] + a[2] + a[3] + a[len - 4] + a[len - 3] + a[len - 2] + a[len - 1];
+			{ REP(4) re += a[kk]; } { REP(4) re += a[len - 1 - kk]; }
 		}
 		re += Sum(a, len);
-		double duration = GetElapse(begin);
-		printf("Mul (double, 2 array) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("Mul (%s, 2 array, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
-		double re = 0;
-		b[0] = 0.1;
+		volatile double re = 0;
+		b[0] = (REAL)0.1;
 		begin = GetNow();
 		for (int j = 0; j < rep * 22; ++j)
 		{
-			b[0] += 0.1;
+			b[0] += (REAL)0.1;
 			re += LogProd(b, len);
 		}
-		double duration = GetElapse(begin);
-		printf("LogProd (double) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("LogProd (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
+	
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			volatile double re = 0;
+			b[0] = (REAL)0.1;
+			begin = GetNow();
+			for (int j = 0; j < rep * 22; ++j)
+			{
+				b[0] += (REAL)0.1;
+				re += LogProdx(b, len);
+			}
+
+			printf("LogProdx (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
-		double re = 0;
-		c[0] = 0.1;
-		for (int j = 0; j < rep * 2; ++j)
+		volatile double re = 0;
+		c[0] = (REAL)0.1;
+		for (int j = 0; j < rep * 10; ++j)
 		{
-			c[0] += 0.1;
+			c[0] += (REAL)0.1;
 			re = LogProd(c, len, sep);
 		}
-		double duration = GetElapse(begin);
-		printf("LogProd (double, step = %d) %s: %0.5lf s, res = %.16le\n", sep, simdstr[SIMD_TYPE], duration, re);
+
+		printf("LogProd (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
+
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			volatile double re = 0;
+			c[0] = (REAL)0.1;
+			for (int j = 0; j < rep * 20; ++j)
+			{
+				c[0] += (REAL)0.1;
+				re = LogProdx(c, len, sep);
+			}
+
+			printf("LogProdx (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		begin = GetNow();
-		double re = 0;
-		c[0] = 0.1;
-		for (int j = 0; j < rep * 1.2; ++j)
+		volatile double re = 0;
+		c[0] = (REAL)0.1;
+		for (int j = 0; j < rep * 3; ++j)
 		{
-			c[0] += 0.1;
+			c[0] += (REAL)0.1;
 			re = LogProdDiv(b, c, len, sep);
 		}
-		double duration = GetElapse(begin);
-		printf("LogProdDiv (double, step %d) %s: %0.5lf s, res = %.16le\n", sep, simdstr[SIMD_TYPE], duration, re);
+
+		printf("LogProdDiv (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
+
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			begin = GetNow();
+			volatile double re = 0;
+			c[0] = (REAL)0.1;
+			for (int j = 0; j < rep * 4; ++j)
+			{
+				c[0] += (REAL)0.1;
+				re = LogProdDivx(b, c, len, sep);
+			}
+
+			printf("LogProdDivx (%s, step %d) %s: %0.5f s, res = %.16e\n", typestr, sep, simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		SetZero(a, len);
 		begin = GetNow();
 		b[0] = 0;
-		double re = 0;
-		for (int j = 0; j < rep * 60; ++j)
+		volatile double re = 0;
+		for (int j = 0; j < rep * 100; ++j)
 		{
 			b[0] ++;
 			AddProd(a, b, c, len);
-			re += a[0] + a[1] + a[2] + a[3] + a[len - 4] + a[len - 3] + a[len - 2] + a[len - 1];
+			{ REP(4) re += a[kk]; } { REP(4) re += a[len - 1 - kk]; }
 		}
 		re += Sum(a, len);
-		double duration = GetElapse(begin);
-		printf("AddProd (double, array) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("AddProd (%s, array, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
 
@@ -1137,70 +1378,98 @@ TARGET void SimdBenchmark()
 		SetZero(a, len);
 		begin = GetNow();
 		b[0] = 0;
-		double re = 0;
+		volatile double re = 0;
 		for (int j = 0; j < rep * 90; ++j)
 		{
 			b[0] ++;
 			AddProd(a, b, c[0], len);
-			re += a[0] + a[1] + a[2] + a[3] + a[len - 4] + a[len - 3] + a[len - 2] + a[len - 1];
+			{ REP(4) re += a[kk]; } { REP(4) re += a[len - 1 - kk]; }
 		}
 		re += Sum(a, len);
-		double duration = GetElapse(begin);
-		printf("AddProd (double, constant) %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("AddProd (%s, constant, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
+
+	if constexpr (sizeof(REAL) == 4)
+	{
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+		{
+			SetZero(dbl, len);
+			begin = GetNow();
+			b[0] = 0;
+			volatile double re = 0;
+			for (int j = 0; j < rep * 90; ++j)
+			{
+				b[0] ++;
+				AddProd(dbl, b, c[0], len);
+
+				{ REP(4) re += dbl[kk]; } { REP(4) re += dbl[len - 1 - kk]; }
+			}
+			re += Sum(dbl, len);
+
+			printf("AddProd (mix, constant, step 1) %s: %0.5f s, res = %.16e\n", simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
 
 	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 	{
 		SetZero(a, len);
 		begin = GetNow();
 		b[0] = 0;
-		double re = 0;
+		volatile double re = 0;
 		for (int j = 0; j < rep * 55; ++j)
 		{
 			b[0] ++;
 			SetVal(a, b, len);
 			Unify(a, len);
-			re += a[0] + a[1] + a[2] + a[3] + a[len - 4] + a[len - 3] + a[len - 2] + a[len - 1];
+			{ REP(4) re += a[kk]; } { REP(4) re += a[len - 1 - kk]; }
 		}
 		re += Sum(a, len);
-		double duration = GetElapse(begin);
-		printf("Unify %s: %0.5lf s, res = %.16le\n", simdstr[SIMD_TYPE], duration, re);
+
+		printf("Unify (%s, step 1) %s: %0.5f s, res = %.16e\n", typestr, simdstr[SIMD_TYPE], GetElapse(begin), re);
 	}
 	printf("\n");
 
-	ploidy[len * sep - 1] = 0;
-	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+	if constexpr (sizeof(REAL) == 8)
 	{
-		begin = GetNow();
-		int64 re = 0;
-		ploidy[0] = 0;
-		for (int j = 0; j < rep * 30; ++j)
+		ploidy[len * sep - 1] = 0;
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 		{
-			ploidy[0] = (ploidy[0] % 10) + 1;
-			re += (int64)StrNextIdx((char*)ploidy, '\n', 10000, len * sep);
-		}
-		double duration = GetElapse(begin);
-		printf("StrNextIdx %s: %0.5lf s, res = %lld\n", simdstr[SIMD_TYPE], duration, re);
-	}
-	printf("\n");
+			begin = GetNow();
+			int64 re = 0;
+			ploidy[0] = 0;
+			for (int j = 0; j < rep * 30; ++j)
+			{
+				ploidy[0] = (ploidy[0] % 10) + 1;
+				re += StrNextIdx((char*)ploidy, '\n', 10000, len * sep) - (char*)ploidy;
+			}
 
-	ploidy[len * sep - 1] = 0;
-	for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
+			printf("StrNextIdx %s: %0.5f s, res = %lld\n", simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
+
+	if constexpr (sizeof(REAL) == 8)
 	{
-		begin = GetNow();
-		int64 re = 0;
-		ploidy[0] = 0;
-		for (int j = 0; j < rep * 0.06; ++j)
+		ploidy[len * sep - 1] = 0;
+		for (SIMD_TYPE = 1; SIMD_TYPE <= SIMDTYPEBAK; ++SIMD_TYPE)
 		{
-			ploidy[0] = (ploidy[0] % 10) + 1;
-			re += CountChar((char*)ploidy, '\n', len * sep);
-		}
-		double duration = GetElapse(begin);
-		printf("CountChar %s: %0.5lf s, res = %lld\n", simdstr[SIMD_TYPE], duration, re);
-	}
-	printf("\n");
+			begin = GetNow();
+			int64 re = 0;
+			ploidy[0] = 0;
+			for (int j = 0; j < rep * 0.06; ++j)
+			{
+				ploidy[0] = (ploidy[0] % 10) + 1;
+				re += CountChar((char*)ploidy, '\n', len * sep);
+			}
 
+			printf("CountChar %s: %0.5f s, res = %lld\n", simdstr[SIMD_TYPE], GetElapse(begin), re);
+		}
+		printf("\n");
+	}
+	
 	SIMD_TYPE = SIMDTYPEBAK;
 	delete[] a;
 	delete[] b;

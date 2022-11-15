@@ -8,7 +8,8 @@
 #pragma pack(pop)
 
 /* Calculate individual statistics */
+template<typename REAL>
 TARGET void CalcIndstat();
 
 /* Calculate individual statistics using multiple threads */
-THREADH(IndividualStatisticsThread);
+THREAD2H(IndividualStatisticsThread);

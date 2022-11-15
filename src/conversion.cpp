@@ -3,6 +3,25 @@
 #pragma once
 #include "vcfpop.h"
 
+template TARGET void ConvertFile<double>();
+template TARGET void ConvertFile<float >();
+template TARGET void ConvertGenepop<double>(int ntot, bool& isfirst);
+template TARGET void ConvertGenepop<float >(int ntot, bool& isfirst);
+template TARGET void ConvertSpagedi<double>(int ntot, bool& isfirst);
+template TARGET void ConvertSpagedi<float >(int ntot, bool& isfirst);
+template TARGET void ConvertCervus<double>(int ntot, bool& isfirst);
+template TARGET void ConvertCervus<float >(int ntot, bool& isfirst);
+template TARGET void ConvertArlequin<double>(int ntot, bool& isfirst);
+template TARGET void ConvertArlequin<float >(int ntot, bool& isfirst);
+template TARGET void ConvertStructure<double>(int ntot, bool& isfirst);
+template TARGET void ConvertStructure<float >(int ntot, bool& isfirst);
+template TARGET void ConvertPolygene<double>(int ntot, bool& isfirst);
+template TARGET void ConvertPolygene<float >(int ntot, bool& isfirst);
+template TARGET void ConvertPolyRelatedness<double>(int ntot, bool& isfirst);
+template TARGET void ConvertPolyRelatedness<float >(int ntot, bool& isfirst);
+template TARGET void ConvertGenoDive<double>(int ntot, bool& isfirst);
+template TARGET void ConvertGenoDive<float >(int ntot, bool& isfirst);
+
 #define extern 
 extern MEMORY* conversion_memory;					//Memory class for conversion_string
 extern MEMORY* conversion_memory2;					//Memory class for genotype_string and convert_buf
@@ -13,6 +32,7 @@ extern int64 convert_linesize;						//Max length of each line in converted file
 #undef extern 
 
 /* Convert into other genotype formats */
+template<typename REAL>
 TARGET void ConvertFile()
 {
 	if (!convert) return;
@@ -48,14 +68,14 @@ TARGET void ConvertFile()
 
 		switch (i)
 		{
-		case 1: ConvertGenepop(ntot, isfirst); break;
-		case 2: ConvertSpagedi(ntot, isfirst); break;
-		case 3: ConvertCervus(ntot, isfirst); break;
-		case 4: ConvertArlequin(ntot, isfirst); break;
-		case 5: ConvertStructure(ntot, isfirst); break;
-		case 6: ConvertPolygene(ntot, isfirst); break;
-		case 7: ConvertPolyRelatedness(ntot, isfirst); break;
-		case 8: ConvertGenoDive(ntot, isfirst); break;
+		case 1: ConvertGenepop<REAL>(ntot, isfirst); break;
+		case 2: ConvertSpagedi<REAL>(ntot, isfirst); break;
+		case 3: ConvertCervus<REAL>(ntot, isfirst); break;
+		case 4: ConvertArlequin<REAL>(ntot, isfirst); break;
+		case 5: ConvertStructure<REAL>(ntot, isfirst); break;
+		case 6: ConvertPolygene<REAL>(ntot, isfirst); break;
+		case 7: ConvertPolyRelatedness<REAL>(ntot, isfirst); break;
+		case 8: ConvertGenoDive<REAL>(ntot, isfirst); break;
 		}
 
 		free(conversion_string);
@@ -69,7 +89,7 @@ TARGET void ConvertFile()
 }
 
 /* Write convert genepop genotypes in a guard thread */
-THREAD(ConvertGenepopGuard)
+THREAD2(ConvertGenepopGuard)
 {
 	for (int64& ii = progress1 = 0; ii < nind; ++ii, ++PROGRESS_VALUE)
 	{
@@ -85,7 +105,7 @@ THREAD(ConvertGenepopGuard)
 }
 
 /* Write convert arlequin genotypes in a guard thread */
-THREAD(ConvertArlequinGuard)
+THREAD2(ConvertArlequinGuard)
 {
 	for (int64& ii = progress1 = 0; ii < nind; ++ii, ++PROGRESS_VALUE)
 	{
@@ -106,7 +126,7 @@ THREAD(ConvertArlequinGuard)
 }
 
 /* Write convert genotypes in a guard thread */
-THREAD(ConvertGuard)
+THREAD2(ConvertGuard)
 {
 	for (int64& ii = progress1 = 0; ii < nind; ++ii, ++PROGRESS_VALUE)
 	{
@@ -150,6 +170,7 @@ TARGET void PrepareGenotypeString(int format)
 }
 
 /* Convert into genepop format */
+template<typename REAL>
 TARGET void ConvertGenepop(int ntot, bool& isfirst)
 {
 	char name_buf[NAME_BUF_LEN];
@@ -171,7 +192,7 @@ TARGET void ConvertGenepop(int ntot, bool& isfirst)
 
 	PrepareGenotypeString(1);
 
-	RunThreads(&ConvertGenepopInd, &ConvertGenepopGuard, NULL, ntot, nind,
+	RunThreads(&ConvertGenepopInd<REAL>, &ConvertGenepopGuard<REAL>, NULL, ntot, nind,
 		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
 
 	isfirst = false;
@@ -179,14 +200,14 @@ TARGET void ConvertGenepop(int ntot, bool& isfirst)
 }
 
 /* Convert individual genotypes into genepop format in multiple threads */
-THREAD(ConvertGenepopInd)
+THREAD2(ConvertGenepopInd)
 {
 	for (int64 ii = 0; ii < nind; ++ii)
 	{
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds[ii];
 
 		AppendString(str, ind.name);
 		AppendString(str, ",");
@@ -202,6 +223,7 @@ THREAD(ConvertGenepopInd)
 }
 
 /* Convert into spagedi format */
+template<typename REAL>
 TARGET void ConvertSpagedi(int ntot, bool& isfirst)
 {
 	char name_buf[NAME_BUF_LEN];
@@ -226,7 +248,7 @@ TARGET void ConvertSpagedi(int ntot, bool& isfirst)
 
 	PrepareGenotypeString(2);
 
-	RunThreads(&ConvertSpagediInd, &ConvertGuard, NULL, ntot, nind,
+	RunThreads(&ConvertSpagediInd<REAL>, &ConvertGuard<REAL>, NULL, ntot, nind,
 		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
 
 	isfirst = false;
@@ -235,14 +257,14 @@ TARGET void ConvertSpagedi(int ntot, bool& isfirst)
 }
 
 /* Convert individual genotypes into spagedi format in multiple threads */
-THREAD(ConvertSpagediInd)
+THREAD2(ConvertSpagediInd)
 {
 	for (int64 ii = 0; ii < nind; ++ii)
 	{
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds[ii];
 
 		AppendInt(str, ind.popid + 1);
 		AppendString(str, "\t");
@@ -259,6 +281,7 @@ THREAD(ConvertSpagediInd)
 }
 
 /* Convert into cervus format */
+template<typename REAL>
 TARGET void ConvertCervus(int ntot, bool& isfirst)
 {
 	char filename[PATH_LEN];
@@ -276,21 +299,21 @@ TARGET void ConvertCervus(int ntot, bool& isfirst)
 
 	PrepareGenotypeString(3);
 
-	RunThreads(&ConvertCervusInd, &ConvertGuard, NULL, ntot, nind,
+	RunThreads(&ConvertCervusInd<REAL>, &ConvertGuard<REAL>, NULL, ntot, nind,
 		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
 	isfirst = false;
 	fclose(convert_file);
 }
 
 /* Convert individual genotypes into cervus format in multiple threads */
-THREAD(ConvertCervusInd)
+THREAD2(ConvertCervusInd)
 {
 	for (int64 ii = 0; ii < nind; ++ii)
 	{
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds[ii];
 
 		AppendString(str, ind.name);
 		AppendString(str, ",");
@@ -307,6 +330,7 @@ THREAD(ConvertCervusInd)
 }
 
 /* Convert into arlequin format */
+template<typename REAL>
 TARGET void ConvertArlequin(int ntot, bool& isfirst)
 {
 	char name_buf[NAME_BUF_LEN];
@@ -330,7 +354,7 @@ TARGET void ConvertArlequin(int ntot, bool& isfirst)
 
 	PrepareGenotypeString(4);
 
-	RunThreads(&ConvertArlequinInd, &ConvertArlequinGuard, NULL, ntot, nind,
+	RunThreads(&ConvertArlequinInd<REAL>, &ConvertArlequinGuard<REAL>, NULL, ntot, nind,
 		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
 	isfirst = false;
 
@@ -338,8 +362,8 @@ TARGET void ConvertArlequin(int ntot, bool& isfirst)
 	fprintf(convert_file, "[[Structure]]\r\n\r\n\t\tStructureName=\"Region\"\r\n\t\tNbGroups=%d\r\n\r\n", nreg[0]);
 	for (int i = 0; i < nreg[0]; ++i)
 	{
-		POP* r = lreg >= 0 ? aregs[0][i] : NULL;
-		POP** pops = r->vpop;
+		POP<REAL>* r = lreg >= 0 ? aregs[0][i] : NULL;
+		POP<REAL>** pops = r->vpop;
 		fprintf(convert_file, "\t\tGroup={\r\n");
 		for (int j = 0; j < r->npop; ++j)
 			fprintf(convert_file, "\t\t\t\"%s\"\r\n", pops[j]->name);
@@ -349,14 +373,14 @@ TARGET void ConvertArlequin(int ntot, bool& isfirst)
 }
 
 /* Convert individual genotypes into arlequin format in multiple threads */
-THREAD(ConvertArlequinInd)
+THREAD2(ConvertArlequinInd)
 {
 	for (int64 ii = 0; ii < nind; ++ii)
 	{
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds[ii];
 
 		AppendString(str, "\t\t\t");
 		AppendString(str, ind.name);
@@ -376,6 +400,7 @@ THREAD(ConvertArlequinInd)
 }
 
 /* Convert into structure format */
+template<typename REAL>
 TARGET void ConvertStructure(int ntot, bool& isfirst)
 {
 	char name_buf[NAME_BUF_LEN];
@@ -397,21 +422,21 @@ TARGET void ConvertStructure(int ntot, bool& isfirst)
 
 	PrepareGenotypeString(5);
 
-	RunThreads(&ConvertStructureInd, &ConvertGuard, NULL, ntot, nind,
+	RunThreads(&ConvertStructureInd<REAL>, &ConvertGuard<REAL>, NULL, ntot, nind,
 		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
 	isfirst = false;
 	fclose(convert_file);
 }
 
 /* Convert individual genotypes into structure format in multiple threads */
-THREAD(ConvertStructureInd)
+THREAD2(ConvertStructureInd)
 {
 	for (int64 ii = 0; ii < nind; ++ii)
 	{
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds[ii];
 
 		if (ind.vmin != ind.vmax)
 			Exit("\nError: Cannot convert structure format due to it is a aneuploid.\n", ind.name);
@@ -437,6 +462,7 @@ THREAD(ConvertStructureInd)
 }
 
 /* Convert into polygene format */
+template<typename REAL>
 TARGET void ConvertPolygene(int ntot, bool& isfirst)
 {
 	char name_buf[NAME_BUF_LEN];
@@ -454,21 +480,21 @@ TARGET void ConvertPolygene(int ntot, bool& isfirst)
 
 	PrepareGenotypeString(6);
 
-	RunThreads(&ConvertPolygeneInd, &ConvertGuard, NULL, ntot, nind,
+	RunThreads(&ConvertPolygeneInd<REAL>, &ConvertGuard<REAL>, NULL, ntot, nind,
 		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
 	isfirst = false;
 	fclose(convert_file);
 }
 
 /* Convert individual genotypes into polygene format in multiple threads */
-THREAD(ConvertPolygeneInd)
+THREAD2(ConvertPolygeneInd)
 {
 	for (int64 ii = 0; ii < nind; ++ii)
 	{
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds[ii];
 
 		if (ind.vmin != ind.vmax)
 			Exit("\nError: Cannot convert structure format due to it is a aneuploid.\n", ind.name);
@@ -489,6 +515,7 @@ THREAD(ConvertPolygeneInd)
 }
 
 /* Convert into polyrelatedness format */
+template<typename REAL>
 TARGET void ConvertPolyRelatedness(int ntot, bool& isfirst)
 {
 	char name_buf[NAME_BUF_LEN];
@@ -509,7 +536,7 @@ TARGET void ConvertPolyRelatedness(int ntot, bool& isfirst)
 
 	PrepareGenotypeString(7);
 
-	RunThreads(&ConvertPolyRelatednessInd, &ConvertGuard, NULL, ntot, nind,
+	RunThreads(&ConvertPolyRelatednessInd<REAL>, &ConvertGuard<REAL>, NULL, ntot, nind,
 		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
 	isfirst = false;
 
@@ -518,14 +545,14 @@ TARGET void ConvertPolyRelatedness(int ntot, bool& isfirst)
 }
 
 /* Convert individual genotypes into polyrelatedness format in multiple threads */
-THREAD(ConvertPolyRelatednessInd)
+THREAD2(ConvertPolyRelatednessInd)
 {
 	for (int64 ii = 0; ii < nind; ++ii)
 	{
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds[ii];
 
 		AppendString(str, ind.name);
 		AppendString(str, "\t");
@@ -541,6 +568,7 @@ THREAD(ConvertPolyRelatednessInd)
 }
 
 /* Convert into genodive format */
+template<typename REAL>
 TARGET void ConvertGenoDive(int ntot, bool& isfirst)
 {
 	char name_buf[NAME_BUF_LEN];
@@ -556,7 +584,7 @@ TARGET void ConvertGenoDive(int ntot, bool& isfirst)
 
 	for (int i = 0; i < npop; ++i)
 	{
-		POP* tp = apops[i];
+		POP<REAL>* tp = apops[i];
 		fprintf(convert_file, "%s", tp->name);
 		for (int rl = 0; rl <= lreg; ++rl)
 		{
@@ -577,7 +605,7 @@ TARGET void ConvertGenoDive(int ntot, bool& isfirst)
 
 	PrepareGenotypeString(8);
 
-	RunThreads(&ConvertSpagediInd, &ConvertGuard, NULL, ntot, nind,
+	RunThreads(&ConvertSpagediInd<REAL>, &ConvertGuard<REAL>, NULL, ntot, nind,
 		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
 
 	isfirst = false;
@@ -586,14 +614,14 @@ TARGET void ConvertGenoDive(int ntot, bool& isfirst)
 }
 
 /* Convert individual genotypes into genodive format in multiple threads */
-THREAD(ConvertGenoDiveInd)
+THREAD2(ConvertGenoDiveInd)
 {
 	for (int64 ii = 0; ii < nind; ++ii)
 	{
 		THREAD_BEGIN
 
-			char* str = convert_buf[ii % NBUF];
-		IND& ind = *rinds[ii];
+		char* str = convert_buf[ii % NBUF];
+		IND<REAL>& ind = *rinds[ii];
 
 		AppendString(str, ind.name);
 		AppendString(str, "\t");

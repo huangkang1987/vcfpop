@@ -4,7 +4,6 @@
 
 struct indtab_node
 {
-public:
 	int level; //ind = 0, pop = 1, reg >= 2;
 	string name;
 	map<string, indtab_node*> subunits;
@@ -42,6 +41,9 @@ extern bool g_decimal_b;						extern int g_decimal_val;							extern char g_deci
 extern bool g_scientific_b;						extern int g_scientific_val;
 extern bool g_nthread_b;						extern int g_nthread_val;
 extern bool g_simd_b;							extern int g_simd_val;
+extern bool g_gpu_b;							extern int g_gpu_val;
+extern bool g_float_b;							extern int g_float_val;
+extern bool g_fastsingle_b;						extern int g_fastsingle_val;
 extern bool g_seed_b;							extern int g_seed_val;
 extern bool g_tmpdir_b;							extern string g_tmpdir_val;
 extern bool g_progress_b;						extern int g_progress_val;
@@ -181,8 +183,10 @@ extern bool cluster_estimator_b;				extern byte cluster_estimator_val[N_MAX_OPTI
 
 /* Bayesian clustering */
 extern bool structure;
+extern bool structure_nstream_b;				extern int structure_nstream_val;
 extern bool structure_plot_b;					extern int structure_plot_val;
-extern bool structure_decompress_b;				extern int structure_decompress_val;
+extern bool structure_eval_b;					extern int structure_eval_val;
+extern bool structure_writelnl_b;				extern int structure_writelnl_val;
 
 /* Bayesian clustering: Model */
 extern bool structure_admix_b;					extern int structure_admix_val;
@@ -271,7 +275,6 @@ TARGET void SetDefaultParameters()
 #else
 	SIMD_TYPE = 3;
 #endif
-	*(uint64*)&NA = 0xFFF8000000000000ull;
 	srand((unsigned int)time(NULL));
 
 	InitLock(GLOCK1);
@@ -319,7 +322,7 @@ TARGET void SetDefaultParameters()
 	f_windowsize_b = false;			f_windowsize_val = 0;
 	f_windowstat_b = false;			f_windowstat_val = 5;
 
-	g_decimal_b = false;			g_decimal_val = 5;				sprintf(g_decimal_str, "%%0.%dlf", 5);
+	g_decimal_b = false;			g_decimal_val = 5;				sprintf(g_decimal_str, "%%0.%df", 5);
 	g_scientific_b = false;			g_scientific_val = 2;
 	g_nthread_b = false;			g_nthread_val = 2;
 #ifdef __aarch64__ 
@@ -327,6 +330,9 @@ TARGET void SetDefaultParameters()
 #else
 	g_simd_b = false;				g_simd_val = 3;
 #endif
+	g_gpu_b = false;				g_gpu_val = 1;
+	g_float_b = false;				g_float_val = 2;
+	g_fastsingle_b = false;			g_fastsingle_val = 1;
 	g_seed_b = false;				g_seed_val = rand();
 	g_tmpdir_b = false;				g_tmpdir_val = CURDIR;
 	g_progress_b = false;			g_progress_val = 80;
@@ -422,8 +428,11 @@ TARGET void SetDefaultParameters()
 	cluster_estimator_b = false;	SetZero(cluster_estimator_val, N_MAX_OPTION);	cluster_estimator_val[1] = 1;
 
 	structure = false;
+	structure_nstream_b = false;    structure_nstream_val = 4;
 	structure_plot_b = false;		structure_plot_val = 2;
-	structure_decompress_b = false;structure_decompress_val = 2;
+	structure_eval_b = false;		structure_eval_val = 2;
+	structure_writelnl_b = false;	structure_writelnl_val = 2;
+
 	structure_admix_b = false;		structure_admix_val = 2;
 	structure_locpriori_b = false;	structure_locpriori_val = 2;
 	structure_f_b = false;			structure_f_val = 2;
@@ -472,16 +481,20 @@ TARGET void SetDefaultParameters()
 	genotype_filter = false;
 	individual_filter = false;
 	info_filter = false;
+
+	nGPU = 0;
 }
 
 /* Set parameters */
 TARGET void SetParameters(bool isparfile)
 {
 	if (!isparfile) SetDefaultParameters();
+
 	for (int i = 0; i < argv.size(); ++i)
 	{
 		if (!isparfile && !LwrLineCmp("-p=", argv[i]))
 		{
+			if (p_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
 			p_b = true;
 			p_val = ReplacePathDelim(argv[i], false);
 		}
@@ -581,12 +594,12 @@ TARGET void SetParameters(bool isparfile)
 			if (!LwrLineCmp("-g_decimal=", argv[i]))
 			{
 				GetParInteger(argv[i], g_decimal_b, g_decimal_val, 1, 15);
-				sprintf(g_decimal_str, g_scientific_val == 1 ? "%%0.%dle" : "%%0.%dlf", g_decimal_val);
+				sprintf(g_decimal_str, g_scientific_val == 1 ? "%%0.%de" : "%%0.%df", g_decimal_val);
 			}
 			else if (!LwrLineCmp("-g_scientific=", argv[i]))
 			{
 				GetParString(argv[i], "yes|no", g_scientific_b, g_scientific_val);
-				sprintf(g_decimal_str, g_scientific_val == 1 ? "%%0.%dle" : "%%0.%dlf", g_decimal_val);
+				sprintf(g_decimal_str, g_scientific_val == 1 ? "%%0.%de" : "%%0.%df", g_decimal_val);
 			}
 			else if (!LwrLineCmp("-g_nthread=", argv[i]))
 				GetParInteger(argv[i], g_nthread_b, g_nthread_val, 1, 4096);
@@ -599,6 +612,20 @@ TARGET void SetParameters(bool isparfile)
 #endif
 				SIMD_TYPE = g_simd_val;
 			}
+			else if (!LwrLineCmp("-g_gpu=", argv[i]))
+			{
+				GetParString(argv[i], "none|cuda", g_gpu_b, g_gpu_val);
+				if (g_gpu_val == 2)
+				{
+					nGPU = GetDeviceCountCUDA();
+					if (nGPU == 0) Exit("\nError: cannot found CUDA devices, check graphic card driver or use -g_gpu=none.\n");
+				}
+				else nGPU = 0;
+			}
+			else if (!LwrLineCmp("-g_float=", argv[i]))
+				GetParString(argv[i], "single|double", g_float_b, g_float_val);
+			else if (!LwrLineCmp("-g_fastsingle=", argv[i]))
+				GetParString(argv[i], "yes|no", g_fastsingle_b, g_fastsingle_val);
 			else if (!LwrLineCmp("-g_seed=", argv[i]))
 			{
 				GetParInteger(argv[i], g_seed_b, g_seed_val, 0, 0x7FFFFFFF);
@@ -906,10 +933,14 @@ TARGET void SetParameters(bool isparfile)
 		{
 			if (!LwrStrCmp("-structure", argv[i]))
 				GetParBool(argv[i], structure);
+			else if (!LwrLineCmp("-structure_nstream=", argv[i]))
+				GetParInteger(argv[i], structure_nstream_b, structure_nstream_val, 1, 32);
 			else if (!LwrLineCmp("-structure_plot=", argv[i]))
 				GetParString(argv[i], "yes|no", structure_plot_b, structure_plot_val);
-			else if (!LwrLineCmp("-structure_decompress=", argv[i]))
-				GetParString(argv[i], "yes|no", structure_decompress_b, structure_decompress_val);
+			else if (!LwrLineCmp("-structure_writelnl=", argv[i]))
+				GetParString(argv[i], "yes|no", structure_writelnl_b, structure_writelnl_val);
+			else if (!LwrLineCmp("-structure_eval=", argv[i]))
+				GetParString(argv[i], "yes|no", structure_eval_b, structure_eval_val);
 
 			else if (!LwrLineCmp("-structure_admix=", argv[i]))
 				GetParString(argv[i], "yes|no", structure_admix_b, structure_admix_val);
@@ -998,6 +1029,10 @@ TARGET void SetParameters(bool isparfile)
 			else
 				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
 		}
+		else continue;
+
+		if (LwrLineCmp("-g_indtab=", argv[i]))
+			printf("%s\r\n", argv[i].c_str());
 	}
 
 	if (f_filter && (f_bmaf_b || f_k_b || f_n_b || f_ptype_b || f_pval_b || f_he_b || f_ho_b || f_pic_b || f_ae_b || f_I_b || f_windowsize_b))
@@ -1011,7 +1046,7 @@ TARGET void SetParameters(bool isparfile)
 
 	if (!isparfile && p_b)
 	{
-		string partext = argv[0] + "#DELIM#" + ReadAllText(p_val);
+		string partext = ReadAllText(p_val);
 		partext = ReplaceStr(partext, "\r\n", "\n");
 		partext = ReplaceStr(partext, "\n", "#DELIM#", '"');
 		partext = ReplaceStr(partext, "\t", "#DELIM#", '"');
@@ -1025,10 +1060,7 @@ TARGET void SetParameters(bool isparfile)
 		argv = SplitStr(partext, "#DELIM#");
 
 		for (int i = 0; i < argv.size(); ++i)
-		{
 			argv[i] = TrimQuote(argv[i]);
-			printf("%s\r\n", argv[i].c_str());
-		}
 		SetParameters(true);
 		return;
 	}
@@ -1065,6 +1097,8 @@ TARGET void ReleaseParameters()
 	string().swap(EXEDIR);
 	string().swap(CURDIR);
 	string().swap(OUTFILE);
+    UnInitLock(GLOCK1);
+    UnInitLock(GLOCK2);
 }
 
 /* Write parameters to result file */

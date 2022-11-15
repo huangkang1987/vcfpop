@@ -3,6 +3,25 @@
 #pragma once
 #include "vcfpop.h"
 
+struct FileMapping
+{
+	byte* addr;
+
+#ifdef _WIN64
+	HANDLE hFile;
+	HANDLE hMapFile;
+#else
+	int hFile;
+	uint64 size;
+#endif
+
+	/* Map a file into memory */
+	TARGET byte* MapingReadOnlyFile(char* filename);
+
+	/* Unmap a file in memory */
+	TARGET void UnMapingReadOnlyFile();
+};
+
 /* Get file size */
 TARGET int64 GetFileLen(char* file);
 
@@ -93,6 +112,9 @@ TARGET void CloseResFile();
 
 /* Open temp files */
 TARGET void OpenTempFiles(uint n, const char* spec, byte flag[] = NULL);
+
+/* Close and Remove temp files */
+TARGET void RemoveTempFiles(uint n);
 
 /* Merge and close temp files */
 TARGET void JoinTempFiles(uint n, byte flag[] = NULL);

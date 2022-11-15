@@ -2,12 +2,599 @@
 
 #include "vcfpop.h"
 
+template struct RNG<double>;
+template struct RNG<float >;
+template TARGET void RNG<double>::Permute<VESSEL<double>*>(VESSEL<double>** a, int n);
+template TARGET void RNG<float >::Permute<VESSEL<float >*>(VESSEL<float >** a, int n);
+template TARGET void RNG<double>::Permute<int64>(int64* a, int n);
+template TARGET void RNG<float >::Permute<int64>(int64* a, int n);
+
+template TARGET int RNG<double>::Poly<double>(double* a, int n);
+template TARGET int RNG<double>::PolyLog<double>(double* a, int n);
+template TARGET void RNG<double>::Dirichlet<double, double>(double* res, double* a, int n);
+template TARGET void RNG<double>::Dirichlet<double, double, int64>(double* res, double* a, int64* b, int n);
+template TARGET void RNG<double>::Dirichlet<double, double, int>(double* res, double* a, int* b, int n);
+template TARGET void RNG<float >::Dirichlet<float , float >(float * res, float * a, int n);
+template TARGET void RNG<float >::Dirichlet<float , double>(float * res, double* a, int n);
+template TARGET void RNG<float >::Dirichlet<double, double>(double* res, double* a, int n);
+template TARGET void RNG<float >::Dirichlet<float , float , int  >(float * res, float * a, int* b, int n);
+template TARGET void RNG<float >::Dirichlet<float , double, int64>(float * res, double* a, int64* b, int n);
+
+#ifndef _RNG_FP64
+
+TARGET RNG<double>::RNG()
+{
+
+}
+
+TARGET RNG<double>::RNG(uint64 s, uint64 salt)
+{
+	s = MurmurHash64(s, salt);
+
+	x = 0x159A55E5075BCD15 ^ (s);       //123456789, 362436069
+	y = 0x054913331F123BB5 ^ (s << 6);  //521288629, 88675123
+
+	*(uint*)&U1 = 0;
+}
+
+/* Get a random sequence from 0 ~ n-1 */
+TARGET void RNG<double>::GetRandSeq(int* td, int n)
+{
+	for (int i = 0; i < n; ++i)
+		td[i] = (int)((XorShift() << 16) | i);
+	QuickSort(td, 0, n - 1);
+	for (int i = 0; i < n; ++i)
+		td[i] &= 0xFFFF;
+}
+
+/* Draw a uniform distriubted real number */
+TARGET double RNG<double>::Uniform(double min, double max)
+{
+	return Uniform() * (max - min) + min;
+}
+
+/* Draw a uniform distriubted real number */
+TARGET double RNG<double>::Uniform(double max)
+{
+	return Uniform() * max;
+}
+
+/* Draw a normally distriubted real number */
+TARGET double RNG<double>::Normal()
+{
+	//normal distribution
+	if (*(uint*)&U1 != 0)
+	{
+		double re = U1 * MySin(U2);
+		*(uint*)&U1 = 0;
+		return re;
+	}
+
+	volatile double v1 = Uniform();
+	volatile double v2 = Uniform();
+
+	U1 = MySqrt(-2.0 * log(v1));
+	U2 = 2.0 * M_PI * v2;
+	return U1 * MyCos(U2);
+}
+
+/* Draw a normally distriubted real number */
+TARGET double RNG<double>::Normal(double mean, double std)
+{
+	return Normal() * std + mean;
+}
+
+/* Draw a polynormial distriubted integer */
+template<typename T>
+TARGET int RNG<double>::Poly(T* a, int n)
+{
+	//row unify
+	double s = Sum(a, n) + MIN_FREQ * n;
+	double t = Uniform(s);
+	for (int i = 0; i < n; ++i)
+	{
+		if (t < a[i] + MIN_FREQ) return i;
+		t -= a[i] + MIN_FREQ;
+	}
+	return n - 1;
+}
+
+/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
+template<typename T>
+TARGET int RNG<double>::PolyLog(T* a, int n)
+{
+	//proportional polynomial distribution, will overwrite a
+	double maxval = GetMaxVal(a, n), s = MIN_FREQ * n;
+	for (int i = 0; i < n; ++i)
+	{
+		double diff = a[i] - maxval;
+		a[i] = diff < -23 ? MIN_FREQ : exp(diff);
+		s += a[i];
+	}
+
+	double r = Uniform(s);
+	for (int i = 0; i < n; ++i)
+	{
+		if (r < a[i]) return i;
+		r -= a[i];
+	}
+	return n - 1;
+}
+
+/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
+template<typename T>
+TARGET int RNG<double>::PolyLog(T* a, int n, int sep)
+{
+	//proportional polynomial distribution, will overwrite a
+	double maxval = GetMaxVal(a, n, sep), s = MIN_FREQ * n;
+	for (int i = 0; i < n; ++i)
+	{
+		double diff = a[i * sep] - maxval;
+		a[i * sep] = diff < -23 ? MIN_FREQ : exp(diff);
+		s += a[i * sep];
+	}
+
+	double r = Uniform(s);
+	for (int i = 0; i < n; ++i)
+	{
+		if (r < a[i * sep]) return i;
+		r -= a[i * sep];
+	}
+	return n - 1;
+}
+
+/* Draw a real number from gamma distribution */
+TARGET double RNG<double>::Gamma(double alpha, double beta)
+{
+	//gamma distribution
+	if (alpha < 1)
+	{
+		//bug fixed on 20220816 to keep code sequence
+		volatile double v1 = Gamma(1.0 + alpha, beta);
+		volatile double v2 = pow(Uniform(), 1.0 / alpha);
+		return v1 * v2;
+	}
+	double t, v, u;
+	double d = alpha - 0.333333333333333;
+	double c = 1.0 / (sqrt(d) * 3.0);
+
+	for (;;)
+	{
+		do
+		{
+			t = Normal();
+			volatile double v1 = c * t;
+			v = 1.0 + v1;
+		} while (v <= 0);
+
+		v = v * v * v;
+		u = Uniform();
+
+		if (u < 1.0 - 0.0331 * t * t * t * t) break;
+		if (log(u) < 0.5 * t * t + d * (1.0 - v + log(v))) break;
+	}
+	return beta * d * v;
+}
+
+/* Draw a real number from beta distribution */
+TARGET double RNG<double>::Beta(double a, double b)
+{
+	//Beta distribution
+	volatile double v1 = Gamma(a);
+	volatile double v2 = Gamma(b);
+	return v1 / (v1 + v2);
+}
+
+/* Draw a vector from Dirichlet distribution D(a1 f, a2 f, ...) */
+template<typename T1, typename T2>
+TARGET void RNG<double>::Dirichlet(T1* res, T2* a, int n, double f)
+{
+	//Dirichlet distribution
+	double s = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		double v = Gamma(a[i] * f);
+		res[i] = v;
+		s += v;
+	}
+	Mul(res, (T1)(1.0 / s), n);
+}
+
+/* Draw a vector from Dirichlet distribution D(a1, a2, ...) */
+template<typename T1, typename T2>
+TARGET void RNG<double>::Dirichlet(T1* res, T2* a, int n)
+{
+	//Dirichlet distribution
+	double s = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		double v = Gamma(a[i]);
+		res[i] = v;
+		s += v;
+	}
+	Mul(res, (T1)(1.0 / s), n);
+}
+
+/* Draw a vector from Dirichlet distribution D(a1 + b1, a2 + b2, ...) */
+template<typename T1, typename T2, typename T3>
+TARGET void RNG<double>::Dirichlet(T1* res, T2* a, T3* b, int n)
+{
+	//Dirichlet distribution
+	double s = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		double v = Gamma((double)a[i] + (double)b[i]);
+		res[i] = v;
+		s += v;
+	}
+	Mul(res, (T1)(1.0 / s), n);
+}
+
+/* Shuffle an array */
+template<typename T>
+TARGET void RNG<double>::Permute(T* val, int n)
+{
+	//https://lemire.me/blog/2016/06/30/fast-random-shuffling/
+	for (int i = n; i > 1; --i)
+		Swap(val[i - 1], val[Next(i)]);
+}
+
+/* Draw a uniform distriubted interger */
+TARGET uint64 RNG<double>::XorShift()
+{
+	//XorShift
+	uint64 a = x, b = y;
+
+	x = b;
+	a ^= a << 23;
+	a ^= a >> 18;
+	a ^= b;
+	a ^= b >> 5;
+	y = a;
+
+	return a + b;
+}
+
+TARGET uint64 RNG<double>::Next(uint64 min, uint64 max)
+{
+	// will not equal to max
+	return XorShift() % (max - min) + min;
+}
+
+/* Draw a uniform distriubted interger */
+TARGET uint64 RNG<double>::Next(uint64 max)
+{
+	// will not equal to max
+	return XorShift() % max;
+}
+
+/* Draw a uniform distriubted real number */
+TARGET double RNG<double>::Uniform()
+{
+	uint64 u = XorShift(), r = 0x3FF0000000000000;
+	double& re = *(double*)&r;
+	r |= u & 0x000FFFFFFFFFFFFF;
+	return re - 1.0;
+}
+
+/* Draw a uniform distriubted interger and avoid sample av */
+TARGET uint64 RNG<double>::NextAvoid(uint64 max, uint64 av)
+{
+	uint64 a = Next(max - 1);
+	if (a >= av) a++;
+	return a;
+}
+
+#endif
+
+#ifndef _RNG_FP32
+	/* Initialize rng */
+	TARGET RNG<float>::RNG()
+	{
+	}
+
+	/* Initialize rng */
+	TARGET RNG<float>::RNG(uint64 seed, uint64 salt)
+	{
+		uint s = MurmurHash32(seed, salt);
+
+		x = 0x075BCD15 ^ (s);
+		y = 0x159A55E5 ^ (s << 3);
+		z = 0x1F123BB5 ^ (s << 6);
+
+		*(uint*)&U1 = 0;
+	}
+
+	/* Get a random sequence from 0 ~ n-1 */
+	TARGET void RNG<float>::GetRandSeq(int* td, int n)
+	{
+		for (int i = 0; i < n; ++i)
+			td[i] = (int)((XorShift() << 16) | i);
+		QuickSort(td, 0, n - 1);
+		for (int i = 0; i < n; ++i)
+			td[i] &= 0xFFFF;
+	}
+
+	/* Draw a uniform distriubted real number */
+	TARGET float RNG<float>::Uniform(float min, float max)
+	{
+		return Uniform() * (max - min) + min;
+	}
+
+	/* Draw a uniform distriubted real number */
+	TARGET float RNG<float>::Uniform(float max)
+	{
+		return Uniform() * max;
+	}
+
+	/* Draw a normally distriubted real number */
+	TARGET double RNG<float>::Normal()
+	{
+		//normal distribution
+		if (*(uint*)&U1 != 0)
+		{
+			double re = U1 * MySin(U2);
+			*(uint*)&U1 = 0;
+			return re;
+		}
+
+		volatile double v1 = Uniform();
+		volatile double v2 = Uniform();
+		U1 = MySqrt(-2.0 * log(Max(MIN_FREQ, v1)));
+		U2 = 2.0 * M_PI * v2;
+		return U1 * MyCos(U2);
+	}
+
+	/* Draw a normally distriubted real number */
+	TARGET double RNG<float>::Normal(double mean, double std)
+	{
+		return Normal() * std + mean;
+	}
+
+	/* Draw a polynormial distriubted integer
+	TARGET int RNG<float>::Poly(double* a, int n)
+	{
+		//row unify
+		double s = Sum(a, n) + MIN_FREQ * n;
+		double t = Uniform(s);
+		for (int i = 0; i < n; ++i)
+		{
+			if (t < a[i] + MIN_FREQ) return i;
+			t -= a[i] + MIN_FREQ;
+		}
+		return n - 1;
+	}
+	 */
+
+	/* Draw a polynormial distriubted integer */
+	TARGET int RNG<float>::Poly(float* a, int n)
+	{
+		//row unify 
+		volatile float v1 = (float)MIN_FREQ;
+		for (int i = 0; i < n; ++i)
+			a[i] += v1;
+
+		float s = Sumx(a, n);
+		float t = Uniform(s);
+		for (int i = 0; i < n; ++i)
+		{
+			if (t < a[i]) return i;
+			t -= a[i];
+		}
+		return n - 1;
+	}
+
+	/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
+	TARGET int RNG<float>::PolyLog(float* a, int n)
+	{
+		//proportional polynomial distribution, will overwrite a
+		float maxval = GetMaxVal(a, n), s = (float)MIN_FREQ * n;
+		for (int i = 0; i < n; ++i)
+		{
+			float diff = a[i] - maxval;
+			a[i] = diff < -23 ? (float)MIN_FREQ : exp(diff);
+			s += a[i];
+		}
+
+		float r = Uniform(s);
+		for (int i = 0; i < n; ++i)
+		{
+			if (r < a[i]) return i;
+			r -= a[i];
+		}
+		return n - 1;
+	}
+
+	/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
+	TARGET int RNG<float>::PolyLog(double* a, int n)
+	{
+		//proportional polynomial distribution, will overwrite a
+		double maxval = GetMaxVal(a, n), s = (float)MIN_FREQ * n;
+		for (int i = 0; i < n; ++i)
+		{
+			double diff = a[i] - maxval;
+			a[i] = diff < -23 ? (float)MIN_FREQ : exp(diff);
+			s += a[i];
+		}
+
+		double r = Uniform(s);
+		for (int i = 0; i < n; ++i)
+		{
+			if (r < a[i]) return i;
+			r -= a[i];
+		}
+		return n - 1;
+	}
+
+	/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
+	TARGET int RNG<float>::PolyLog(float* a, int n, int sep)
+	{
+		//proportional polynomial distribution, will overwrite a
+		float maxval = GetMaxVal(a, n, sep), s = (float)MIN_FREQ * n;
+		for (int i = 0; i < n; ++i)
+		{
+			float diff = a[i * sep] - maxval;
+			a[i * sep] = diff < -23 ? (float)MIN_FREQ : exp(diff);
+			s += a[i * sep];
+		}
+
+		float r = Uniform(s);
+		for (int i = 0; i < n; ++i)
+		{
+			if (r < a[i * sep]) return i;
+			r -= a[i * sep];
+		}
+		return n - 1;
+	}
+
+	/* Draw a real number from gamma distribution */
+	TARGET double RNG<float>::Gamma(double alpha, double beta)
+	{
+		//gamma distribution
+		if (alpha < 1)
+		{
+			//bug fixed on 20220816 to keep code sequence
+			volatile double v1 = Gamma(1.0 + alpha, beta);
+			volatile double v2 = pow(Uniform(), 1.0 / alpha);
+			return v1 * v2;
+		}
+		double t, v, u;
+		double d = alpha - 0.333333333333333;
+		double c = 1.0 / (sqrt(d) * 3.0);
+
+		for (;;)
+		{
+			do
+			{
+				t = Normal();
+				v = 1.0 + c * t;
+			} while (v <= 0);
+
+			v = v * v * v;
+			u = Uniform();
+
+			if (u < 1.0 - 0.0331 * t * t * t * t) break;
+			if (log(u) < 0.5 * t * t + d * (1.0 - v + log(v))) break;
+		}
+		return beta * d * v;
+	}
+
+	/* Draw a real number from beta distribution */
+	TARGET double RNG<float>::Beta(double a, double b)
+	{
+		//Beta distribution
+		volatile double v1 = Gamma(a);
+		volatile double v2 = Gamma(b);
+		return v1 / (v1 + v2);
+	}
+
+	/* Draw a vector from Dirichlet distribution D(a1 f, a2 f, ...) */
+	template<typename T1, typename T2>
+	TARGET void RNG<float>::Dirichlet(T1 * res, T2 * a, int n, double f)
+	{
+		//Dirichlet distribution
+		double s = 0;
+		for (int i = 0; i < n; ++i)
+		{
+			double v = Gamma((double)a[i] * f);
+			res[i] = (T1)v;
+			s += v;
+		}
+		Mul(res, (T1)(1.0 / s), n);
+	}
+
+	/* Draw a vector from Dirichlet distribution D(a1, a2, ...) */
+	template<typename T1, typename T2>
+	TARGET void RNG<float>::Dirichlet(T1 * res, T2 * a, int n)
+	{
+		//Dirichlet distribution
+		double s = 0;
+		for (int i = 0; i < n; ++i)
+		{
+			double v = Gamma((double)a[i]);
+			res[i] = (T1)v;
+			s += v;
+		}
+		Mul(res, (T1)(1.0 / s), n);
+	}
+
+	/* Draw a vector from Dirichlet distribution D(a1 + b1, a2 + b2, ...) */
+	template<typename T1, typename T2, typename T3>
+	TARGET void RNG<float>::Dirichlet(T1 * res, T2 * a, T3 * b, int n)
+	{
+		//Dirichlet distribution
+		double s = 0;
+		for (T3 i = 0; i < n; ++i)
+		{
+			double v = Gamma((double)a[i] + (double)b[i]);
+			res[i] = (T1)v;
+			s += v;
+		}
+		Mul(res, (T1)(1.0 / s), n);
+	}
+
+	/* Shuffle an array */
+	template<typename T>
+	TARGET void RNG<float>::Permute(T * val, int n)
+	{
+		//https://lemire.me/blog/2016/06/30/fast-random-shuffling/
+		for (int i = n; i > 1; --i)
+			Swap(val[i - 1], val[Next(i)]);
+	}
+
+	/* Draw a uniform distriubted interger */
+	TARGET uint RNG<float>::XorShift()
+	{
+		//XorShift96
+		uint t;
+		x ^= x << 16;
+		x ^= x >> 5;
+		x ^= x << 1;
+		t = x;
+		x = y;
+		y = z;
+		z = t ^ x ^ y;
+		return z;
+	}
+
+	/* Draw a uniform distriubted real number */
+	TARGET float RNG<float>::Uniform()
+	{
+		uint u = XorShift(), r = 0x3F800000;
+		float& re = *(float*)&r;
+		r |= u & 0x007FFFFF;
+		return re - 1.0f;
+	}
+
+	/* Draw a uniform distriubted interger */
+	TARGET uint RNG<float>::Next(uint min, uint max)
+	{
+		// will not equal to max
+		return XorShift() % (max - min) + min;
+	}
+
+	/* Draw a uniform distriubted interger */
+	TARGET uint RNG<float>::Next(uint max)
+	{
+		// will not equal to max
+		return XorShift() % max;
+	}
+
+	/* Draw a uniform distriubted interger and avoid sample av */
+	TARGET uint RNG<float>::NextAvoid(uint max, uint av)
+	{
+		uint a = Next(max - 1);
+		if (a >= av) a++;
+		return a;
+	}
+#endif
+
 /* Gamma function */
 TARGET double Gamma1(double x)
 {
 	static double gam1_coef[] = { 0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716E-6, 1.5056327351493116E-7 };
 	int g = 7;
-	if (x < 0.5) return PI / (sin(PI * x) * Gamma1(1 - x));
+	if (x < 0.5) return M_PI / (MySin(M_PI * x) * Gamma1(1 - x));
 	x -= 1;
 	double a = gam1_coef[0];
 	double t = x + g + 0.5;
@@ -159,272 +746,15 @@ TARGET double ChiSquareProb(double x2, double df)
 {
 	if (!x2) return 1;
 	if (x2 < 0.0) x2 = -x2;
-	return 1 - Gamma2(df / 2.0, x2 / 2.0);
+	return 1.0 - Gamma2(df / 2.0, x2 / 2.0);
 }
 
-/* Random number generator */
-#ifndef _RNG
-
-/* Initialize rng */
-TARGET RNG::RNG()
-{
-}
-
-/* Initialize rng */
-TARGET RNG::RNG(uint64 s)
-{
-	state = 0;
-	seed = s;
-	s = Hash64ULong(s);
-	x = 0x159A55E5075BCD15 ^ (s);       //123456789, 362436069
-	y = 0x054913331F123BB5 ^ (s << 6); //521288629, 88675123
-}
-
-/* Draw a uniform distriubted interger */
-TARGET uint64 RNG::XorShift128p()
-{
-	uint64 a = x, b = y;
-
-	x = b;
-	a ^= a << 23;
-	a ^= a >> 18;
-	a ^= b;
-	a ^= b >> 5;
-	y = a;
-
-	return a + b;
-}
-
-/* Get a random sequence from 0 ~ n-1 */
-TARGET void RNG::GetRandSeq(int* td, int n)
-{
-	for (int i = 0; i < n; ++i)
-		td[i] = (int)((XorShift128p() << 16) | i);
-	QuickSort(td, 0, n - 1);
-	for (int i = 0; i < n; ++i)
-		td[i] &= 0xFFFF;
-}
-
-/* Draw a uniform distriubted real number */
-TARGET double RNG::Uniform()
-{
-	uint64 u = XorShift128p(), r = 0x3FF0000000000000;
-	double& re = *(double*)&r;
-	r |= u & 0x000FFFFFFFFFFFFF;
-	return re - 1.0;
-}
-
-/* Draw a uniform distriubted real number */
-TARGET double RNG::Uniform(double min, double max)
-{
-	return Uniform() * (max - min) + min;
-}
-
-/* Draw a uniform distriubted real number */
-TARGET double RNG::Uniform(double max)
-{
-	return Uniform() * max;
-}
-
-/* Draw a uniform distriubted interger */
-TARGET int64 RNG::Next(int64 min, int64 max)
-{
-	// will not equal to max
-	return XorShift128p() % (max - min) + min;
-}
-
-/* Draw a uniform distriubted interger */
-TARGET int64 RNG::Next(int64 max)
-{
-	// will not equal to max
-	return XorShift128p() % max;
-}
-
-/* Draw a uniform distriubted interger and avoid sample av */
-TARGET int64 RNG::NextAvoid(int64 max, int64 av)
-{
-	int64 a = Next(max - 1);
-	if (a >= av) a++;
-	return a;
-}
-
-/* Draw a normally distriubted real number */
-TARGET double RNG::Normal()
-{
-	//normal distribution
-	if (state)
-	{
-		state = false;
-		return U1 * sin(U2);
-	}
-	volatile double v1 = MySqrt(-2 * log(Uniform()));
-	volatile double v2 = 2 * PI * Uniform();
-	U1 = v1;
-	U2 = v2;
-	return U1 * cos(U2);
-}
-
-/* Draw a normally distriubted real number */
-TARGET double RNG::Normal(double mean, double std)
-{
-	return Normal() * std + mean;
-}
-
-/* Draw a polynormial distriubted integer */
-TARGET int RNG::Poly(double* a, int n)
-{
-	//row unify
-	double s = Sum(a, n) + MIN_FREQ * n;
-	double t = Uniform(s);
-	for (int i = 0; i < n; ++i)
-	{
-		if (t < a[i] + MIN_FREQ) return i;
-		t -= a[i] + MIN_FREQ;
-	}
-	return n - 1;
-}
-
-/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
-TARGET int RNG::PolyLog(double* a, int n)
-{
-	//proportional polynomial distribution, will overwrite a
-	double maxval = GetMaxVal(a, n), s = MIN_FREQ * n;
-	for (int i = 0; i < n; ++i)
-	{
-		double diff = a[i] - maxval;
-		a[i] = diff < -23 ? MIN_FREQ : exp(diff);
-		s += a[i];
-	}
-
-	double r = Uniform(s);
-	for (int i = 0; i < n; ++i)
-	{
-		if (r < a[i]) return i;
-		r -= a[i];
-	}
-	return n - 1;
-}
-
-/* Draw a polynormial distriubted integer with propoirtions in natural logarithm */
-TARGET int RNG::PolyLog(double* a, int n, int sep)
-{
-	//proportional polynomial distribution, will overwrite a
-	double maxval = GetMaxVal(a, n, sep), s = MIN_FREQ * n;
-	for (int i = 0; i < n; ++i)
-	{
-		double diff = a[i * sep] - maxval;
-		a[i * sep] = diff < -23 ? MIN_FREQ : exp(diff);
-		s += a[i * sep];
-	}
-
-	double r = Uniform(s);
-	for (int i = 0; i < n; ++i)
-	{
-		if (r < a[i * sep]) return i;
-		r -= a[i * sep];
-	}
-	return n - 1;
-}
-
-/* Draw a real number from gamma distribution */
-TARGET double RNG::Gamma(double alpha, double beta)
-{
-	//gamma distribution
-	if (alpha < 1)
-	{
-		//bug fixed on 20220816 to keep code sequence
-		volatile double v1 = Gamma(1.0 + alpha, beta);
-		volatile double v2 = pow(Uniform(), 1.0 / alpha);
-		return v1 * v2;
-	}
-	double t, v, u;
-	double d = alpha - 1.0 / 3.0;
-	double c = (1.0 / 3.0) / sqrt(d);
-
-	for (;;)
-	{
-		do
-		{
-			t = Normal();
-			v = 1.0 + c * t;
-		} while (v <= 0);
-
-		v = v * v * v;
-		u = Uniform();
-
-		if (u < 1 - 0.0331 * t * t * t * t) break;
-		if (log(u) < 0.5 * t * t + d * (1 - v + log(v))) break;
-	}
-	return beta * d * v;
-}
-
-/* Draw a real number from beta distribution */
-TARGET double RNG::Beta(double a, double b)
-{
-	//Beta distribution
-	volatile double v1 = Gamma(a);
-	volatile double v2 = Gamma(b);
-	return v1 / (v1 + v2);
-}
-
-/* Draw a vector from Dirichlet distribution D(a1 f, a2 f, ...) */
-TARGET void RNG::Dirichlet(double* res, double* a, int n, double f)
-{
-	//Dirichlet distribution
-	double s = 0;
-	for (int i = 0; i < n; ++i)
-	{
-		res[i] = Gamma(a[i] * f);
-		s += res[i];
-	}
-	Mul(res, 1.0 / s, n);
-}
-
-/* Draw a vector from Dirichlet distribution D(a1, a2, ...) */
-TARGET void RNG::Dirichlet(double* res, double* a, int n)
-{
-	//Dirichlet distribution
-	double s = 0;
-	for (int i = 0; i < n; ++i)
-	{
-		res[i] = Gamma(a[i]);
-		s += res[i];
-	}
-	Mul(res, 1.0 / s, n);
-}
-
-/* Draw a vector from Dirichlet distribution D(a1 + b1, a2 + b2, ...) */
-TARGET void RNG::Dirichlet(double* res, double* a, int64* b, int n)
-{
-	//Dirichlet distribution
-	double s = 0;
-	for (int i = 0; i < n; ++i)
-	{
-		res[i] = Gamma(a[i] + b[i]);
-		s += res[i];
-	}
-	Mul(res, 1.0 / s, n);
-}
-
-/* Draw a vector from Dirichlet distribution D(a1 + b1, a2 + b2, ...) */
-TARGET void RNG::Dirichlet(double* res, double* a, int* b, int n)
-{
-	//Dirichlet distribution
-	double s = 0;
-	for (int i = 0; i < n; ++i)
-	{
-		res[i] = Gamma(a[i] + b[i]);
-		s += res[i];
-	}
-	Mul(res, 1.0 / s, n);
-}
-#endif
 
 /* Input a vector, return proportion of grids with exp < threshold and two mininum indices */
 TARGET double FindMinIndex(double* exp, int m, int& i1, int& i2, double threshold)
 {
 	int nle = 0;
-	double minval1 = 1e300, minval2 = 1e300;
+	double minval1 = DBL_MAX, minval2 = DBL_MAX;
 	i1 = i2 = 0xFFFFFFFF;
 	for (int i = 0; i < m; ++i)
 	{
@@ -452,7 +782,7 @@ TARGET double FindMinIndex(double* exp, int m, int& i1, int& i2, double threshol
 TARGET double FindMinIndex(double* exp, int m, int n, int& i1, int& j1, int& i2, int& j2, double threshold)
 {
 	int nle = 0;
-	double minval1 = 1e300, minval2 = 1e300;
+	double minval1 = DBL_MAX, minval2 = DBL_MAX;
 	i1 = j1 = i2 = j2 = 0xFFFFFFFF;
 	for (int i = 0; i < m; ++i)
 	{
@@ -614,7 +944,7 @@ TARGET void CombineTable(double* obs, int m, int n, double& g, int& df, double& 
 	else
 	{
 		g = 0;
-		p = NA;
+		p = NAN;
 	}
 }
 
@@ -647,7 +977,7 @@ TARGET double Factorial(int n)
 		2.52607574497320E302, 4.26906800900471E304, 7.25741561530800E306
 	};
 	if (n <= 170) return f[n];
-	return NA;
+	return NAN;
 }
 
 /* Binomial coefficient */

@@ -16,22 +16,25 @@ extern LOCN nfilter;								//Number of filtered loci
 extern atomic<int> nfilterind;						//Number of filtered individuals
 
 /* Applying individual and diversity filters */
+template<typename REAL>
 TARGET void ApplyFilter();
 
 /* Recursive set id, pops, inds for each region */
+template<typename REAL>
 TARGET void SetVReg(int rl, int i);
 
 /* Sort individuals by population index to rinds array */
+template<typename REAL>
 TARGET void AssignVInds();
 
 /* Marker individual filtered or not */
-THREADH(MarkerIndividual);
+THREAD2H(MarkerIndividual);
 
 /* Marker locus filtered or not */
-THREADH(MarkerDiversity);
+THREAD2H(MarkerDiversity);
 
 /* Remove individual fail to pass filter */
-THREADH(RemoveIndividual);
+THREAD2H(RemoveIndividual);
 
 /* Remove locus fail to pass filter */
-THREADH(RemoveLocus);
+THREAD2H(RemoveLocus);

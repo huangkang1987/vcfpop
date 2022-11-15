@@ -2,6 +2,9 @@
 
 #include "vcfpop.h"
 
+template TARGET void MatrixSPA<double>(double* f, double* x, int spa_tn, int spa_np, double* a, int64 l, double* am, double* h, double* g, double* a2);
+template TARGET void MatrixSPA<float >(double* f, double* x, int spa_tn, int spa_np, double* a, int64 l, double* am, double* h, double* g, double* a2);
+
 #undef min
 #undef max
 #undef __AVX512F__
@@ -42,7 +45,20 @@ TARGET void MatrixMul2(double* side, double* mid, int N, double* res)
 			res[i * N + j] = D(i, j);
 }
 
+/* Matrix multiplication G = C * D * C */
+TARGET void MatrixMul2(float* side, float* mid, int N, float* res)
+{
+	Map<MatrixXf> C(side, N, N);//symmetric
+	Map<MatrixXf> D(mid, N, N);//symmetric
+	D = C * D * C;
+
+	for (int i = 0; i < N; ++i)
+		for (int j = 0; j < N; ++j)
+			res[i * N + j] = D(i, j);
+}
+
 /* SPA function */
+template<typename REAL>
 TARGET void MatrixSPA(double* f, double* x, int spa_tn, int spa_np, double* a,
 	int64 l, double * am, double* h, double* g, double* a2)
 {
@@ -57,7 +73,7 @@ TARGET void MatrixSPA(double* f, double* x, int spa_tn, int spa_np, double* a,
 	//Downhill simplex
 	int dim = spa_np;
 	void* Param[] = { (void*)&l };
-	CPOINT xx0 = CPOINT::DownHillSimplex(dim, 0, false, 0.0001, 15, SPA_Likelihood, Param);
+	CPOINT xx0 = CPOINT::DownHillSimplex(dim, 0, false, 0.0001, 15, SPA_Likelihood<REAL>, Param);
 	SetVal(am, xx0.image, spa_np);
 	am[spa_np + 2] = xx0.li;
 
@@ -69,7 +85,7 @@ TARGET void MatrixSPA(double* f, double* x, int spa_tn, int spa_np, double* a,
 	double eps = 1e-6, likelihood = 0;
 	for (int m = 0; m < 100; ++m)
 	{
-		likelihood = SPA_Hessian(l, g, h, a, a2);
+		likelihood = SPA_Hessian<REAL>(l, g, h, a, a2);
 		if (likelihood > am[spa_np + 2])
 		{
 			SetVal(am, a, spa_np);
@@ -139,8 +155,76 @@ TARGET void EigenValueDecomp(double *mat, int N, double *&U, double *&V, int& ma
 	setNbThreads(1);
 }
 
+/* Eigen value decomposition for PCoA */
+TARGET void EigenValueDecomp(float* mat, int N, float*& U, float*& V, int& maxp, int* idx)
+{
+	static bool initflag = false;
+	if (!initflag) Eigen::initParallel();
+	setNbThreads(g_nthread_val);
+
+	Map<MatrixXf> G(mat, N, N);//symmetric
+	DenseSymMatProd<float> op(G);
+	SymEigsSolver<DenseSymMatProd<float>> eigs(op, maxp, Min(maxp * 2, N));
+
+	eigs.init();
+	eigs.compute(SortRule::LargestAlge);
+
+	// Retrieve results
+	auto u = eigs.eigenvectors();
+	auto v = eigs.eigenvalues();
+
+	//sort by eigen values in descending order
+	int nz = (int)v.size();
+
+	for (int i = 0; i < nz; ++i)
+		idx[i] = i;
+
+	for (int i = 0; i < nz; ++i)
+		for (int j = i + 1; j < nz; ++j)
+			if (v(idx[i], 0) < v(idx[j], 0))
+				Swap(idx[i], idx[j]);
+
+	// calculate number of axises
+	maxp = 0;
+	for (int i = 0; i < nz; ++i)
+	{
+		if (v(idx[i], 0) > 0) maxp++;
+		else break;
+	}
+
+	U = new float[N * maxp];
+	V = new float[N];
+
+	for (int i = 0; i < maxp; ++i)
+	{
+		V[i] = v(idx[i], 0);
+		float s = MySqrt(V[i]);
+		for (int j = 0; j < N; ++j)
+			U[j * maxp + i] = s * u(j, idx[i]);
+	}
+
+	setNbThreads(1);
+}
+
 /* Matrix multiplication */
 TARGET int MatrixMul(double* l, int lr, int lc, double* r, int rr, int rc, double* res)
+{
+	if (lc != rr) return -1;
+	int i, j, k;
+	for (i = 0; i < lr; ++i)
+	{
+		for (j = 0; j < rc; ++j)
+		{
+			res[i * rc + j] = 0;
+			for (k = 0; k < lc; ++k)
+				res[i * rc + j] += l[i * lc + k] * r[k * rc + j];
+		}
+	}
+	return 0;
+}
+
+/* Matrix multiplication */
+TARGET int MatrixMul(float* l, int lr, int lc, float* r, int rr, int rc, float* res)
 {
 	if (lc != rr) return -1;
 	int i, j, k;
@@ -160,6 +244,13 @@ TARGET int MatrixMul(double* l, int lr, int lc, double* r, int rr, int rc, doubl
 TARGET void MatrixInv2(double* M, int n)
 {
 	Map<MatrixXd> MC(M, n, n);//symmetric
+	MC = MC.inverse();
+}
+
+/* Matrix inverstion */
+TARGET void MatrixInv2(float* M, int n)
+{
+	Map<MatrixXf> MC(M, n, n);//symmetric
 	MC = MC.inverse();
 }
 

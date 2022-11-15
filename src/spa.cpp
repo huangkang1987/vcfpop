@@ -3,6 +3,19 @@
 #pragma once
 #include "vcfpop.h"
 
+template TARGET void CalcSPA<double>();
+template TARGET void CalcSPA<float >();
+template TARGET double SPA_Fij<double>(double* a, int i);
+template TARGET double SPA_Fij<float >(double* a, int i);
+template TARGET double SPA_Likelihood<double>(CPOINT& xx, void** Param);
+template TARGET double SPA_Likelihood<float >(CPOINT& xx, void** Param);
+template TARGET double SPA_Likelihood<double>(uint64 l, double* a);
+template TARGET double SPA_Likelihood<float >(uint64 l, double* a);
+template TARGET double SPA_Hessian<double>(uint64 l, double* G, double* H, double* a, double* a2);
+template TARGET double SPA_Hessian<float >(uint64 l, double* G, double* H, double* a, double* a2);
+template TARGET void SPA_Locus<double>(uint64 l, double* x, double* f, double* a, double* a2, double* am, double* g, double* h);
+template TARGET void SPA_Locus<float >(uint64 l, double* x, double* f, double* a, double* a2, double* am, double* g, double* h);
+
 #define extern 
 extern _thread bool* spa_valid;
 extern _thread int spa_tn;
@@ -12,6 +25,7 @@ extern int spa_np;									//Spatial pattern, TEST, don't use, n
 #undef extern 
 
 /* Calculate spatical pattern */
+template<typename REAL>
 TARGET void CalcSPA()
 {
 	//locus parameter
@@ -101,7 +115,7 @@ TARGET void CalcSPA()
 		spa_x[i * spa_np + spa_dim_val] = 1.0;
 	}
 
-	RunThreads(&SPAThread, NULL, NULL, nloc, nloc, "\nCalculating SPA:\n", g_nthread_val, true);
+	RunThreads(&SPAThread<REAL>, NULL, NULL, nloc, nloc, "\nCalculating SPA:\n", g_nthread_val, true);
 	JoinTempFiles(g_nthread_val);
 	CloseResFile();
 	delete[] spa_x;
@@ -110,6 +124,7 @@ TARGET void CalcSPA()
 }
 
 /* Test. spatial pattern, do not use */
+template<typename REAL>
 TARGET double SPA_Fij(double* a, int i)
 {
 	double re = 1.0 / (exp(-SumProd(a, spa_x + i * spa_np, spa_np)) + 1.0);
@@ -118,13 +133,15 @@ TARGET double SPA_Fij(double* a, int i)
 	return re;
 }
 
+template<typename REAL>
 TARGET double SPA_Likelihood(CPOINT& xx, void** Param)
 {
 	double* a = xx.image;
 	uint64 l = *(uint64*)Param[0];
-	return SPA_Likelihood(l, a);
+	return SPA_Likelihood<REAL>(l, a);
 }
 
+template<typename REAL>
 TARGET double SPA_Likelihood(uint64 l, double* a)
 {
 	// L = sum_i (ad_1 lnfij + ad_2 ln(1-fij))
@@ -139,7 +156,7 @@ TARGET double SPA_Likelihood(uint64 l, double* a)
 		{
 			GENOTYPE& gt = gtab[rt.Read()];
 			if (!spa_valid[i]) continue;
-			f1 = SPA_Fij(a, i);
+			f1 = SPA_Fij<REAL>(a, i);
 			f2 = log(1.0 - f1);
 			f1 = log(f1);
 
@@ -151,7 +168,7 @@ TARGET double SPA_Likelihood(uint64 l, double* a)
 	else for (int p = 0; p < npop; ++p)
 	{
 		if (!spa_valid[p]) continue;
-		f1 = SPA_Fij(a, p);
+		f1 = SPA_Fij<REAL>(a, p);
 		f2 = log(1.0 - f1);
 		f1 = log(f1);
 
@@ -162,25 +179,26 @@ TARGET double SPA_Likelihood(uint64 l, double* a)
 	return re;
 }
 
+template<typename REAL>
 TARGET double SPA_Hessian(uint64 l, double* G, double* H, double* a, double* a2)
 {
 	double eps = 1e-6;
-	double j00 = SPA_Likelihood(l, a);
+	double j00 = SPA_Likelihood<REAL>(l, a);
 	for (int j = 0; j < spa_np; ++j)
 	{
 		SetVal(a2, a, spa_np);
 		a2[j] += eps;
-		double j01 = SPA_Likelihood(l, a2);
+		double j01 = SPA_Likelihood<REAL>(l, a2);
 		double d11 = (j01 - j00) / eps;
 		G[j] = d11;
 		for (int k = j; k < spa_np; ++k)
 		{
 			SetVal(a2, a, spa_np);
 			a2[k] += eps;
-			double j10 = SPA_Likelihood(l, a2);
+			double j10 = SPA_Likelihood<REAL>(l, a2);
 
 			a2[j] += eps;
-			double j11 = SPA_Likelihood(l, a2);
+			double j11 = SPA_Likelihood<REAL>(l, a2);
 			double d12 = (j11 - j10) / eps;
 			H[j * spa_np + k] = H[k * spa_np + j] = (d12 - d11) / eps;
 		}
@@ -188,6 +206,7 @@ TARGET double SPA_Hessian(uint64 l, double* G, double* H, double* a, double* a2)
 	return j00;
 }
 
+template<typename REAL>
 TARGET void SPA_Locus(uint64 l, double* x, double* f, double* a, double* a2, double* am, double* g, double* h)
 {
 	char name_buf[NAME_BUF_LEN];
@@ -255,13 +274,13 @@ TARGET void SPA_Locus(uint64 l, double* x, double* f, double* a, double* a2, dou
 		f[i] = -log(1.0 / f[i] - 1.0);
 	}
 
-	MatrixSPA(f, x, spa_tn, spa_np, a, l, am, h, g, a2);
+	MatrixSPA<REAL>(f, x, spa_tn, spa_np, a, l, am, h, g, a2);
 
 	double ex2 = 0, ex = 0;
 	for (int i = 0; i < spa_n; ++i)
 	{
 		if (!spa_valid[i]) continue;
-		double p = SPA_Fij(am, i);
+		double p = SPA_Fij<REAL>(am, i);
 		ex2 += p * p;
 		ex += p;
 	}
@@ -316,7 +335,7 @@ TARGET void SPA_Locus(uint64 l, double* x, double* f, double* a, double* a2, dou
 			fprintf(fout, "%c", g_delimiter_val);
 			continue;
 		}
-		double p = SPA_Fij(am, i);
+		double p = SPA_Fij<REAL>(am, i);
 		fprintf(fout, "%c", g_delimiter_val);
 		WriteReal(fout, p);
 		fprintf(fout, "/");
@@ -331,7 +350,7 @@ TARGET void SPA_Locus(uint64 l, double* x, double* f, double* a, double* a2, dou
 }
 
 /* Calculate spatial pattern using multiple threads */
-THREAD(SPAThread)
+THREAD2(SPAThread)
 {
 	FILE* fout = TEMP_FILES[threadid];
 	if (threadid == 0)
@@ -383,7 +402,7 @@ THREAD(SPAThread)
 
 	for (uint64 l = st1; l < ed1; ++l)
 	{
-		SPA_Locus(l, x, f, a, a2, am, g, h);
+		SPA_Locus<REAL>(l, x, f, a, a2, am, g, h);
 
 		PROGRESS_VALUE++;
 	}

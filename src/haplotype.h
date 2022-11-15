@@ -3,6 +3,10 @@
 #pragma once
 #include "vcfpop.h"
 
+struct QUICKSORT_PARAMETER;
+struct HAPLO_DUMMY_HAPLOTYPE;
+struct HAPLO_DUMMY_LOCUS;
+
 #pragma pack(push, 1)
 
 /* Quick sort locus */
@@ -21,7 +25,8 @@ struct HAPLO_DUMMY_HAPLOTYPE
 	TARGET HAPLO_DUMMY_HAPLOTYPE();
 
 	/* Extract the ith haplotype from an individual */
-	TARGET void ExtractHaplotype(int vi, IND* ti, int64 st, int64 ed, int nvar, ushort aid, MEMORY& haplo_memory);
+	template<typename REAL>
+	TARGET void ExtractHaplotype(int vi, IND<REAL>* ti, int64 st, int64 ed, int nvar, ushort aid, MEMORY& haplo_memory);
 
 	/* Print information for an extracted locus */
 	TARGET void PrintHaplotype(FILE* f1, int64 st, int64 ed);
@@ -48,9 +53,10 @@ extern uint64* locus_pos;							//Locus pos for small locus used in haplotype ex
 extern LOCN* locus_id;								//Locus id for small locus used in haplotype extraction
 
 /* Check aneuploid in haplotype extraction */
-THREADH(CheckAneuploid);
+THREAD2H(CheckAneuploid);
 
 /* Perform haplotype extraction */
+template<typename REAL>
 TARGET void CalcHaplotype();
 
 /* Quick sort locus by contig and position */
@@ -66,10 +72,11 @@ TARGET void QSHapLocus(int64 left, int64 right);
 THREADH(QSHapWorker);
 
 /* Get number of alleles and genotypes at a dummy locus */
+template<typename REAL>
 TARGET double GetDummyK(int64 st, int64 ed, TABLE<HASH, ushort>& hfidx, TABLE<HASH, ushort>& gfidx);
 
 /* Create locus for haplotype extraction */
-THREADH(CreateHaplotypeLocus);
+THREAD2H(CreateHaplotypeLocus);
 
 /* Output locus for haplotype extraction */
-THREADH(WriteHaplotypeLocus);
+THREAD2H(WriteHaplotypeLocus);

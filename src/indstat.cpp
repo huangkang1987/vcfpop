@@ -3,11 +3,23 @@
 #pragma once
 #include "vcfpop.h"
 
+template struct IND<double>;
+template struct IND<float >;
+
+template TARGET void IND<double>::IndividualStatisticsHeader(FILE* fout);
+template TARGET void IND<float >::IndividualStatisticsHeader(FILE* fout);
+template TARGET void IND<double>::PrintIndividualStatistics(FILE* fout);
+template TARGET void IND<float >::PrintIndividualStatistics(FILE* fout);
+
+template TARGET void CalcIndstat<double>();
+template TARGET void CalcIndstat<float >();
+
 #define extern 
 
 #undef extern 
 
 /* Calculate individual statistics */
+template<typename REAL>
 TARGET void CalcIndstat()
 {
 	if (!indstat) return;
@@ -17,8 +29,8 @@ TARGET void CalcIndstat()
 	OpenResFile("-indstat", "Individual statistics");
 	OpenTempFiles(g_nthread_val, ".indstat");
 
-	IND::IndividualStatisticsHeader(FRES);
-	RunThreads(&IndividualStatisticsThread, NULL, NULL, nind, nind,
+	IND<REAL>::IndividualStatisticsHeader(FRES);
+	RunThreads(&IndividualStatisticsThread<REAL>, NULL, NULL, nind, nind,
 		"\nCalculating individual statistics:\n", g_nthread_val, true);
 
 	JoinTempFiles(g_nthread_val);
@@ -28,7 +40,7 @@ TARGET void CalcIndstat()
 }
 
 /* Calculate individual statistics using multiple threads */
-THREAD(IndividualStatisticsThread)
+THREAD2(IndividualStatisticsThread)
 {
 	uint nthread = g_nthread_val;
 	double nsec = nind / (double)nthread + 1e-8;
@@ -42,7 +54,8 @@ THREAD(IndividualStatisticsThread)
 }
 
 /* Write header row for individual statistics */
-TARGET void IND::IndividualStatisticsHeader(FILE* fout)
+template<typename REAL>
+TARGET void IND<REAL>::IndividualStatisticsHeader(FILE* fout)
 {
 	char name_buf[NAME_BUF_LEN];
 	fprintf(fout, "%s%s%c%c%c%c%c", g_linebreak_val, g_linebreak_val, g_delimiter_val, g_delimiter_val, g_delimiter_val, g_delimiter_val, g_delimiter_val);
@@ -137,7 +150,8 @@ TARGET void IND::IndividualStatisticsHeader(FILE* fout)
 }
 
 /* Write result row for individual statistics */
-TARGET void IND::PrintIndividualStatistics(FILE* fout)
+template<typename REAL>
+TARGET void IND<REAL>::PrintIndividualStatistics(FILE* fout)
 {
 	int ntype = 0, minv = 99999, maxv = 0, nhaplo = 0, nmiss = 0;
 	double hidx = 0;
@@ -148,9 +162,9 @@ TARGET void IND::PrintIndividualStatistics(FILE* fout)
 	double t_tot_Loiselle = 0, t_pop_Loiselle = 0, t_reg_Loiselle[N_MAX_REG];
 	double t_tot_Weir = 0, t_pop_Weir = 0, t_reg_Weir[N_MAX_REG];
 
-	POP* ttot = total_pop;
-	POP* tpop = apops[popid];
-	POP* treg[N_MAX_REG]; //20200505
+	POP<REAL>* ttot = total_pop;
+	POP<REAL>* tpop = apops[popid];
+	POP<REAL>* treg[N_MAX_REG]; //20200505
 	if (lreg >= 1) treg[0] = aregs[0][tpop->rid]; //20200505
 
 	for (int rl = 1; rl < lreg; ++rl)

@@ -3,19 +3,17 @@
 #define WINDOWS_IGNORE_PACKING_MISMATCH
 #define _CRT_SECURE_NO_WARNINGS
 
-/*
+#ifdef testarm64
 	//test code
 	#define __aarch64__
-	#define __ARM_FP
+	//#define __ARM_FP
 	#define __ARM_NEON
-	#define __ARM_FEATURE_BF16
-	#define __LITTLE_ENDIAN__
+	#define __ARM_ACLE
+	#define _M_HYBRID_X86_ARM64
+	//#define __ARM_FEATURE_BF16
+	//#define __LITTLE_ENDIAN__
 	#undef _WIN64
-
-	#ifndef __aarch64__
-		#define __aarch64__
-	#endif
-*/
+#endif
 
 #ifdef __aarch64__
 	#include <arm_neon.h>
@@ -47,7 +45,10 @@
 #include <thread>
 #include <omp.h>
 
-using namespace std::filesystem;
+#ifndef __CUDA__
+	using namespace std::filesystem;
+#endif
+
 
 using std::pair;
 using std::mutex;
@@ -94,9 +95,9 @@ typedef std::chrono::time_point<std::chrono::steady_clock> timepoint;
 	#pragma warning(disable:4310)
 	#pragma warning(disable:4244)
 	#pragma warning(disable:4503)
+	#pragma warning(disable:4819)
 
 	#define TARGET    
-	#define TARGETMMX 
 	#define TARGETSSE 
 	#define TARGETAVX 
 	#define TARGET512 
@@ -123,25 +124,24 @@ typedef std::chrono::time_point<std::chrono::steady_clock> timepoint;
 	#define PATH_DOUBLE_DELIM "\\\\"
 	#define PATH_DOUBLE_DELIM_REVERSE "//"
 #else
-	#ifdef __APPLE__
+	#if __aarch64__
 		#define TARGET
-		#define TARGETMMX
 		#define TARGETSSE
 		#define TARGETAVX
 		#define TARGET512
 		#define TARGETNEO  __attribute__((__target__("neon")))
 	#else
-		#define TARGET     __attribute__((__target__("sse", "sse2", "sse3", "sse4", "popcnt", "lzcnt")))
-		#define TARGETMMX  __attribute__((__target__("sse", "sse2", "sse3", "sse4", "popcnt", "lzcnt")))
-		#define TARGETSSE  __attribute__((__target__("sse", "sse2", "sse3", "sse4", "popcnt", "lzcnt")))
-		#define TARGETAVX  __attribute__((__target__("sse", "sse2", "sse3", "sse4", "popcnt", "lzcnt", "avx", "avx2", "fma")))
-		#define TARGET512 __attribute__((noinline)) __attribute__((__target__("sse", "sse2", "sse3", "sse4", "popcnt", "lzcnt", "avx", "avx2", "fma", "avx512f", "avx512bw")))
+		#define TARGET     
+		#define TARGETSSE 
+		#define TARGETAVX  __attribute__((__target__("avx"))) __attribute__((__target__("avx2")))
+		#define TARGET512  __attribute__((__target__("avx"))) __attribute__((__target__("avx2"))) __attribute__((__target__("avx512f"))) __attribute__((__target__("avx512bw"))) __attribute__((__target__("avx512dq"))) __attribute__((__target__("avx512vl")))
 		#define TARGETNEO
 	#endif
 
 	//#include <segvcatch.h>
 	#include <sys/types.h>
 	#include <sys/mman.h>
+	#include <fcntl.h>
 	#include <unistd.h>
 	#include <stdarg.h>
 	#include <dirent.h>
@@ -177,32 +177,48 @@ typedef std::chrono::time_point<std::chrono::steady_clock> timepoint;
 
 	#define VLA_NEW(name,type,size) type name##VLA[size]; type* name = (type*)name##VLA
 	#define VLA_DELETE(name)
+	#define __forceinline __inline__ __attribute__((always_inline))
 #else
 	#define VLA_NEW(name,type,size) type* name = new type[size]
 	#define VLA_DELETE(name) delete[] name
 #endif
 
-#define simd_f64(x,y) ((double*)&(x))[y]
-#define simd_f32(x,y) ((float*)&(x))[y]
-#define simd_u256(x,y) ((__m256i*)&(x))[y]
-#define simd_u128(x,y) ((__m128i*)&(x))[y]
-#define simd_u64(x,y) ((uint64*)&(x))[y]
-#define simd_u32(x,y) ((uint*)&(x))[y]
-#define simd_u16(x,y) ((ushort*)&(x))[y]
-#define simd_u8(x,y)  ((byte*)&(x))[y]
+#define simd_f64(x,y)	((double*)&(x))[y]
+#define simd_f32(x,y)	((float*)&(x))[y]
+#define simd_u256(x,y)	((__m256i*)&(x))[y]
+#define simd_u128(x,y)	((__m128i*)&(x))[y]
+#define simd_u64(x,y)	((uint64*)&(x))[y]
+#define simd_u32(x,y)	((uint*)&(x))[y]
+#define simd_u16(x,y)	((ushort*)&(x))[y]
+#define simd_u8(x,y)	((byte*)&(x))[y]
+#define simd_i256(x,y)	((__m256i*)&(x))[y]
+#define simd_i128(x,y)	((__m128i*)&(x))[y]
+#define simd_i64(x,y)	((int64*)&(x))[y]
+#define simd_i32(x,y)	((int*)&(x))[y]
+#define simd_i16(x,y)	((short*)&(x))[y]
+#define simd_i8(x,y)	((char*)&(x))[y]
 
-#define simp_f64(x,y) ((double*)(x))[y]
-#define simp_f32(x,y) ((float*)(x))[y]
-#define simp_u256(x,y) ((__m256i*)(x))[y]
-#define simp_u128(x,y) ((__m128i*)(x))[y]
-#define simp_u64(x,y) ((uint64*)(x))[y]
-#define simp_u32(x,y) ((uint*)(x))[y]
-#define simp_u16(x,y) ((ushort*)(x))[y]
-#define simp_u8(x,y)  ((byte*)(x))[y]
+#define simp_f64(x,y)	((double*)(x))[y]
+#define simp_f32(x,y)	((float*)(x))[y]
+#define simp_u256(x,y)	((__m256i*)(x))[y]
+#define simp_u128(x,y)	((__m128i*)(x))[y]
+#define simp_u64(x,y)	((uint64*)(x))[y]
+#define simp_u32(x,y)	((uint*)(x))[y]
+#define simp_u16(x,y)	((ushort*)(x))[y]
+#define simp_u8(x,y)	((byte*)(x))[y]
+#define simp_i256(x,y)	((__m256i*)(x))[y]
+#define simp_i128(x,y)	((__m128i*)(x))[y]
+#define simp_i64(x,y)	((int64*)(x))[y]
+#define simp_i32(x,y)	((int*)(x))[y]
+#define simp_i16(x,y)	((short*)(x))[y]
+#define simp_i8(x,y)	((char*)(x))[y]
 
-#define GetLoc(x) (slocus[(x)])				//(useslocus ? slocus[l] : locus[l])
-#define GetLocPos(x) (locus_pos[(x)])		//(useslocus ? locus_pos[l] : locus[l].pos)
-#define GetLocId(x) (locus_id[(x)])			//(useslocus ? locus_id[l] : locus[l].id)
+#define GetLoc(x)		(slocus[(x)])				//(useslocus ? slocus[l] : locus[l])
+#define GetLocPos(x)	(locus_pos[(x)])			//(useslocus ? locus_pos[l] : locus[l].pos)
+#define GetLocId(x)		(locus_id[(x)])				//(useslocus ? locus_id[l] : locus[l].id)
+#define GetLocK(x)			((x) < lend ? slocus[(x)].k : 0)
+#define GetLocTabDiff(x)	((x) < lend ? (int64)slocus[(x)].GetGtab() - gtab_base : 0)	
+#define REP(x)				for (int kk = 0; kk < (x); ++kk)
 
 #ifdef HASH64
 	typedef uint64 HASH;
@@ -220,6 +236,24 @@ typedef std::chrono::time_point<std::chrono::steady_clock> timepoint;
 			threadid = (uint)(uint64)id;\
 			x##In();\
 		}\
+		TARGET void x##In(void)
+
+#define THREAD2H(x) \
+		template<typename REAL> TARGET void x(int id);\
+		template<typename REAL> TARGET void x##In(void)
+
+#define THREAD2(x) \
+		template TARGET void x<double>(int id); \
+		template TARGET void x<float >(int id); \
+		template TARGET void x##In<double>(void); \
+		template TARGET void x##In<float >(void); \
+		template<typename REAL> \
+		TARGET void x(int id)\
+		{\
+			threadid = (uint)id;\
+			x##In<REAL>();\
+		}\
+		template<typename REAL> \
 		TARGET void x##In(void)
 
 /* Lock-free thread competition */
@@ -251,24 +285,23 @@ typedef std::chrono::time_point<std::chrono::steady_clock> timepoint;
 #define sfprintf(f,...) {sprintf(f,__VA_ARGS__); f += strlen(f);}
 
 /* Class and Struct names*/
-class BCFHEADER;
-class VCF;
-class MEMORY;
+struct BCFHEADER;
+struct VCF;
+struct MEMORY;
 struct GENOTYPE;
-class SLOCUS;
-class LOCUS;
-class VESSEL;
-struct POP;
-class IND;
+struct SLOCUS;
+struct LOCUS;
+template<typename REAL> struct POP;
+template<typename REAL> struct IND;
 struct STRUCTURE_RUNINFO;
-template <typename T> class LIST;
+template <typename T> struct LIST;
 template <typename T, typename T2> struct TABLE_ENTRY;
-template <typename T, typename T2> class TABLE;
+template <typename T, typename T2> struct TABLE;
 struct Huang2015ENTRY;
-struct RNGSSE;
-struct RNGAVX;
-struct RNG512;
-struct RNGNEO;
+template<typename REAL> struct RNGSSE;
+template<typename REAL> struct RNGAVX;
+template<typename REAL> struct RNG512;
+template<typename REAL> struct RNGNEO;
 struct HAPLO_DUMMY_LOCUS;
 struct FILEINFO;
 
@@ -314,6 +347,7 @@ struct FILEINFO;
 #include "structureSSE.h"
 #include "structureAVX.h"
 #include "structure512.h"
+#include "structureCUDA.h"
 #include "ad.h"
 #include "menu.h"
 

@@ -4,10 +4,20 @@
 #include "vcfpop.h"
 #pragma pack(push, 1)
 
+struct CPOINT;
+struct MEMBLOCK;
+struct MEMORY;
+template <typename T> struct LIST;
+template <typename T, typename T2> struct TABLE_ENTRY;
+template <typename T, typename T2> struct TABLE;
+struct VMEMORY;
+struct BUCKET;
+struct INCBUFFER;
+struct VCFBUFFER;
+
 /*
-class ReadWriteLock
+struct ReadWriteLock
 {
-public:
 	atomic<int> state = 0;    //high 16 bits for nwriter, low 16 bits for nreader
 
 	TARGET void lock_shared();
@@ -41,8 +51,22 @@ TARGET inline void InitLock(LOCK& x)
 	#ifdef _WIN64
 		InitializeCriticalSection(&x);
 	#else
-		x = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_init(&x, NULL);
 	#endif
+#endif
+}
+
+/* Uninitialize a lock */
+TARGET inline void UnInitLock(LOCK& x)
+{
+#ifdef LOCKFREE
+
+#else
+    #ifdef _WIN64
+        DeleteCriticalSection(&x);
+    #else
+        pthread_mutex_destroy(&x);
+    #endif
 #endif
 }
 
@@ -75,7 +99,14 @@ TARGET inline void UnLock(LOCK& x)
 }
 
 /* Count number of alleles from frequency array*/
-TARGET int CountK(double* fre, int k2);
+template<typename REAL>
+TARGET int CountK(REAL* fre, int k2)
+{
+	int re = 0;
+	for (int i = 0; i < k2; ++i)
+		if (fre[i] > MIN_FREQ) re++;
+	return re;
+}
 
 /* Set a bit in a variable */
 TARGET void SetBit(byte& b, int pos, bool val);
@@ -88,14 +119,6 @@ TARGET int GetNalleles(ushort* alleles, int ploidy);
 
 /* Get current directory */
 TARGET string GetCurDir();
-
-/* Try to delete an array */
-template<typename T>
-TARGET void TryDelete(T*& pointer)
-{
-	if (pointer) delete[] pointer;
-	pointer = NULL;
-}
 
 /* Clear temp files */
 TARGET void ClearTempFiles(string& path);
@@ -211,48 +234,6 @@ TARGET inline void AtomicMax1(volatile byte& ref, byte val)
 #endif
 }
 
-#endif
-
-/* Atomic add val to ref */
-TARGET inline void AtomicAddD(volatile double& ref, double val)
-{
-	for (double ov = ref, nv = ov + val;
-#if defined(__clang__) || defined(__GNUC__)
-		!__sync_bool_compare_and_swap((uint64*)&ref, *(uint64*)&ov, *(uint64*)&nv);
-#else
-		* (uint64*)&ov != InterlockedCompareExchange((uint64*)&ref, *(uint64*)&nv, *(uint64*)&ov);
-#endif
-		ov = ref, nv = ov + val);
-}
-
-/* Atomic add val to ref */
-TARGET inline void AtomicAddD(volatile double* ref, double* val, int len)
-{
-	for (int i = 0; i < len; ++i)
-		for (double ov = ref[i], nv = ov + val[i];
-#if defined(__clang__) || defined(__GNUC__)
-			!__sync_bool_compare_and_swap((uint64*)&ref[i], *(uint64*)&ov, *(uint64*)&nv);
-#else
-			* (uint64*)&ov != InterlockedCompareExchange((uint64*)&ref[i], *(uint64*)&nv, *(uint64*)&ov);
-#endif
-			ov = ref[i], nv = ov + val[i]);
-}
-
-/* Atomic set max */
-template<typename T>
-TARGET inline void AtomicMax(atomic<T>& ref, T value)
-{
-	for (T prev_value = ref; 
-		prev_value < value && !ref.compare_exchange_weak(prev_value, value););
-}
-
-/* Atomic set min */
-template<typename T>
-TARGET inline void AtomicMin(atomic<T>& ref, T value)
-{
-	for (T prev_value = ref; 
-		prev_value > value && !ref.compare_exchange_weak(prev_value, value););
-}
 
 /* Atomic add float number */
 template<typename T>
@@ -269,12 +250,45 @@ TARGET inline void AtomicAddFloat(atomic<T>* ref, T* val, int len)
 	for (int i = 0; i < len; ++i)
 		AtomicAddFloat(ref[i], val[i]);
 }
+#endif
 
+/* Atomic multiply val to ref */
+TARGET void AtomicMulFloat(volatile double& ref, double val);
+
+/* Atomic multiply val to ref */
+TARGET void AtomicMulFloat(volatile float& ref, float val);
+
+/* Atomic add val to ref */
+TARGET void AtomicAddFloat(volatile double& ref, double val);
+
+/* Atomic add val to ref */
+TARGET void AtomicAddFloat(volatile float& ref, float val);
+
+/* Atomic add val to ref */
+TARGET void AtomicAddFloat(volatile double* ref, double* val, int len);
+
+/* Atomic add val to ref */
+TARGET void AtomicAddFloat(volatile float* ref, float* val, int len);
+
+/* Atomic set max */
+template<typename T>
+TARGET void AtomicMax(atomic<T>& ref, T value)
+{
+	for (T prev_value = ref; 
+		prev_value < value && !ref.compare_exchange_weak(prev_value, value););
+}
+
+/* Atomic set min */
+template<typename T>
+TARGET void AtomicMin(atomic<T>& ref, T value)
+{
+	for (T prev_value = ref; 
+		prev_value > value && !ref.compare_exchange_weak(prev_value, value););
+}
 
 /* Point in a simplex to optimize by Down-Hill Simplex algorithm */
-class CPOINT
+struct CPOINT
 {
-public:
 	double image[8];				//Coordinates in converted image space
 	double real[9];					//Coordinates in real space
 	double li;						//Logarithm of likelihood
@@ -345,9 +359,8 @@ struct MEMBLOCK
 };
 
 /* Local memory management class for locus and genotype */
-class MEMORY
+struct MEMORY
 {
-public:
 	MEMBLOCK* blocks;						//Blocks array
 	int nblocks;							//Blocks size
 	int cblock;								//Current block index
@@ -433,9 +446,8 @@ public:
 
 /* Fast list class */
 template <typename T>
-class LIST
+struct LIST
 {
-public:
 	T* bucket;							//Bucket
 	uint bucket_size;					//Size of bucket
 	uint size;							//Number of entries
@@ -554,28 +566,40 @@ public:
 	}
 
 	/* Add an entry at a place id */
-	TARGET void Place(T& val, uint id, LOCK& lock, bool &expanding)
+	TARGET void Place(T& val, uint id, LOCK& lock, atomic<int>& write_count)
 	{
-		while (expanding) Sleep(1);
+		//wait expanding complete
+		while (write_count >= 0x10000);
+
+		//increase writing count
+		write_count++;
 
 		if (id >= bucket_size)
 		{
+			write_count--;
+
 			Lock(lock);
 			if (id >= bucket_size)
 			{
-				expanding = true;
+				write_count += 0x10000;
+				//wait other thread write complete
+				while (write_count != 0x10000);
 				Expand();
-				expanding = false;
+				write_count -= 0x10000;
 			}
 			UnLock(lock);
+			write_count++;
 		}
 
-		AtomicMax(*(atomic<uint>*)&size, id + 1);
+		AtomicMax(*(atomic<uint>*) & size, id + 1);
 		bucket[id] = val;
+
+		//decrease writing count
+		write_count--;
 	}
 
 	/* Add an entry at a place id */
-	TARGET void Place(T&& val, uint id, LOCK& lock, bool &expanding)
+	TARGET void Place(T& val, uint id, LOCK& lock, bool& expanding)
 	{
 		while (expanding) Sleep(1);
 
@@ -591,7 +615,7 @@ public:
 			UnLock(lock);
 		}
 
-		AtomicMax(*(atomic<uint>*)&size, id + 1);
+		AtomicMax(*(atomic<uint>*) & size, id + 1);
 		bucket[id] = val;
 	}
 
@@ -654,9 +678,8 @@ struct TABLE_ENTRY
 
 /* Fast hash table class */
 template <typename T, typename T2>
-class TABLE
+struct TABLE
 {
-public:
 	TABLE_ENTRY<T,T2>* bucket;		//Key-val pair bucket
 	uint* index;					//The list saves the position in bucket of ith entry
 	uint mask;						//mask + 1 is the bucket size
@@ -860,27 +883,26 @@ public:
 		//search from hash % (mask + 1)
 		uint st = key & mask;
 
-		for (uint i = 0; i <= mask; ++i)
+		for (uint i = 0; i <= mask; i++)
 		{
-			uint idx = (i + st) & mask;
-			T k = bucket[idx].key;
-			if (k == (T)-1)
+			uint id1 = (i + st + 0) & mask;
+			T k1 = bucket[id1].key;
+
+			if (k1 == (T)-1)
 			{
-				//do not exist this key
-				//insert a new key
-				//return ref of val
+				//insert a new entry
 				if (mask != 3 && (uint)(size + (size >> 1)) > mask)
 				{
 					Expand();
 					goto restart;
 				}
-				bucket[idx].key = key;
-				if (index) index[size] = idx;
+				bucket[id1].key = key;
+				if (index) index[size] = id1;
 				size++;
-				return bucket[idx].val;
+				return bucket[id1].val;
 			}
-			if (k == key)
-				return bucket[idx].val;
+			if (k1 == key)
+                return bucket[id1].val;
 		}
 
 		if (mask == 3 && size == 4)
@@ -894,10 +916,11 @@ public:
 	}
 };
 
+#pragma pack(pop)
+
 /* Virtual memory management class */
-class VMEMORY
+struct alignas(8) VMEMORY
 {
-public:
 	int64 size;								//number of bytes in this virtual memory
 	int64 blocksize;						//number of bytes in each block estimated data size / 800
 	byte* base_addr;						//first alloced address
@@ -905,7 +928,7 @@ public:
 	byte* head_addr;						//next removed address, base_addr + nremoved * blocksize
 	vector<byte> flag;						//for discrete allocation
 	LOCK lock;
-
+    
 	/* Do nothing */
 	TARGET VMEMORY();
 
@@ -928,19 +951,19 @@ public:
 	TARGET void UnAllocAll();
 
 	/* If the data size in a block is zero, call UnAllocAddr */
-	TARGET void SubUnAlloc(atomic<int>& size, int subv, int blockid);
+	TARGET void SubUnAlloc(atomic<int>& _size, int subv, int blockid);
 
 	/* Unalloc a blocksize memory */
 	TARGET void UnAllocAddr(byte* addr);
 };
 
 /* Genotype and allelic depth bucket */
-class BUCKET : public VMEMORY
+struct alignas(8) BUCKET : public VMEMORY
 {
-public:
-	atomic<uint64> coffset;							//Size of used bucket memory
+    atomic<uint64> coffset;							//Size of used bucket memory
 	LIST<OFFSET> offset;							//Genotype index data at each locus
-	bool expanding;
+	atomic<int> write_count;
+	//bool expanding;
 
 	/* Do nothing */
 	TARGET BUCKET();
@@ -958,9 +981,11 @@ public:
 	TARGET void CreateBucketGT(LOCUS* locus);
 
 	/* Filter individual for genotype bucket */
+	template<typename REAL>
 	TARGET void FilterIndividualGT(BUCKET* obucket, int nfilter, bool progress, int nthread);
 
 	/* Filter individual for allele depth bucket */
+	template<typename REAL>
 	TARGET void FilterIndividualAD(BUCKET* obucket, int nfilter, bool progress, int nthread);
 
 	/* Filter locus for genotype bucket */
@@ -980,9 +1005,8 @@ public:
 };
 
 /* Buffer with increaseing size */
-class INCBUFFER
+struct INCBUFFER
 {
-public:
 	char* data;										//buffer data
 	int64 len;										//buffer size
 
@@ -1008,9 +1032,8 @@ public:
 	TARGET void Expand(int nlen);
 };
 
-class VCFBUFFER : public INCBUFFER
+struct VCFBUFFER : public INCBUFFER
 {
-public:
 	int64 geno_len;									//number of bytes to read in genotype
 	char* line_pos;									//pointer of current line
 	char* geno_pos;									//pointer of genotype
@@ -1037,16 +1060,45 @@ template<typename T>
 TARGET T* AlignSIMD(T* addr)
 {
 	return addr;
-	/*
-	uint64 addr2 = (uint64)addr;
-	int align = sizeof(T);
-	return (T*)(addr2 + (align - (addr2 % align)) % align);
-	*/
+	//return (T*)(((uint64)addr + sizeof(T) - 1) & (~(sizeof(T) - 1)));
+}
+
+/* Get aligned 32 bytes address */
+template<typename T>
+TARGET T Align64(T addr)
+{
+	return (T)(((uint64)addr + 63) & 0xFFFFFFFFFFFFFFC0);
+}
+
+/* Get aligned 32 bytes address */
+template<typename T>
+TARGET T Align32(T addr)
+{
+	return (T)(((uint64)addr + 31) & 0xFFFFFFFFFFFFFFE0);
+}
+
+/* Get aligned 16 bytes address */
+template<typename T>
+TARGET T Align16(T addr)
+{
+	return (T)(((uint64)addr + 15) & 0xFFFFFFFFFFFFFFF0);
+}
+
+/* Get aligned 16 bytes address */
+template<typename T>
+TARGET T Align8(T addr)
+{
+	return (T)(((uint64)addr + 7) & 0xFFFFFFFFFFFFFFF8);
+}
+
+/* Get aligned 16 bytes address */
+template<typename T>
+TARGET T Align(T addr, int nalign)
+{
+	return (T)(((uint64)addr + nalign - 1) & (~(nalign - 1)));
 }
 
 /* Calculate task in multiple threads */
 TARGET void RunThreads(void (*Func) (int), void (*GuardFunc1) (int), void (*GuardFunc2) (int),
 	int64 ntot, int64 nct, const char* info, int nthreads, bool isfirst, int nprogress = g_progress_val);
-
-#pragma pack(pop)
 

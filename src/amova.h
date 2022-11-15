@@ -6,26 +6,31 @@
 
 #pragma pack(push, 1)
 
+template<typename REAL> struct VESSEL;
+template<typename REAL> struct VESSEL_ITERATOR;
+template<typename REAL> struct AMOVA_DISTBUF;
+template<typename REAL> struct AMOVA;
+
 /* Used to permute vessels in AMOVA */
-class VESSEL_ITERATOR
+template<typename REAL>
+struct VESSEL_ITERATOR
 {
-public:
-	int relative_id[N_MAX_REG + 3];			//Index in its nesting vessles (from 0~nsubunits)
-	int universal_id[N_MAX_REG + 3];		//Index among all vessles at this lay (from 0~nhaplo)
-	VESSEL* trace[N_MAX_REG + 3];			//Current and its higher level vessels
-	int lay;								//Current lay
+	int relative_id[N_MAX_REG + 3];				//Index in its nesting vessles (from 0~nsubunits)
+	int universal_id[N_MAX_REG + 3];			//Index among all vessles at this lay (from 0~nhaplo)
+	VESSEL<REAL>* trace[N_MAX_REG + 3];			//Current and its higher level vessels
+	int lay;									//Current lay
 
 	/* Go to start */
 	TARGET void Rewind(int nlay);
 
 	/* Copy from a reference*/
-	TARGET void Copy(VESSEL_ITERATOR& ref, int nlay);
+	TARGET void Copy(VESSEL_ITERATOR<REAL>& ref, int nlay);
 
 	/* Initialize */
 	TARGET VESSEL_ITERATOR();
 
 	/* Initialize */
-	TARGET VESSEL_ITERATOR(int _lay, VESSEL& root, int nlay);
+	TARGET VESSEL_ITERATOR(int _lay, VESSEL<REAL>& root, int nlay);
 
 	/* Uninitialize */
 	TARGET ~VESSEL_ITERATOR();
@@ -40,24 +45,24 @@ public:
 	TARGET ushort GetAllele();
 
 	/* Get subpopulation in print SS */
-	TARGET POP* GetSubpop(int nlay, int tlay);
+	TARGET POP<REAL>* GetSubpop(int nlay, int tlay);
 
 	/* Get individual in print SS */
-	TARGET IND* GetInd(int nlay, int tlay);
+	TARGET IND<REAL>* GetInd(int nlay, int tlay);
 };
 
 /* Vessel of genes in AMOVA */
-class VESSEL
+template<typename REAL>
+struct VESSEL
 {
-public:
-	VESSEL** subunits;						//Vessels nested within this vessel
-	int* nhaplos;							//Number of haplotypes at locus l
-	int* allelecount;						//KT elements, + allele_freq_offset[l] is the count of alleles at locus l in this vessel
-	int nsubunits;							//Number of subunits
-	int nhaplo;								//Number of haplotypes, homoploid model
-	int hid;								//Haplotype id, -1 for non-allele vessel
-	short lay;								//Level
-	ushort allele;							//Allele for aneu model
+	VESSEL<REAL>** subunits;					//Vessels nested within this vessel
+	int* nhaplos;								//Number of haplotypes at locus l
+	int* allelecount;							//KT elements, + allele_freq_offset[l] is the count of alleles at locus l in this vessel
+	int nsubunits;								//Number of subunits
+	int nhaplo;									//Number of haplotypes, homoploid model
+	int hid;									//Haplotype id, -1 for non-allele vessel
+	short lay;									//Level
+	ushort allele;								//Allele for aneu model
 
 	/* Uninitialize */
 	TARGET ~VESSEL();
@@ -66,13 +71,13 @@ public:
 	TARGET VESSEL();
 
 	/* Deep copy a vessel */
-	TARGET VESSEL(VESSEL& r);
+	TARGET VESSEL(VESSEL<REAL>& r);
 
 	/* Create vessel from population */
-	TARGET VESSEL(POP* s, int _lay, int& _hid, int64 loc, int method);
+	TARGET VESSEL(POP<REAL>* s, int _lay, int& _hid, int64 loc, int method);
 
 	/* Create vessel from individual */
-	TARGET VESSEL(IND* s, int _lay, int& _hid, int64 loc, int method);
+	TARGET VESSEL(IND<REAL>* s, int _lay, int& _hid, int64 loc, int method);
 
 	/* Create vessel from haplotype */
 	TARGET VESSEL(int _lay, int& _hid, ushort _allele);
@@ -81,13 +86,13 @@ public:
 	TARGET int* GetAlleleCount(int l);
 
 	/* Save all vellels in level fa into an array */
-	TARGET void GetVessels(VESSEL** vs, int& nvessels, int fa);
+	TARGET void GetVessels(VESSEL<REAL>** vs, int& nvessels, int fa);
 
 	/* Replace with shuffled vessels */
-	TARGET int Replace(VESSEL** vs, int& nvessels, int fa, int method);
+	TARGET int Replace(VESSEL<REAL>** vs, int& nvessels, int fa, int method);
 
 	/* Shuffle fa level vessels among fb level vessels */
-	TARGET void Shuffle(RNG& rng, int fa, int fb, int method, VESSEL** buf);
+	TARGET void Shuffle(RNG<REAL>& rng, int fa, int fb, int method, VESSEL<REAL>** buf);
 
 	/* Calculate matrix C for maximum-likelihood method */
 	TARGET void GetCML(double* C, int64 l, int* tid, double* tw, int Nh, int nlay, double** W);
@@ -105,13 +110,13 @@ public:
 	TARGET void InitW(MEMORY& mem, double**& W, int nlay);
 
 	/* Calculate SS for homoploid method */
-	TARGET void GetSSHomo(double* SS, double* gd, int Nh, double** W, int nlay, VESSEL_ITERATOR& ve1, VESSEL_ITERATOR& ve2);
+	TARGET void GetSSHomo(double* SS, REAL* gd, int Nh, double** W, int nlay, VESSEL_ITERATOR<REAL>& ve1, VESSEL_ITERATOR<REAL>& ve2);
 
 	/* Calculate SS for aneuploid method */
-	TARGET void GetSSAneu(ushort* hap_bucket, double* SS, bool isiam, int nh, int64 l, int k, double* missing0, double** W, int nlay, VESSEL_ITERATOR& ve1, VESSEL_ITERATOR& ve2);
+	TARGET void GetSSAneu(ushort* hap_bucket, double* SS, bool isiam, int nh, int64 l, int k, REAL* missing0, double** W, int nlay, VESSEL_ITERATOR<REAL>& ve1, VESSEL_ITERATOR<REAL>& ve2);
 
 	/* Calculate SS for aneuploid method */
-	TARGET void GetSSAneu(double* SS, bool isiam, int nh, int k, double* missing0, double** W, int nlay, VESSEL_ITERATOR& ve1, VESSEL_ITERATOR& ve2);
+	TARGET void GetSSAneu(double* SS, bool isiam, int nh, int k, REAL* missing0, double** W, int nlay, VESSEL_ITERATOR<REAL>& ve1, VESSEL_ITERATOR<REAL>& ve2);
 
 	/* Calculate variance component matrix V */
 	TARGET static void GetV(double* C, double* SS, double*& V, int nlay);
@@ -123,13 +128,8 @@ public:
 	TARGET static void GetF(double* Fi, double* F, int nlay);
 };
 
-/* Use to avoid thread conflict when calculate distance matrix */
-struct AMOVA_DISTBUF
-{
-	double* pointer;
-	double val;
-};
 
+template<typename REAL>
 struct AMOVA
 {
 	//One time
@@ -179,11 +179,12 @@ struct AMOVA
 #pragma pack(pop)
 
 extern _thread MEMORY* amova_memory;				//memory class for amova vessels
-extern AMOVA* amova_buf;							//Read/Write buffer, nthread
-extern double* amova_matrix;						//Genetic distance matrix used in AMOVA
+extern void* amova_buf_;							//Read/Write buffer, nthread
+#define amova_buf (*(AMOVA<REAL>**)&amova_buf_)
 
 /* Calculate analysis of molecular variance */
+template<typename REAL>
 TARGET void CalcAMOVA();
 
 /* Calculate AMOVA using multiple threads */
-THREADH(AMOVAThread);
+THREAD2H(AMOVAThread);

@@ -2,8 +2,12 @@
 
 #include "vcfpop.h"
 
+template TARGET void MLRelatednessAssign<double>(int sumploidy, double* f, int* a, double* c, int IBS);
+template TARGET void MLRelatednessAssign<float >(int sumploidy, float * f, int* a, double* c, int IBS);
+
 /* Assign genotype pair pattern for polyploid maximum-likelihood relatedness estimation */
-TARGET void MLRelatednessAssign(int sumploidy, double* f, int* a, double* c, int IBS)
+template<typename REAL>
+TARGET void MLRelatednessAssign(int sumploidy, REAL* f, int* a, double* c, int IBS)
 {
 	int64 *tc = (int64*)c;
 	for(int i = 0; i < sumploidy; ++i)

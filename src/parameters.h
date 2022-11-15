@@ -13,6 +13,9 @@ extern bool g_decimal_b;						extern int g_decimal_val;							extern char g_deci
 extern bool g_scientific_b;						extern int g_scientific_val;
 extern bool g_nthread_b;						extern int g_nthread_val;
 extern bool g_simd_b;							extern int g_simd_val;
+extern bool g_gpu_b;							extern int g_gpu_val;
+extern bool g_float_b;							extern int g_float_val;
+extern bool g_fastsinglet_b;					extern int g_fastsingle_val;
 extern bool g_seed_b;							extern int g_seed_val;
 extern bool g_tmpdir_b;							extern string g_tmpdir_val;
 extern bool g_progress_b;						extern int g_progress_val;
@@ -152,8 +155,10 @@ extern bool cluster_estimator_b;				extern byte cluster_estimator_val[N_MAX_OPTI
 
 /* Bayesian clustering */
 extern bool structure;
+extern bool structure_nstream_b;				extern int structure_nstream_val;
 extern bool structure_plot_b;					extern int structure_plot_val;
-extern bool structure_decompress_b;				extern int structure_decompress_val;
+extern bool structure_eval_b;					extern int structure_eval_val;
+extern bool structure_writelnl_b;				extern int structure_writelnl_val;
 
 /* Bayesian clustering: Model */
 extern bool structure_admix_b;					extern int structure_admix_val;

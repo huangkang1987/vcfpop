@@ -36,4 +36,17 @@ TARGET uint GetHuang2015Hash(int* x, int* y, int p);
 TARGET HASH HashDyadGenotypeIndex(HASH ha);
 
 /* Get hash of a haplotype */
-TARGET void HashHaplotype(IND* ti, int64 st, int64 ed, HASH* hash, int& ploidy);
+template<typename REAL>
+TARGET void HashHaplotype(IND<REAL>* ti, int64 st, int64 ed, HASH* hash, int& ploidy);
+
+/* 32 bit Integer Hashing */
+TARGET uint MurmurHash2(uint data, uint seed);
+
+/* 64 bit Integer Hashing */
+TARGET uint64 MurmurHash64(uint64 data, uint64 seed);
+
+/* 64 bit Integer Hashing */
+TARGET uint MurmurHash32(uint64 data, uint64 seed);
+
+/* Mix high and low 32 bits */
+TARGET uint Mix(uint64 x);

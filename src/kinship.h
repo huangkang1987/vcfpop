@@ -3,13 +3,16 @@
 #pragma once
 #include "vcfpop.h"
 
+template<typename REAL> struct KINSHIP;
+
 #pragma pack(push, 1)
 
+template<typename REAL>
 struct KINSHIP
 {
-	double Ritland1996;						//Estimates for various kinship estimators
-	double Loiselle1995;
-	double Weir1996;
+	REAL Ritland1996;						//Estimates for various kinship estimators
+	REAL Loiselle1995;
+	REAL Weir1996;
 	int ABtype;								//Number of loci genotyped in both individuals
 	int Atype;								//Number of loci genotyped in individual A
 	int Btype;								//Number of loci genotyped in individual B
@@ -24,24 +27,23 @@ struct KINSHIP
 
 	TARGET void MatrixPrintCell(int k);
 
-	TARGET void CalcKinship(IND* a, IND* b);
+	TARGET void CalcKinship(IND<REAL>* a, IND<REAL>* b);
 };
 
 #pragma pack(pop)
 
-extern KINSHIP* kinship_buf;						//Circle buffer for kinship estimation, NBUF
+extern void* kinship_buf_;						//Circle buffer for kinship estimation, NBUF
+#define kinship_buf (*(KINSHIP<REAL>**)&kinship_buf_)
 
 /* Calculate kinship coefficient */
+template<typename REAL>
 TARGET void CalcKinship();
 
-/* Calculate relatedness coefficient using multiple threads */
-THREADH(RelatednessThread);
-
 /* Write column format kinship coefficient results in a guard thread */
-THREADH(KinshipGuard1);
+THREAD2H(KinshipGuard1);
 
 /* Write matrix format kinship coefficient results in a guard thread */
-THREADH(KinshipGuard2);
+THREAD2H(KinshipGuard2);
 
 /* Calculate kinship coefficient using multiple threads */
-THREADH(KinshipThread);
+THREAD2H(KinshipThread);
