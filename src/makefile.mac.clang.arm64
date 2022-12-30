@@ -1,16 +1,16 @@
-INCLUDE 	= -I.
+INCLUDE		= -I.
 
-CC      	= /opt/homebrew/Cellar/llvm/14.0.6_1/bin/clang++
+CC		= /opt/homebrew/Cellar/llvm/14.0.6_1/bin/clang++
 
-FLAGS   	= -fpermissive -std=c++20 -O3 -w -static -m64 -fopenmp -DNDEBUG -DENABLE_RELATEDNESS -mfpu=neon
+FLAGS		= -fpermissive -std=c++20 -O3 -w -static -m64 -fopenmp -DNDEBUG -DENABLE_RELATEDNESS -mfpu=neon
 
-HEADER  	= vcfpop.h
+HEADER		= vcfpop.h
 
-OBJ     	= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathNEO.o mathSSE.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureNEO.o structureSSE.o structureAVX.o structure512.o ad.o menu.o 
+OBJ		= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathNEO.o mathSSE.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureNEO.o structureSSE.o structureAVX.o structure512.o ad.o menu.o 
 
 BIN_PATH	= ../bin/
 
-TARGET	= vcfpop
+TARGET		= vcfpop
 
 vcfpop: $(OBJ)
 	$(CC) $(INCLUDE) $(OBJ) -m64 -fopenmp -march=native -DNDEBUG -DENABLE_RELATEDNESS -pthread -L/opt/homebrew/Cellar/zlib/1.2.12/lib -lm -lpthread -ldl -lz -o vcfpop

@@ -1,14 +1,14 @@
-INCLUDE 	= -I. -I/usr/local/Cellar/llvm@13/13.0.1_1/include
+INCLUDE		= -I. -I/usr/local/Cellar/llvm@13/13.0.1_1/include
 
-CC      	= /usr/local/Cellar/llvm@13/13.0.1_1/bin/clang++
+CC		= /usr/local/Cellar/llvm@13/13.0.1_1/bin/clang++
 
-LIB			= -L/usr/local/Cellar/llvm@13/13.0.1_1/lib -L/usr/local/Cellar/zlib/1.2.12/lib/
+LIB		= -L/usr/local/Cellar/llvm@13/13.0.1_1/lib -L/usr/local/Cellar/zlib/1.2.12/lib/
 
-FLAGS   	= -DNDEBUG -DCUDAx -DCUDA_NDEBUG -DENABLE_RELATEDNESS -fpermissive -pthread -O3 -w -static -m64 -fopenmp -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mlzcnt -mpopcnt -std=c++20 -ffp-contract=off
+FLAGS		= -DNDEBUG -DCUDAx -DCUDA_NDEBUG -DENABLE_RELATEDNESS -fpermissive -pthread -O3 -w -static -m64 -fopenmp -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mlzcnt -mpopcnt -std=c++20 -ffp-contract=off
 
-HEADER  	= vcfpop.h
+HEADER		= vcfpop.h
 
-OBJ     	= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathSSE.o mathNEO.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureSSE.o structureNEO.o structureAVX.o structure512.o structureCUDA.o ad.o menu.o 
+OBJ		= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathSSE.o mathNEO.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureSSE.o structureNEO.o structureAVX.o structure512.o structureCUDA.o ad.o menu.o 
 
 BIN_PATH	= ../bin/
 

@@ -1,18 +1,18 @@
 INCLUDE		= -I. -I/usr/local/cuda/include -I/usr/lib/clang/13/include -I/usr/lib/llvm-10/include/openmp/
 
-CC			= clang++-13
+CC		= clang++-13
 
 NVCC		= /usr/local/cuda/bin/nvcc
 
-LIB			= -L/usr/lib/x86_64-linux-gnu/ -I/usr/lib/clang/13/lib -L/usr/local/lib -L/usr/local/cuda/lib64
+LIB		= -L/usr/lib/x86_64-linux-gnu/ -I/usr/lib/clang/13/lib -L/usr/local/lib -L/usr/local/cuda/lib64
 
-FLAGS   	= -DNDEBUG -DCUDA -DCUDA_NDEBUG -DENABLE_RELATEDNESS -fpermissive -pthread -O3 -w -m64 -fopenmp -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mlzcnt -mpopcnt -std=c++20 -ffp-contract=off
+FLAGS		= -DNDEBUG -DCUDA -DCUDA_NDEBUG -DENABLE_RELATEDNESS -fpermissive -pthread -O3 -w -m64 -fopenmp -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mlzcnt -mpopcnt -std=c++20 -ffp-contract=off
 
-FLAGSCUDA   = -DNDEBUG -DCUDA -DCUDA_NDEBUG -DENABLE_RELATEDNESSx -O3 -w -m64 -std=c++17
+FLAGSCUDA 	= -DNDEBUG -DCUDA -DCUDA_NDEBUG -DENABLE_RELATEDNESSx -O3 -w -m64 -std=c++17
 
-HEADER  	= vcfpop.h
+HEADER		= vcfpop.h
 
-OBJ     	= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathSSE.o mathNEO.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureSSE.o structureNEO.o structureAVX.o structure512.o ad.o menu.o structureCUDA.o
+OBJ		= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathSSE.o mathNEO.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureSSE.o structureNEO.o structureAVX.o structure512.o ad.o menu.o structureCUDA.o
 
 BIN_PATH	= ../bin/
 
