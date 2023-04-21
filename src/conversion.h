@@ -85,3 +85,10 @@ TARGET void ConvertGenoDive(int ntot, bool& isfirst);
 
 /* Convert individual genotypes into genodive format in multiple threads */
 THREAD2H(ConvertGenoDiveInd);
+
+/* Convert into plink format */
+template<typename REAL>
+TARGET void ConvertPlink(int ntot, bool& isfirst);
+
+/* Convert individual genotypes into plink format in multiple threads */
+THREAD2H(ConvertPlinkInd);

@@ -375,11 +375,11 @@ TARGETAVX int64 GetMinIdxAVX(double* A, int64 n, double& val)
 			REP(N) nidx[kk] = _mm256_add_epi64(nidx[kk], msep);
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) f[kk] = _mm256_cmp_pd(min1[kk], min1[kk + K], _CMP_GT_OS);
-			REP(K) min1[kk] = _mm256_min_pd(min1[kk], min1[kk + K]);
-			REP(K) midx[kk] = _mm256_castpd_si256(_mm256_blendv_pd(_mm256_castsi256_pd(midx[kk]), _mm256_castsi256_pd(midx[kk + K]), f[kk]));
+			REP(KK) f[kk] = _mm256_cmp_pd(min1[kk], min1[kk + KK], _CMP_GT_OS);
+			REP(KK) min1[kk] = _mm256_min_pd(min1[kk], min1[kk + KK]);
+			REP(KK) midx[kk] = _mm256_castpd_si256(_mm256_blendv_pd(_mm256_castsi256_pd(midx[kk]), _mm256_castsi256_pd(midx[kk + KK]), f[kk]));
 		}
 
 		for (int64 j = 0; j < sizeof(__m256d) / sizeof(double); ++j)
@@ -428,11 +428,11 @@ TARGETAVX int64 GetMinIdxAVX(float* A, int64 n, float& val)
 			REP(N) nidx[kk] = _mm256_add_epi32(nidx[kk], msep);
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) f[kk] = _mm256_cmp_ps(min1[kk], min1[kk + K], _CMP_GT_OS);
-			REP(K) min1[kk] = _mm256_min_ps(min1[kk], min1[kk + K]);
-			REP(K) midx[kk] = _mm256_castps_si256(_mm256_blendv_ps(_mm256_castsi256_ps(midx[kk]), _mm256_castsi256_ps(midx[kk + K]), f[kk]));
+			REP(KK) f[kk] = _mm256_cmp_ps(min1[kk], min1[kk + KK], _CMP_GT_OS);
+			REP(KK) min1[kk] = _mm256_min_ps(min1[kk], min1[kk + KK]);
+			REP(KK) midx[kk] = _mm256_castps_si256(_mm256_blendv_ps(_mm256_castsi256_ps(midx[kk]), _mm256_castsi256_ps(midx[kk + KK]), f[kk]));
 		}
 
 		for (int64 j = 0; j < sizeof(__m256) / sizeof(float); ++j)
@@ -477,10 +477,10 @@ TARGETAVX void GetMinMaxValAVX(double* A, int64 n, double& minv, double& maxv)
 			}
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) min1[kk] = _mm256_min_pd(min1[kk], min1[kk + K]);
-			REP(K) max1[kk] = _mm256_max_pd(max1[kk], max1[kk + K]);
+			REP(KK) min1[kk] = _mm256_min_pd(min1[kk], min1[kk + KK]);
+			REP(KK) max1[kk] = _mm256_max_pd(max1[kk], max1[kk + KK]);
 		}
 
 		minv = Min(Min(simp_f64(min1, 0), simp_f64(min1, 1)),
@@ -520,10 +520,10 @@ TARGETAVX void GetMinMaxValAVX(float* A, int64 n, float& minv, float& maxv)
 			}
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) min1[kk] = _mm256_min_ps(min1[kk], min1[kk + K]);
-			REP(K) max1[kk] = _mm256_max_ps(max1[kk], max1[kk + K]);
+			REP(KK) min1[kk] = _mm256_min_ps(min1[kk], min1[kk + KK]);
+			REP(KK) max1[kk] = _mm256_max_ps(max1[kk], max1[kk + KK]);
 		}
 
 		__m128* min2 = (__m128*)min1, *max2 = (__m128*)max1;
@@ -563,8 +563,8 @@ TARGETAVX double GetMaxValAVX(double* A, int64 n)
 			}
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) max1[kk] = _mm256_max_pd(max1[kk], max1[kk + K]);
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) max1[kk] = _mm256_max_pd(max1[kk], max1[kk + KK]);
 
 		val = Max(Max(simp_f64(max1, 0), simp_f64(max1, 1)),
 				  Max(simp_f64(max1, 2), simp_f64(max1, 3)));
@@ -597,8 +597,8 @@ TARGETAVX float GetMaxValAVX(float* A, int64 n)
 			REP(N) { max1[kk] = _mm256_max_ps(max1[kk], a[kk]); }
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) max1[kk] = _mm256_max_ps(max1[kk], max1[kk + K]);
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) max1[kk] = _mm256_max_ps(max1[kk], max1[kk + KK]);
 
 		__m128* max2 = (__m128*)max1;
 		REP(1) max2[kk] = _mm_max_ps(max2[kk], max2[kk + 1]);
@@ -678,8 +678,8 @@ TARGETAVX float GetMaxValAVX(float* A, int64 n, int64 sep)
 			}
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) max1[kk] = _mm_max_ps(max1[kk], max1[kk + K]);
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) max1[kk] = _mm_max_ps(max1[kk], max1[kk + KK]);
 
 		val = Max(Max(simp_f32(max1, 0), simp_f32(max1, 1)),
 				  Max(simp_f32(max1, 2), simp_f32(max1, 3)));
@@ -714,8 +714,8 @@ TARGETAVX double GetMinValAVX(double* A, int64 n)
 			}
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) min1[kk] = _mm256_min_pd(min1[kk], min1[kk + K]);
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) min1[kk] = _mm256_min_pd(min1[kk], min1[kk + KK]);
 
 		val = Min(Min(simp_f64(min1, 0), simp_f64(min1, 1)),
 				  Min(simp_f64(min1, 2), simp_f64(min1, 3)));
@@ -748,8 +748,8 @@ TARGETAVX float GetMinValAVX(float* A, int64 n)
 			REP(N) { min1[kk] = _mm256_min_ps(min1[kk], a[kk]); }
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) min1[kk] = _mm256_min_ps(min1[kk], min1[kk + K]);
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) min1[kk] = _mm256_min_ps(min1[kk], min1[kk + KK]);
 
 		__m128* min2 = (__m128*)min1;
 		REP(1) min2[kk] = _mm_min_ps(min2[kk], min2[kk + 1]);
@@ -792,12 +792,12 @@ TARGETAVX int64 GetMinValAVX(int64* A, int64 n)
 			}
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) min1[kk] =
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) min1[kk] =
 			_mm256_castpd_si256(_mm256_blendv_pd(
 				_mm256_castsi256_pd(min1[kk]),
-				_mm256_castsi256_pd(min1[kk + K]),
-				_mm256_castsi256_pd(_mm256_cmpgt_epi64(min1[kk], min1[kk + K]))));
+				_mm256_castsi256_pd(min1[kk + KK]),
+				_mm256_castsi256_pd(_mm256_cmpgt_epi64(min1[kk], min1[kk + KK]))));
 
 		val = Min(Min(simp_i64(min1, 0), simp_i64(min1, 1)),
 				  Min(simp_i64(min1, 2), simp_i64(min1, 3)));
@@ -1299,8 +1299,8 @@ TARGETAVX double SumAVX(double* A, int64 n)
 			REP(N) s[kk] = _mm256_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_pd(s[0]);
 	}
@@ -1332,8 +1332,8 @@ TARGETAVX double SumAVX(float* A, int64 n)
 			REP(N) s[kk] = _mm256_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_pd(s[kk], s[kk + KK]);
 		
 		re = _mm256_reduce_add_pd(s[0]);
 	}
@@ -1365,8 +1365,8 @@ TARGETAVX float SumAVXx(float* A, int64 n)
 			REP(N) s[kk] = _mm256_add_ps(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_ps(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_ps(s[0]);
 	}
@@ -1428,8 +1428,8 @@ TARGETAVX double SumAVX(double* A, int64 n, int64 sep)
 			REP(N) s[kk] = _mm256_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_pd(s[0]);
 	}
@@ -1517,8 +1517,8 @@ TARGETAVX float SumAVXx(float* A, int64 n, int64 sep)
 			REP(N) { s[kk] = _mm256_add_ps(s[kk], _mm256_i32xxgather_ps(A, vindex, sizeof(float))); A += sep * sizeof(__m256) / sizeof(float); }
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_ps(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_ps(s[0]);
 	}
@@ -1640,8 +1640,8 @@ TARGETAVX double ProdAVX(double* A, int64 n)
 			REP(N) s[kk] = _mm256_mul_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_mul_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_mul_pd(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_mul_pd(s[0]);
 	}
@@ -1673,8 +1673,8 @@ TARGETAVX double ProdAVX(float* A, int64 n)
 			REP(N) s[kk] = _mm256_mul_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_mul_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_mul_pd(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_mul_pd(s[0]);
 	}
@@ -1706,8 +1706,8 @@ TARGETAVX float ProdAVXx(float* A, int64 n)
 			REP(N) s[kk] = _mm256_mul_ps(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_mul_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_mul_ps(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_mul_ps(s[0]);
 	}
@@ -1753,8 +1753,8 @@ TARGETAVX double SumSquareAVX(double* A, int64 n)
 			REP(N) s[kk] = _mm256_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_pd(s[0]);
 	}
@@ -1786,8 +1786,8 @@ TARGETAVX double SumSquareAVX(float* A, int64 n)
 			REP(N) s[kk] = _mm256_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_pd(s[0]);
 	}
@@ -1821,8 +1821,8 @@ TARGETAVX float SumSquareAVXx(float* A, int64 n)
 			REP(N) s[kk] = _mm256_add_ps(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_ps(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_ps(s[0]);
 	}
@@ -1901,10 +1901,10 @@ TARGETAVX void SumSumSquareAVX(double* A, int64 n, double& sum, double& sumsq)
 			REP(N) s2[kk] = _mm256_add_pd(s2[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s1) / sizeof(s1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) s1[kk] = _mm256_add_pd(s1[kk], s1[kk + K]);
-			REP(K) s2[kk] = _mm256_add_pd(s2[kk], s2[kk + K]);
+			REP(KK) s1[kk] = _mm256_add_pd(s1[kk], s1[kk + KK]);
+			REP(KK) s2[kk] = _mm256_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _mm256_reduce_add_pd(s1[0]);
@@ -1945,10 +1945,10 @@ TARGETAVX void SumSumSquareAVX(float* A, int64 n, double& sum, double& sumsq)
 			REP(N) s2[kk] = _mm256_add_pd(s2[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s1) / sizeof(s1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) s1[kk] = _mm256_add_pd(s1[kk], s1[kk + K]);
-			REP(K) s2[kk] = _mm256_add_pd(s2[kk], s2[kk + K]);
+			REP(KK) s1[kk] = _mm256_add_pd(s1[kk], s1[kk + KK]);
+			REP(KK) s2[kk] = _mm256_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _mm256_reduce_add_pd(s1[0]);
@@ -2212,10 +2212,10 @@ TARGETAVX float SumProdDivAVXx(float* A1, float* A2, float* B, int64 sep, int64 
 			}
 		}
 
-		for (int K = sizeof(s1) / sizeof(s1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) s1[kk] = _mm256_add_ps(s1[kk], s1[kk + K]);
-			REP(K) s2[kk] = _mm256_add_ps(s2[kk], s2[kk + K]);
+			REP(KK) s1[kk] = _mm256_add_ps(s1[kk], s1[kk + KK]);
+			REP(KK) s2[kk] = _mm256_add_ps(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _mm256_reduce_add_ps(s1[0]);
@@ -2271,8 +2271,8 @@ TARGETAVX double SumProdAVX(double* A, double* B, int64 n)
 			REP(N) s[kk] = _mm256_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_pd(s[0]);
 	}
@@ -2307,8 +2307,8 @@ TARGETAVX double SumProdAVX(float* A, float* B, int64 n)
 			}
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_pd(s[0]);
 	}
@@ -2343,8 +2343,8 @@ TARGETAVX float SumProdAVXx(float* A, float* B, int64 n)
 			}
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm256_add_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm256_add_ps(s[kk], s[kk + KK]);
 
 		re = _mm256_reduce_add_ps(s[0]);
 	}
@@ -2456,6 +2456,29 @@ TARGETAVX void AddAVX(int* A, int* B, int64 n)
 
 	for (; i < n; ++i, A++, B++)
 		*A += *B;
+}
+
+TARGETAVX void AddAVX(int* A, int B, int64 n)
+{
+	constexpr int N = 4;
+	int64 i = 0;
+
+	if (n >= N * sizeof(__m256i) / sizeof(int))
+	{
+		__m256i a[N], b = _mm256_set1_epi32(B);
+
+		for (int64 l1 = n - N * sizeof(__m256i) / sizeof(int); i <= l1; i += N * sizeof(__m256i) / sizeof(int))
+		{
+			REP(N) { a[kk] = _mm256_loadu_si256((__m256i*)A); A += 8; }
+
+			REP(N) a[kk] = _mm256_add_epi32(a[kk], b);
+
+			REP(N) _mm256_storeu_si256((__m256i*)(A + (kk - N) * sizeof(__m256i) / sizeof(int)), a[kk]);
+		}
+	}
+
+	for (; i < n; ++i, A++)
+		*A += B;
 }
 
 TARGETAVX void AddAVX(double* A, double B, int64 n)

@@ -151,6 +151,8 @@ TARGETAVX void AddAVX(int64* A, int64* B, int64 n);
 
 TARGETAVX void AddAVX(int* A, int* B, int64 n);
 
+TARGETAVX void AddAVX(int* A, int B, int64 n);
+
 TARGETAVX void AddAVX(double* A, double B, int64 n);
 
 TARGETAVX void AddAVX(float* A, float B, int64 n);

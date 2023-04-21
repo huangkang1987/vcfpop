@@ -14,7 +14,7 @@ UseLibrary <- function(lib)
   }
 }
 
-UseLibrary("ape")
+suppressWarnings(suppressMessages(UseLibrary("ape")))
 
 # set path here
 file <- paste(commandArgs(trailingOnly = TRUE), '.cluster.txt', sep = '')
@@ -59,4 +59,4 @@ for (i in 1 : ntree)
 }
 garbage <- dev.off()
 
-cat(paste('\n', basename(figfile), '\n', sep='')
+cat(paste('\n', basename(figfile), '\n', sep=''))

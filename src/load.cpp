@@ -30,6 +30,8 @@ template TARGET void IND<double>::polyrelatedness(char* t, bool iscount, GENOTYP
 template TARGET void IND<float >::polyrelatedness(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
 template TARGET void IND<double>::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
 template TARGET void IND<float >::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<double>::plink(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+template TARGET void IND<float >::plink(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
 template TARGET void IND<double>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpstr, char*& adstr, int vlen, int asize, int gqlen, int dplen, int adlen, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt);
 template TARGET void IND<float >::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpstr, char*& adstr, int vlen, int asize, int gqlen, int dplen, int adlen, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt);
 template TARGET void IND<double>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt);
@@ -43,6 +45,8 @@ extern int genotype_extracol;
 extern int genotype_missing;
 extern int genotype_ambiguous;
 extern bool load_complete;
+extern bool usephase;
+extern bool uselocpos;
 
 extern INCBUFFER* load_buf;							//Circle buffer for loading vcf/bcf files, NBUF
 extern char* vcf_header;							//Vcf header row
@@ -167,7 +171,10 @@ TARGET void LoadFile()
 {
 	EvaluationBegin();
 
-	//Vcf/bcf format
+	usephase = haplotype || (slide && (slide_estimator_val[12] || slide_estimator_val[13]));
+	uselocpos = haplotype || slide || (diversity_filter && f_windowsize_b && abs(g_format_val) <= BCF) || (convert && convert_format_val[9]);
+
+	//vcf/bcf format
 	if (abs(g_format_val) <= BCF)
 	{
 		int64 buflen = 1024 * 64;
@@ -268,7 +275,7 @@ TARGET void LoadFile()
 		ainds = new IND<REAL>*[nind];
 
 		//construct geno_bucket
-			geno_bucket.CreateBucket();
+		geno_bucket.CreateBucket();
 		if (ploidyinfer)
 			ad_bucket.CreateBucket();
 
@@ -344,7 +351,7 @@ TARGET void LoadFile()
 
 		delete[] load_buf;
 	}
-	//non-vcf format: genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive
+	//non-vcf format: genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive|plink
 	else
 	{
 		if (g_format_val < 0)
@@ -367,7 +374,8 @@ TARGET void LoadFile()
 		}
 
 		if (ad) Exit("\nError: non-vcf and non-bcf format are incompatible with allelic depth (-ad) option.\n");
-		if (haplotype) Exit("\nError: Cannot extract haplotype for non-vcf and non-bcf format.\n");
+		if (usephase) Exit("\nError: non-vcf and non-bcf formats do not contains phased genotype that will be used in haplotype extraction or calculate r2/D' for sliding windows.\n");
+
 		switch (abs(g_format_val))
 		{
 		case GENEPOP:
@@ -394,6 +402,9 @@ TARGET void LoadFile()
 		case GENODIVE:
 			RunThreads(&LoadGenoDive<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading genodive file:\n", 1, true);
 			break;
+		case PLINK:
+			RunThreads(&LoadPlink<REAL>, NULL, NULL, TOTLEN_DECOMPRESS << 1, TOTLEN_DECOMPRESS << 1, "\nLoading plink file:\n", 1, true);
+			break;
 		}
 		AssignInds<REAL>();
 	}
@@ -415,14 +426,13 @@ TARGET void LoadFile()
 	//compress locus into slocus
 	MEMORY* nlocus_memory = new MEMORY[g_nthread_val];
 	slocus = new SLOCUS[nloc];
-	bool flag_pos = haplotype || (diversity_filter && f_windowsize_b && abs(g_format_val) <= BCF);
-	if (flag_pos) locus_pos = new uint64[nloc];
+	if (uselocpos) locus_pos = new uint64[nloc];
 
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		threadid = omp_get_thread_num();
-		if (flag_pos) GetLocPos(l) = locus[l].pos;
+		if (uselocpos) GetLocPos(l) = locus[l].pos;
 		new(&slocus[l]) SLOCUS(nlocus_memory[threadid], locus[l]);
 	}
 
@@ -430,7 +440,6 @@ TARGET void LoadFile()
 	delete[] locus_memory;
 	locus_memory = nlocus_memory;
 	useslocus = true;
-
 	CheckGenotypeId<REAL>();
 	EvaluationEnd("Load input file");
 }
@@ -747,7 +756,7 @@ THREAD2(LoadArlequin)
 {
 	//load structure
 	INCBUFFER buf;
-	char* bufp, * bufp2;
+	char*& bufp = buf.derived, * bufp2;
 
 	//count locus
 	int64 loc_pos = 0; //backup position
@@ -1378,6 +1387,150 @@ THREAD2(LoadGenoDive)
 	delete[] nvcf_memory;
 }
 
+/* load from Plink input format */
+THREAD2(LoadPlink)
+{
+	//load plink
+	INCBUFFER buf, locbuf;
+	char* bufp = buf.data;
+	char mapname[4096];
+	strcpy(mapname, g_input_val.c_str());
+	FILE* fmap = NULL;
+	int64 loc_pos = 0; //backup position
+
+	char* map_ext = mapname + strlen(mapname);
+	while (*map_ext != '.') map_ext--; 
+	if ((map_ext[0] == 'g' || map_ext[0] == 'G') && (map_ext[1] == 'z' || map_ext[1] == 'Z') && map_ext[2] == '\0')
+	{
+		map_ext--; 
+		while (*map_ext != '.') 
+			map_ext--;
+	}
+
+	map_ext++;
+	const char* extensions[] = {"map", "map.gz", "txt", "loc"};
+	for (int i = 0; i < 4; ++i)
+	{
+		sprintf(map_ext, "%s", extensions[i]);
+		if (FileExists(mapname))
+		{
+			fmap = FOpen(mapname, "rb");
+			for (;;)
+			{
+				loc_pos = FTell(fmap);
+				locbuf.Gets(fmap);
+				if (locbuf.data[0] != '#') break;
+			}
+			break;
+		}
+	}
+
+	//count locus
+	int64 ind_pos = 0;
+	for (;;)
+	{
+		ind_pos = FTell(FILE_INFO[0][0].handle); //backup position
+		buf.Gets(FILE_INFO[0][0].handle);
+		if (buf.data[0] != '#') break;
+	}
+	ReplaceChar(buf.data, '\t', ' ');
+
+	bufp = buf.data + strlen(buf.data);
+	while (*bufp == '\n' || *bufp == '\r' || *bufp == ',' || *bufp == ' ')
+		*bufp-- = '\0';
+	nloc = (CountChar(buf.data, ' ') + 1 - 6) / 2;
+	genotype_extracol = 0;
+
+	if (nloc == 0)
+		Exit("\nError: there are no loci in this file.\n");
+
+	//count individual
+	FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
+	while (!FEof(FILE_INFO[0][0].handle))
+		if (buf.Gets(FILE_INFO[0][0].handle) > 3) nind++;
+
+	if (nind == 0)
+		Exit("\nError: there are no individuals in this file.\n");
+
+	FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
+
+	ainds = new IND<REAL>*[nind];
+	/*   1   */
+	ushort** gatab = new ushort * [nloc];
+	GENOTYPE** gtab = new GENOTYPE * [nloc];
+	GENO_WRITER* wt = new GENO_WRITER[nloc];
+
+	locus = new LOCUS[nloc];
+	nvcf_memory = new MEMORY[g_nthread_val];
+	nvcf_gfid = new TABLE<HASH, uint>[nloc];
+#pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
+	for (int64 l = 0; l < nloc; ++l)
+	{
+		threadid = omp_get_thread_num();
+		new(&nvcf_gfid[l]) TABLE<HASH, GENOTYPE*>(true, &nvcf_memory[threadid]);
+	}
+
+	for (int64 j = 1; j >= 0; --j)
+	{
+		FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
+		for (int i = 0; i < nind; )
+		{
+			if (buf.Gets(FILE_INFO[0][0].handle) <= 3)  continue;
+			if (j != 0) individual_memory->Alloc(ainds[i], 1);
+			/*   2   */
+			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
+			i++;
+			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
+		}
+		if (j != 0)
+		{
+			/*   3   */
+
+			if (fmap)
+			{
+				FSeek(fmap, loc_pos, SEEK_SET);
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					locbuf.Gets(fmap);
+					ReplaceChar(locbuf.data, '\t', ' ');
+					char* locus_name = StrNextIdx(locbuf.data, ' ', 1) + 1;
+					char* locus_name2 = StrNextIdx(locus_name, ' ', 1);
+					*locus_name2 = '\0';
+					new(&locus[l]) LOCUS(locus_memory[threadid], locus_name, l, nvcf_gfid[l].size, gtab[l], gatab[l]);
+				}
+			}
+			else
+			{
+				char tlocname[100];
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					sprintf(tlocname, "loc%lld", l + 1);
+					new(&locus[l]) LOCUS(locus_memory[threadid], tlocname, l, nvcf_gfid[l].size, gtab[l], gatab[l]);
+				}
+			}
+
+			CreateGenoIndexTable(wt);
+
+		}
+	}
+
+#pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
+	for (int64 l = 0; l < nloc; ++l)
+		wt[l].FinishWrite();
+
+	PROGRESS_VALUE = PROGRESS_CEND;
+	IndexAlleleLength();
+
+	/*   4   */
+	if (fmap) FClose(fmap);
+	delete[] wt;
+	delete[] gatab;
+	delete[] gtab;
+	delete[] nvcf_gfid;
+	delete[] nvcf_memory;
+}
+
 /* Indexing integer alleles to zero based for non-vcf input, with allele identifier being the size */
 TARGET void IndexAlleleLength()
 {
@@ -1488,18 +1641,7 @@ THREAD2(LoadBCF)
 			default: Exit("\nError: GT format is should encode as integers.\n"); break;
 			}
 
-			//add missing at ploidy 1-10
 			bool usedploidy[N_MAX_PLOIDY + 1] = { 0 };
-			if (g_missingploidy_b)
-				for (int v = 1; v <= N_MAX_PLOIDY; ++v)
-					if (g_missingploidy_val[v])
-					{
-						int tid = gfid.size;
-						gfid[missing_hash[v]] = tid;
-						usedploidy[v] = true;
-						nploidy++;
-					}
-
 			char* genostr = dst;
 			for (int i = 0; i < nind; ++i)
 			{
@@ -1509,8 +1651,8 @@ THREAD2(LoadBCF)
 				ReadBCFGenoString(genostr, alleles, phased, v, asize, maxv, ii, NULL);
 				genostr += asize * maxv;
 
-				//will extract haplotype, do not need unphased genotype Warning
-				//if (haplotype && !phased)
+				//will use phased genotype, do not need unphased genotype Warning
+				//if (usephase && !phased)
 					//locus[ii].flag_pass = false;
 
 				//add missing at ploidy v
@@ -1523,10 +1665,10 @@ THREAD2(LoadBCF)
 				}
 
 				//add gfid if not missing
-				if (alleles[0] != 0xFFFF && (!haplotype || phased))
+				if (alleles[0] != 0xFFFF && !(usephase && !phased))
 				{
 					//phased, do not sort alleles
-					if (!haplotype) Sort(alleles, v);
+					if (!usephase) Sort(alleles, v);
 
 					HASH ha = HashGenotype(alleles, v);
 					if (!gfid.ContainsKey(ha))
@@ -1539,12 +1681,27 @@ THREAD2(LoadBCF)
 				}
 			}
 
+			//add missing at ploidy 1-10
+			byte pad_missing[N_MAX_PLOIDY + 1] = { 0 };
+			if (g_missingploidy_b)
+				for (int v = 1; v <= N_MAX_PLOIDY; ++v)
+				{
+					if (g_missingploidy_val[v] && !gfid.ContainsKey(missing_hash[v])) //bug fixed
+					{
+						int tid = gfid.size;
+						gfid[missing_hash[v]] = tid;
+						usedploidy[v] = true;
+						pad_missing[v] = true;
+						nploidy++;
+					}
+				}
+
 			OFFSET off = geno_bucket.AddOffsetGT(CeilLog2((int64)gfid.size), ii);
 
 			/*******************************************************************/
 
 			//alloc in one piece
-			GENOTYPE* gtab;  ushort* gatab;
+			GENOTYPE* gtab = NULL;  ushort* gatab;
 			if (ad != 2)
 				new(&locus[ii]) LOCUS(locus_memory[threadid], str, (uint64)byteflag, gfid.size, gtab, gatab);//LoadBCF
 			else
@@ -1601,6 +1758,13 @@ THREAD2(LoadBCF)
 				ainds[j]->AddBCFGenotype(ii, gt, gq, dp, adval, maxv, asize, gqlen, dplen, adlen, depth, gfid, gtab, gatab, wt);
 			wt.FinishWrite();
 
+			//add missing at ploidy 1-10
+			if (g_missingploidy_b)
+				for (int v = 1; v <= N_MAX_PLOIDY; ++v)
+					if (pad_missing[v])
+						gftab[missing_hash[v]] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]); //bug fixed
+
+
 			if (ploidyinfer)
 			{
 				//add allele depth
@@ -1649,7 +1813,9 @@ THREAD2(LoadBCF)
 
 			float qual = FLT_MAX;
 			bool pass = true;
-			char* bufj = buf.data, * bufjgt = bufgt.data, * bufjgq = bufgq.data, * bufjdp = bufdp.data, * bufjad = bufad.data;
+			char *&bufj = buf.derived, *& bufjgt = bufgt.derived, *& bufjgq = bufgq.derived, *& bufjdp = bufdp.derived, *& bufjad = bufad.derived;
+			bufj = buf.data; bufjgt = bufgt.data; bufjgq = bufgq.data; bufjdp = bufdp.data; bufjad = bufad.data;
+
 			uint64 byteflag = 0;
 			bool breakflag = false;
 
@@ -2011,19 +2177,6 @@ THREAD2(LoadVCF)
 			bool usedploidy[N_MAX_PLOIDY + 1] = { 0 };
 			int count = 0, nploidy = 0;
 
-			//add missing at ploidy 1-10
-			if (g_missingploidy_b)
-				for (int v = 1; v <= N_MAX_PLOIDY; ++v)
-				{
-					if (g_missingploidy_val[v])
-					{
-						int tid = gfid.size;
-						gfid[missing_hash[v]] = tid;
-						usedploidy[v] = true;
-						nploidy++;
-					}
-				}
-
 			while (*src1)
 			{
 				count++;
@@ -2056,13 +2209,13 @@ THREAD2(LoadVCF)
 							}
 
 							//add gfid if not missing
-							if (genostr[0] != '.' && !(haplotype && ContainsChar(genostr, '/', len)))
+							if (genostr[0] != '.' && !(usephase && ContainsChar(genostr, '/', len)))
 							{
 								ushort alleles[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
 								ReadVCFGenoString(alleles, genostr, v, ii, NULL);
 
 								//phased, do not sort alleles
-								if (!haplotype) Sort(alleles, v);
+								if (!usephase) Sort(alleles, v);
 
 								HASH ha = HashGenotype(alleles, v);
 								if (!gfid.ContainsKey(ha))
@@ -2105,6 +2258,21 @@ THREAD2(LoadVCF)
 			*dst++ = '\n';
 			*dst++ = '\0';
 
+			//add missing at ploidy 1-10
+			byte pad_missing[N_MAX_PLOIDY + 1] = { 0 };
+			if (g_missingploidy_b)
+				for (int v = 1; v <= N_MAX_PLOIDY; ++v)
+				{
+					if (g_missingploidy_val[v] && !gfid.ContainsKey(missing_hash[v])) //bug fixed
+					{
+						int tid = gfid.size;
+						gfid[missing_hash[v]] = tid;
+						usedploidy[v] = true;
+						pad_missing[v] = true;
+						nploidy++;
+					}
+				}
+
 			OFFSET off = geno_bucket.AddOffsetGT(CeilLog2((int64)gfid.size), ii);
             
 			//alloc in one piece
@@ -2115,20 +2283,21 @@ THREAD2(LoadVCF)
 				str = StrNextIdx(str, '\t', 9) + 1;
 
 			locus[ii].nploidy = nploidy;
-			uint* depth = ploidyinfer ? new uint[locus[ii].k * nind] : NULL, * depth2 = depth;
+			uint* depth = ploidyinfer ? new uint[locus[ii].k * nind] : NULL, *depth2 = depth;
 
-			//add missing for used ploidy
-			TABLE<HASH, GENOTYPE*>& gftab = locus[ii].gftab;
-			for (int v = 1; v <= N_MAX_PLOIDY; ++v)
-				if (usedploidy[v])
-					gftab[missing_hash[v]] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]);
-				
 			//geno_bucket.offset[ii] = off;
+			TABLE<HASH, GENOTYPE*>& gftab = locus[ii].gftab;
 			GENO_WRITER wt(ii);
 			for (int j = 0; j < nind; ++j)
 				ainds[j]->AddVCFGenotype(str, ii, depth, gfid, gtab, gatab, wt);
 			wt.FinishWrite();
-			
+
+			//add missing at ploidy 1-10
+			if (g_missingploidy_b)
+				for (int v = 1; v <= N_MAX_PLOIDY; ++v)
+					if (pad_missing[v])
+						gftab[missing_hash[v]] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]); //bug fixed
+
 			if (ploidyinfer)
 			{
 				ad_bucket.AddOffsetAD((uint64)CeilLog2((int)locus[ii].maxdepth + 1), ii, locus[ii].k);
@@ -2385,19 +2554,27 @@ TARGET void ReplaceMissingGenotypes()
 		threadid = omp_get_thread_num();
 
 		GENOTYPE* gtab = locus[l].GetGtab();
-		int missingid[N_MAX_PLOIDY + 1] = { 0 }, nmissing = locus[l].nploidy;
-		for (int gid = 0; gid < nmissing; ++gid)
-			missingid[gtab[gid].Ploidy()] = gid;
+		int ngeno = locus[l].ngeno;
+		int missingid[N_MAX_PLOIDY + 1] = { 0 };
+		for (int gid = 0; gid < ngeno; ++gid)
+		{
+			GENOTYPE& gt = gtab[gid];
+			if (gt.Nalleles() == 0)
+				missingid[gt.Ploidy()] = gid;
+		}
 
-		GENO_READER rg(0, l);
-		GENO_WRITER wg(l);
+		GENO_READER rt(0, l);
+		GENO_WRITER wt(l);
 
 		for (int i = 0; i < nind; ++i)
 		{
-			int gid = rg.Read();
-			wg.Write(gid < nmissing ? missingid[vmin_typed[i] == 100 ? ((byte)vmin_all[i] == 100 ? (byte)2 : (byte)vmin_all[i]) : (byte)vmin_typed[i]] : gid);
+			int gid = rt.Read();
+			GENOTYPE& gt = gtab[gid];
+			wt.Write(gt.Nalleles() == 0 ? 
+				missingid[vmin_typed[i] == 100 ? 
+					((byte)vmin_all[i] == 100 ? (byte)2 : (byte)vmin_all[i]) : (byte)vmin_typed[i]] : gid);
 		}
-		wg.FinishWrite();
+		wt.FinishWrite();
 	}
 
 	delete[] vmin_typed;
@@ -3131,6 +3308,108 @@ TARGET void IND<REAL>::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort**
 	maxploidy = (byte)maxv;
 }
 
+/* Create individual from plink */
+template<typename REAL>
+TARGET void IND<REAL>::plink(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
+{
+	ReplaceChar(t, '\t', ' ');
+	int extracol = genotype_extracol;
+	name = StrNextIdx(t, ' ', 1) + 1;
+	char* genstr = NULL;
+
+	genstr = StrNextIdx(name, ' ', 1);
+	char* tname = genstr - 1;
+	*genstr++ = '\0';
+
+	if (!iscount)
+	{
+		while (*tname == ' ') *tname-- = '\0';
+		individual_memory->Alloc(tname, (int)strlen(name) + 1);
+		strcpy(tname, name);
+		name = tname;
+	}
+	else name = NULL;
+
+	genstr = StrNextIdx(genstr, ' ', 4) + 1;
+
+	int v = 2;
+	for (int64 l = 0; l < nloc; ++l)
+	{
+		TABLE<HASH, GENOTYPE*>& gftab = locus[l].gftab;
+		TABLE<HASH, uint>& gfid = nvcf_gfid[l];
+		bool ismissing = false;
+
+		ushort alleles[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
+		if (*genstr != ',' && *genstr != '\r' && *genstr != '\n' && *genstr != '\0')
+		{
+			switch (*genstr)
+			{
+			case 'A': alleles[0] = 1; break;
+			case 'T': alleles[0] = 2; break;
+			case 'C': alleles[0] = 3; break;
+			case 'G': alleles[0] = 4; break;
+			default:  alleles[0] = (ushort)ReadInteger(genstr); break;
+			}
+		}
+		while (*genstr == ' ') genstr++;
+
+		if (*genstr != ',' && *genstr != '\r' && *genstr != '\n' && *genstr != '\0')
+		{
+			switch (*genstr)
+			{
+			case 'A': alleles[1] = 1; break;
+			case 'T': alleles[1] = 2; break;
+			case 'C': alleles[1] = 3; break;
+			case 'G': alleles[1] = 4; break;
+			default:  alleles[1] = (ushort)ReadInteger(genstr); break;
+			}
+		}
+		while (*genstr == ' ') genstr++;
+
+		if (alleles[0] == 0 || alleles[0] == 0xFFFF || alleles[1] == 0 || alleles[1] == 0xFFFF)
+		{
+			ismissing = true;
+			SetFF(alleles, v);
+		}
+		Sort(alleles, v);//unphase
+
+		if (iscount)
+		{
+			HASH mha = missing_hash[v];
+			if (!gfid.ContainsKey(mha))
+			{
+				int tid = gfid.size;
+				gfid[mha] = tid;
+				locus[l].gasize += 0;
+			}
+			if (!ismissing)
+			{
+				HASH hash = HashGenotype(alleles, v);
+				if (!gfid.ContainsKey(hash))
+				{
+					int tid = gfid.size;
+					gfid[hash] = tid;
+					locus[l].gasize += v + GetNalleles(alleles, v);
+				}
+			}
+		}
+		else
+		{
+			HASH mha = missing_hash[v];
+			uint mid = gfid[mha];
+			if (!gftab.ContainsKey(mha))
+				gftab[mha] = new(gtab[l]++) GENOTYPE(gatab[l], missing_genotype[v]);
+
+			HASH hash = HashGenotype(alleles, v);
+			uint gid = gfid[hash];
+			if (!gftab.ContainsKey(hash))
+				gftab[hash] = new(gtab[l]++) GENOTYPE(gatab[l], alleles, v);
+
+			wt[l].Write(genotype_filter && f_ploidy_b && (f_ploidy_min > v || v > f_ploidy_max) ? mid : gid);
+		}
+	}
+}
+
 /* Read and set genotype from bcf input */
 template<typename REAL>
 TARGET void IND<REAL>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpstr, char*& adstr, int vlen, int asize, int gqlen, int dplen, int adlen, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt)
@@ -3145,20 +3424,23 @@ TARGET void IND<REAL>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*
 	int v = 0;
 	ReadBCFGenoString(gtstr, alleles, phase, v, asize, vlen, l, name);
 
-	//if perform haplotype extraction, exclude unphased genotype as missing
-	if (haplotype && !phase)
+	//if use phased genotype, exclude unphased genotype as missing
+	if (usephase && !phase)
 	{
 		wt.Write(gfid[missing_hash[v]]);
 		gtstr += asize * vlen; gqstr = gqnext; dpstr = dpnext; adstr = adnext;
 		return;
 	}
 
-	if (!haplotype) Sort(alleles, v); //phaseed, do not sort alleles
+	if (!usephase) Sort(alleles, v); //phaseed, do not sort alleles
 
 	/*******************************************************************/
 
 	HASH mha = missing_hash[v], hash = HashGenotype(alleles, v);
 	uint mid = gfid[mha], gid = gfid[hash];
+
+	if (!gftab.ContainsKey(mha))
+		gftab[mha] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]);
 
 	if (!gftab.ContainsKey(hash))
 		gftab[hash] = new(gtab++) GENOTYPE(gatab, alleles, v);
@@ -3197,7 +3479,8 @@ TARGET void IND<REAL>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*
 		for (int j = 0; j < locus[l].k; ++j)
 		{
 			*depth = ReadBinInteger(adstr, adlen);
-			maxdepth = Max(*depth++, maxdepth);
+			maxdepth = Max(*depth, maxdepth);
+			depth++;
 		}
 		locus[l].maxdepth = maxdepth;
 	}
@@ -3235,8 +3518,8 @@ TARGET void IND<REAL>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<
 	int v = CountPloidy(genostr);
 	if (v > N_MAX_PLOIDY) Exit("\nError: ploidy level greater than %d in individual %s at locus %s_%s.\n", N_MAX_PLOIDY, name, loc.GetChrom(), loc.GetName());
 	
-	//if perform haplotype extraction, exclude unphased genotype as missing
-	if (haplotype && ContainsChar(genostr, '/'))
+	//if use phased genotype, exclude unphased genotype as missing
+	if (usephase && ContainsChar(genostr, '/'))
 	{
 		wt.Write(gfid[missing_hash[v]]);
 		return;
@@ -3245,12 +3528,15 @@ TARGET void IND<REAL>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<
 	ushort alleles[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
 	ReadVCFGenoString(alleles, genostr, v, l, name);
 
-	if (!haplotype) Sort(alleles, v); //phaseed, do not sort alleles
+	if (!usephase) Sort(alleles, v); //phased, do not sort alleles
 
 	/*******************************************************************/
 
 	HASH mha = missing_hash[v], hash = HashGenotype(alleles, v);
 	uint mid = gfid[mha], gid = gfid[hash];
+
+	if (!gftab.ContainsKey(mha))
+		gftab[mha] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]);
 
 	if (!gftab.ContainsKey(hash))
 		gftab[hash] = new(gtab++) GENOTYPE(gatab, alleles, v);
@@ -3293,7 +3579,8 @@ TARGET void IND<REAL>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<
 			for (int j = 0; j < locus[l].k; ++j)
 			{
 				*depth = ReadInteger(++adstr);
-				maxdepth = Max(*depth++, maxdepth);
+				maxdepth = Max(*depth, maxdepth);
+				depth++;
 			}
 			locus[l].maxdepth = maxdepth;
 		}

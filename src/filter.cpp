@@ -62,21 +62,18 @@ TARGET void ApplyFilter()
 						cpop = &pop<REAL>[i];
 					}
 
-				if (!find) Exit("\nError: Cannot find target population %d, check parameter -f_pop.\n", f_pop_val.c_str());
+				if (!find)
+				{
+					for (uint rl = 0; rl < reg<REAL>.size - 1; ++rl)
+						for (uint i = 0; i < reg<REAL>[rl].size; ++i)
+							if (reg<REAL>[rl][i].name == f_pop_val)
+							{
+								find = true;
+								cpop = &reg<REAL>[rl][i];
+							}
+					if (!find) Exit("\nError: Cannot find target population %d, check parameter -f_pop.\n", f_pop_val.c_str());
+				}
 			}
-		}
-		else if (f_region_b)
-		{
-			bool find = false;
-			for (uint rl = 0; rl < reg<REAL>.size - 1; ++rl)
-				for (uint i = 0; i < reg<REAL>[rl].size; ++i)
-					if (reg<REAL>[rl][i].name == f_region_val)
-					{
-						find = true;
-						cpop = &reg<REAL>[rl][i];
-					}
-
-			if (!find) Exit("\nError: Cannot find target region %s, check parameter -f_region.\n", f_region_val.c_str());
 		}
 		else
 			cpop = total_pop;
@@ -103,7 +100,7 @@ TARGET void ApplyFilter()
 		cpop->AllocFreq();
 
 		if (f_windowsize_b && abs(g_format_val) <= BCF)
-			new(&contig_diversity) TABLE<HASH, TABLE<HASH, pair<LOCN, double>>>(true, NULL);
+			new (&contig_diversity) TABLE<HASH, TABLE<HASH, pair<LOCN, double>>>(true, NULL);
 
 		RunThreads(&MarkerDiversity<REAL>, NULL, NULL, nloc, nloc, "\nMarking locus diversity filter:\n", 1, true);
 
@@ -193,12 +190,6 @@ TARGET void ApplyFilter()
 		RunThreads(&RemoveLocus<REAL>, NULL, NULL, nloc * (ad_bucket.base_addr ? 2 : 1), nloc * (ad_bucket.base_addr ? 2 : 1), "\nApplying locus diversity filter:\n", 1, true);
 
 	CheckGenotypeId<REAL>();
-
-	if (locus_pos && !haplotype)
-	{
-		delete[] locus_pos;
-		locus_pos = NULL;
-	}
 
 	EvaluationEnd("Filter genotypes, individuals and loci");
 }
@@ -585,11 +576,11 @@ THREAD2(MarkerDiversity)
 					UnLock(GLOCK3[ha % 256]);
 				}
 
-				pair<LOCN, double>& window = contig[w];
-				if (window.second < div)
+				pair<LOCN, double>& ww = contig[w];
+				if (ww.second < div)
 				{
-					window.first = l;
-					window.second = div;
+					ww.first = l;
+					ww.second = div;
 				}
 			}
 
@@ -653,7 +644,7 @@ THREAD2(RemoveLocus)
 {
 	MEMORY* nlocus_memory = new MEMORY[g_nthread_val];
 	SLOCUS* nslocus = new SLOCUS[nfilter];
-	uint64* nlocus_pos = haplotype ? new uint64[nfilter] : NULL;
+	uint64* nlocus_pos = uselocpos ? new uint64[nfilter] : NULL;
 
 	if (ad_bucket.base_addr)
 	{
@@ -671,9 +662,10 @@ THREAD2(RemoveLocus)
 	delete[] locus_memory;  locus_memory = nlocus_memory;
 	delete[] slocus;        slocus = nslocus;
 
-	if (haplotype)
+	if (uselocpos)
 	{
-		delete[] locus_pos; locus_pos = nlocus_pos;
+		delete[] locus_pos; 
+		locus_pos = nlocus_pos;
 	}
 
 	nloc = nfilter;

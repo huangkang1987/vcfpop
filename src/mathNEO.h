@@ -152,6 +152,8 @@ TARGETNEO void AddNEO(int64* A, int64* B, int64 n);
 
 TARGETNEO void AddNEO(int* A, int* B, int64 n);
 
+TARGETNEO void AddNEO(int* A, int B, int64 n);
+
 TARGETNEO void AddNEO(double* A, double B, int64 n);
 
 TARGETNEO void AddNEO(float* A, float B, int64 n);

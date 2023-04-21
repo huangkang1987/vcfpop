@@ -535,10 +535,8 @@ TARGET void BAYESIAN<REAL>::InitFix(int tid)
         return;
     }
 
-    atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
         for (int64 ll = l_atomic[0].fetch_add(1); ll < L; ll = l_atomic[0].fetch_add(1))
         {
             int64 l = ll * structure_loc_coprime % L;
@@ -594,7 +592,7 @@ TARGET void BAYESIAN<REAL>::InitAdmix(int tid)
     atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
+        int tid2 = thread_counter.fetch_add(1);
 
         if (singlez)
         {
@@ -627,7 +625,7 @@ TARGET void BAYESIAN<REAL>::InitAdmix(int tid)
                 GENOTYPE* gtab = GetLoc(l).GetGtab();
 
                 //avoid thread-conflict
-                int64* mi = Mi + N * K * tid;
+                int64* mi = Mi + N * K * tid2;
                 RNG<REAL> rng(seed + l, RNG_SALT_INITADM);//checked
 
                 for (int i = 0; i < N; ++i, mi += K)
@@ -842,11 +840,8 @@ TARGET void BAYESIAN<REAL>::UpdateP(int tid)
         return;
     }
 
-    atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
-
         //split into 128 block, each use a single random number generator and a thread
         //so as to use multi-thread acceleration and keep the same results for differnet #threads
         for (int blockid = l_atomic[0].fetch_add(1); blockid < 128; blockid = l_atomic[0].fetch_add(1))
@@ -911,7 +906,7 @@ TARGET void BAYESIAN<REAL>::UpdateQNoAdmixCPU(int tid)
     atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
+        int tid2 = thread_counter.fetch_add(1);
 
         for (int64 ll = l_atomic[0].fetch_add(1); ll < L; ll = l_atomic[0].fetch_add(1))
         {
@@ -921,7 +916,7 @@ TARGET void BAYESIAN<REAL>::UpdateQNoAdmixCPU(int tid)
             GENOTYPE* gtab = GetLoc(l).GetGtab();
 
             //avoid thread-conflict
-            double* buf1 = bufNK1 + N * K * tid, * buf2 = bufNK2 + N * K * tid;
+            double* buf1 = bufNK1 + N * K * tid2, * buf2 = bufNK2 + N * K * tid2;
             for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
             {
                 GENOTYPE& gt = gtab[rt.Read()];
@@ -933,7 +928,7 @@ TARGET void BAYESIAN<REAL>::UpdateQNoAdmixCPU(int tid)
         }
 
         //avoid thread-conflict
-        CloseLog((int64*)bufNK1 + N * K * tid, bufNK2 + N * K * tid, N * K);
+        CloseLog((int64*)bufNK1 + N * K * tid2, bufNK2 + N * K * tid2, N * K);
     }
 }
 
@@ -1051,10 +1046,10 @@ TARGET void BAYESIAN<REAL>::UpdateQMetroCPU(int tid)
     atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
+        int tid2 = thread_counter.fetch_add(1);
 
 #ifdef PARFOR_PARTITION
-        for (int64 l = tid * L / structure_nsubthread; l < (tid + 1) * L / structure_nsubthread; ++l)
+        for (int64 l = tid2 * L / structure_nsubthread; l < (tid2 + 1) * L / structure_nsubthread; ++l)
         {
 #else
         for (int64 ll = l_atomic[0].fetch_add(1); ll < L; ll = l_atomic[0].fetch_add(1))
@@ -1067,7 +1062,7 @@ TARGET void BAYESIAN<REAL>::UpdateQMetroCPU(int tid)
             REAL* bufi = (REAL*)bufNK1;
             REAL* q = Q;
 
-            double* buf1 = bufN1 + N * tid, * buf2 = bufN2 + N * tid;
+            double* buf1 = bufN1 + N * tid2, * buf2 = bufN2 + N * tid2;
             for (int i = 0; i < N; ++i, q += K, bufi += K, buf1++, buf2++)
             {
                 GENOTYPE& gt = gtab[rt.Read()];
@@ -1086,7 +1081,7 @@ TARGET void BAYESIAN<REAL>::UpdateQMetroCPU(int tid)
         }
 
         //avoid thread-conflict
-        CloseLog((int64*)bufN1 + N * tid, bufN2 + N * tid, N);
+        CloseLog((int64*)bufN1 + N * tid2, bufN2 + N * tid2, N);
     }
 }
 
@@ -1282,11 +1277,8 @@ TARGET void BAYESIAN<REAL>::UpdateZNoAdmixCPU(int tid)
         return;
     }
 
-    atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
-
         for (int64 ll = l_atomic[0].fetch_add(1); ll < L; ll = l_atomic[0].fetch_add(1))
         {
             int64 l = ll * structure_loc_coprime % L;
@@ -1381,7 +1373,7 @@ TARGET void BAYESIAN<REAL>::UpdateZAdmixCPU(int tid)
     atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
+        int tid2 = thread_counter.fetch_add(1);
 
         for (int64 ll = l_atomic[0].fetch_add(1); ll < L; ll = l_atomic[0].fetch_add(1))
         {
@@ -1397,9 +1389,9 @@ TARGET void BAYESIAN<REAL>::UpdateZAdmixCPU(int tid)
                 new(&rngs) RNG<float >(seed + m * L + l, RNG_SALT_UPDATEZ);
 
             //avoid thread-conflict
-            double* bufkd = bufKthread + tid * K;
+            double* bufkd = bufKthread + tid2 * K;
             float* bufks = (float*)bufkd;
-            int64* mi = Mi + N * K * tid;
+            int64* mi = Mi + N * K * tid2;
             REAL* q = Q;
 
             for (int i = 0; i < N; ++i, mi += K, q += K)
@@ -1689,11 +1681,8 @@ TARGET void BAYESIAN<REAL>::UpdateA1(int tid)
         return;
     }
 
-    atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
-
         double lam = Lambda[0];//single lambda in F model?
 
         //split into 32 block, each use a single random number generator and a thread
@@ -1788,11 +1777,8 @@ TARGET void BAYESIAN<REAL>::UpdateA2(int tid)
         return;
     }
 
-    atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
-
         double lam = Lambda[0];//single lambda in F model?
 
         for (int blockid = l_atomic[0].fetch_add(1); blockid < 32; blockid = l_atomic[0].fetch_add(1))
@@ -1933,7 +1919,7 @@ TARGET void BAYESIAN<REAL>::RecordCPU(int tid)
     atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
     {
-        int tid = thread_counter.fetch_add(1);
+        int tid2 = thread_counter.fetch_add(1);
 
         int64 slog = 0; double prod = 1;
         OpenLog(slog, prod);
@@ -1971,7 +1957,7 @@ TARGET void BAYESIAN<REAL>::RecordCPU(int tid)
         }
 
         CloseLog(slog, prod);
-        bufNK1[tid] = prod;
+        bufNK1[tid2] = prod;
     }
 }
 
@@ -2151,8 +2137,8 @@ TARGET int IdxCmp(T* a, T* b, int size)
 template<typename REAL>
 TARGET void BAYESIAN<REAL>::MCMC()
 {
-    timepoint begin = GetNow();
     double singleiter = 0;
+    timepoint begin1 = GetNow();
 
     InitFix();
     InitAdmix();
@@ -2161,7 +2147,7 @@ TARGET void BAYESIAN<REAL>::MCMC()
 
     for (m = 0; m < nburnin + nreps; ++m)
     {
-        timepoint begin = GetNow();
+        timepoint begin2 = GetNow();
 
         //Manage CUDA devices
         ManageCUDA(false);
@@ -2194,7 +2180,7 @@ TARGET void BAYESIAN<REAL>::MCMC()
         Record();
 
         if (structure_eval_val == 1) 
-            printf("StructureSingleIteration %0.5f s\n", singleiter = GetElapse(begin));
+            printf("StructureSingleIteration %0.5f s\n", singleiter = GetElapse(begin2));
     }
 
     Arrange();
@@ -2202,7 +2188,7 @@ TARGET void BAYESIAN<REAL>::MCMC()
     ManageCUDA(true);
 
     if (structure_eval_val == 1)
-        printf("StructureTaskOverhead %0.5f s\n", GetElapse(begin) - singleiter);
+        printf("StructureTaskOverhead %0.5f s\n", GetElapse(begin1) - singleiter);
 }
 
 #endif

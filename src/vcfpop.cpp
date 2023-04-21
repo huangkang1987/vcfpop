@@ -1,11 +1,11 @@
 /*
- vcfpop v1.05
+ vcfpop v1.06
  -- Perform population genetics analyses based on NGS data for haploids, diploids and polyploids.
 
  Author      Huang Kang
  Affiliation Northwest University
  Email       huangkang@nwu.edu.cn
- Update      2022/11/14
+ Update      2023/3/29
  */
 
 #include "vcfpop.h"
@@ -18,6 +18,19 @@ TARGET int main(int _argc, char** _argv)
 	EXEDIR = exe_path.parent_path().string();
 	EXEDIR.push_back(PATH_DELIM);
 
+#ifndef _WIN64
+	//executable called by linux symbolic link
+	if (strcmp(EXEDIR.c_str(), "/") == 0)
+	{
+		char buf[PATH_LEN];
+		readlink("/proc/self/exe", buf, sizeof(buf));
+
+		path exe_path(buf);
+		EXEDIR = exe_path.parent_path().string();
+		EXEDIR.push_back(PATH_DELIM);
+	}
+#endif
+
 	//copy parameters
 	for (int i = 0; i < _argc; ++i)
 		argv.push_back(_argv[i]);
@@ -27,7 +40,7 @@ TARGET int main(int _argc, char** _argv)
 	//print splash
 	printf("\nvcfpop v %s   %s\n", VERSION, DATE);
 	printf("    Perform population genetics analyses for haploids, diploids, polyploids and ansioploids based on NGS data.\n");
-	printf("    Huang Kang, Ph.D., Associate Prof.\n");
+	printf("    Huang Kang, Ph.D., Prof.\n");
 	printf("    Northwest University\n");
 
 	//parse parameters
@@ -60,10 +73,10 @@ TARGET int main(int _argc, char** _argv)
 	{
 		//replot previous results
 		string scripts[] = { "fst_plot.R", "gdist_plot.R", "popas_plot.R", "relatedness_plot.R",
-							 "kinship_plot.R", "pcoa_plot.R", "cluster_plot.R", "structure_plot.R" };
+							 "kinship_plot.R", "pcoa_plot.R", "cluster_plot.R", "structure_plot.R", "slide_plot.R" };
 
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
-		for (int i = 0; i < 8; ++i)
+		for (int i = 0; i < 9; ++i)
 			RunRscript(scripts[i]);
 	}
 	else

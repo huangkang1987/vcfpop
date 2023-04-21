@@ -15,32 +15,59 @@ struct BUCKET;
 struct INCBUFFER;
 struct VCFBUFFER;
 
-/*
+/* ReadWrite Lock */
 struct ReadWriteLock
 {
-	atomic<int> state = 0;    //high 16 bits for nwriter, low 16 bits for nreader
+private:
+	atomic<uint> state;
 
-	TARGET void lock_shared();
+public:
+	TARGET ReadWriteLock()
+	{
+		state = 0;
+	}
 
-	TARGET void unlock_shared();
+	TARGET void lock_shared()
+	{
+		for (;;)
+		{
+			uint old_state = state.load();
+			uint new_state = old_state + 1;
 
-	TARGET void lock();
+			if ((old_state >> 16) == 0 && // is not writing
+				state.compare_exchange_weak(old_state, new_state)) //if state is equal to old_state
+				break;
+		}
+	}
 
-	TARGET void unlock();
+	TARGET void unlock_shared()
+	{
+		state--;
+	}
+
+	TARGET void lock()
+	{
+		for (;;)
+		{
+			uint old_state = state.load();
+			uint new_state = old_state + 0x10000;
+
+			//competite for write lock
+			if ((old_state >> 16) == 0 && // if is not writing
+				state.compare_exchange_weak(old_state, new_state)) //if state is equal to old_state
+			{
+				//wait until preiouvs read complete
+				while (state & 0xFFFF);
+				break;
+			}
+		}
+	}
+
+	TARGET void unlock() 
+	{
+		state -= 0x10000;
+	}
 };
-
-// Allocate genotype table in virtual memory 
-TARGET void VAllocGenotype(int64 extralen);
-
-// Unallocate genotype table in virtual memory 
-TARGET void VUnAllocGenotype();
-
-// Allocate allele depth table in virtual memory 
-TARGET void VAllocAlleleDepth(int64 extralen);
-
-// Unallocate allele depth table in virtual memory 
-TARGET void VUnAllocAlleleDepth();
-*/
 
 /* Initialize a lock */
 TARGET inline void InitLock(LOCK& x)
@@ -566,57 +593,20 @@ struct LIST
 	}
 
 	/* Add an entry at a place id */
-	TARGET void Place(T& val, uint id, LOCK& lock, atomic<int>& write_count)
+	TARGET void Place(T& val, uint id, ReadWriteLock& rwlock)
 	{
-		//wait expanding complete
-		while (write_count >= 0x10000);
-
-		//increase writing count
-		write_count++;
-
 		if (id >= bucket_size)
 		{
-			write_count--;
-
-			Lock(lock);
+			rwlock.lock();
 			if (id >= bucket_size)
-			{
-				write_count += 0x10000;
-				//wait other thread write complete
-				while (write_count != 0x10000);
 				Expand();
-				write_count -= 0x10000;
-			}
-			UnLock(lock);
-			write_count++;
+			rwlock.unlock();
 		}
 
+		rwlock.lock_shared(); 
 		AtomicMax(*(atomic<uint>*) & size, id + 1);
 		bucket[id] = val;
-
-		//decrease writing count
-		write_count--;
-	}
-
-	/* Add an entry at a place id */
-	TARGET void Place(T& val, uint id, LOCK& lock, bool& expanding)
-	{
-		while (expanding) Sleep(1);
-
-		if (id >= bucket_size)
-		{
-			Lock(lock);
-			if (id >= bucket_size)
-			{
-				expanding = true;
-				Expand();
-				expanding = false;
-			}
-			UnLock(lock);
-		}
-
-		AtomicMax(*(atomic<uint>*) & size, id + 1);
-		bucket[id] = val;
+		rwlock.unlock_shared();
 	}
 
 	/* Return and delete the entry at the end */
@@ -700,7 +690,7 @@ struct TABLE
 			mask = 3;
 		else
 			mask = (1 << CeilLog2((int)(_size + (_size >> 1)))) - 1;
-
+		
 		size = 0;
 		byte* buf = memory ? 
 			memory->Alloc((sizeof(TABLE_ENTRY<T, T2>) + (haslist ? sizeof(uint) : 0)) * (mask + 1)) : 
@@ -876,6 +866,14 @@ struct TABLE
 		return bucket[index[i]].val;
 	}
 
+	/* Access entry by index */
+	TARGET TABLE_ENTRY<T,T2>& GetEntry(uint64 i)
+	{
+		if (i >= size)
+			Exit("\nError: index exceed limit in interal LIST class.\n");
+		return bucket[index[i]];
+	}
+
 	/* Access entry by key, single thread, not need to lock */
 	TARGET T2& operator[](T key)
 	{
@@ -962,7 +960,7 @@ struct alignas(8) BUCKET : public VMEMORY
 {
     atomic<uint64> coffset;							//Size of used bucket memory
 	LIST<OFFSET> offset;							//Genotype index data at each locus
-	atomic<int> write_count;
+	ReadWriteLock rwlock;
 	//bool expanding;
 
 	/* Do nothing */
@@ -976,6 +974,9 @@ struct alignas(8) BUCKET : public VMEMORY
 
 	/* Create bucket for genotype bucket in haplotype extraction */
 	TARGET void CreateBucketGT(LIST<HAPLO_DUMMY_LOCUS>& hlocus);
+
+	/* Create genotype table for unphase genotypes */
+	TARGET void CreateBucketGT(SLOCUS* locus);
 
 	/* Create genotype table for non-vcf/bcf input files */
 	TARGET void CreateBucketGT(LOCUS* locus);
@@ -1009,6 +1010,7 @@ struct INCBUFFER
 {
 	char* data;										//buffer data
 	int64 len;										//buffer size
+	char* derived;
 
 	/* Initialize, alloc 64 Kib */
 	TARGET INCBUFFER();

@@ -14,10 +14,10 @@ UseLibrary <- function(lib)
   }
 }
 
-UseLibrary("ggplot2")
-UseLibrary("ggh4x")
-UseLibrary("paletteer")
-UseLibrary("cowplot")
+suppressWarnings(suppressMessages(UseLibrary("ggplot2")))
+suppressWarnings(suppressMessages(UseLibrary("ggh4x")))
+suppressWarnings(suppressMessages(UseLibrary("paletteer")))
+suppressWarnings(suppressMessages(UseLibrary("cowplot")))
 
 # set path here
 outfile <- commandArgs(trailingOnly = TRUE)

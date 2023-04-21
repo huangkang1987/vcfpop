@@ -152,6 +152,8 @@ TARGETSSE void AddSSE(int64* A, int64* B, int64 n);
 
 TARGETSSE void AddSSE(int* A, int* B, int64 n);
 
+TARGETSSE void AddSSE(int* A, int B, int64 n);
+
 TARGETSSE void AddSSE(double* A, double B, int64 n);
 
 TARGETSSE void AddSSE(float* A, float B, int64 n);

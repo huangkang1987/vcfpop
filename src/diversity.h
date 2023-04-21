@@ -14,17 +14,23 @@ struct DIVERSITY
 	int64 l;								//Locus id
 
 	/* Add */
-	REAL bmaf;							//Minor allele freq of biallelic locus
-	REAL ptype;							//Genotype rate
-	REAL pval;							//P-val of genotype distribution test
-	REAL he;								//Expected heterozygosity
-	REAL ho;								//Observed heterozygosity
+	REAL bmaf;								//Minor allele freq of biallelic locus
+	REAL ptype;								//Genotype rate
+	REAL pval;								//P-val of genotype distribution test
+
+	REAL ho;								//Total number of non-IBS of allele pairs (without replacement) within genotypes
+	REAL he;								//Total number of non-IBS of allele pairs (with replacement) within populations
 	REAL pic;								//Polymorphic information contents
 	REAL ae;								//Effective number of alleles
-	REAL I;								//Shannon¡¯s Information Index
+	REAL I;									//Shannon¡¯s Information Index
 
-	REAL fis;								//Inbreeding coefficient
-	REAL g;								//G-statistic in HWE test
+	REAL how;								//Total number of allele pairs (without replacement) within genotypes
+	REAL hew;								//Total number of allele pairs (with replacement) within populations
+	REAL picw;								//Total number of allele pairs (with replacement) within populations
+	REAL aew;								//Total number of allele pairs (with replacement) within populations
+	REAL Iw;								//Total number of allele pairs (with replacement) within populations
+
+	REAL g;									//G-statistic in HWE test
 	REAL df;								//Degrees of freedom in HWE test
 
 	int k;									//Number of alleles, int
@@ -38,11 +44,11 @@ struct DIVERSITY
 	bool unusued;							//Unusued byte for alignment
 
 	/* Multiply */
-	REAL NE1P;							//Exclusion rate without known parent
-	REAL NE2P;							//Exclusion rate with known parent
-	REAL NEPP;							//Exclusion rate for parent pair
-	REAL NEID;							//Exclusion nonrelatives in identity test
-	REAL NESI;							//Exclusion full-sibs in identity test
+	REAL NE1P;								//Exclusion rate without known parent
+	REAL NE2P;								//Exclusion rate with known parent
+	REAL NEPP;								//Exclusion rate for parent pair
+	REAL NEID;								//Exclusion nonrelatives in identity test
+	REAL NESI;								//Exclusion full-sibs in identity test
 
 	/* Initialize */
 	TARGET DIVERSITY();
@@ -60,35 +66,35 @@ struct DIVERSITY
 template<typename REAL>
 struct DIVSUM
 {
-	/* Add */
-	REAL k;								//Number of alleles
-	REAL n;								//Number of individuals
+	/* Numerator */
+	REAL k;									//Number of alleles
+	REAL n;									//Number of individuals
 	REAL nhaplo;							//Number of allele copies
-	REAL bmaf;							//Minor allele freq of biallelic locus
-	REAL ptype;							//Genotype rate
-	REAL pval;							//P-val of genotype distribution test
-	REAL he;								//Expected heterozygosity
-	REAL ho;								//Observed heterozygosity
+	REAL bmaf;								//Minor allele freq of biallelic locus
+	REAL ptype;								//Genotype rate
+	REAL pval;								//P-val of genotype distribution test
+
+	REAL ho;								//Expected heterozygosity
+	REAL he;								//Observed heterozygosity
 	REAL pic;								//Polymorphic information contents
 	REAL ae;								//Effective number of alleles
-	REAL I;								//Shannon¡¯s Information Index
-	REAL fis;								//Inbreeding coefficient
+	REAL I;									//Shannon¡¯s Information Index
+
 	int minploidy;							//Min ploidy
 	int maxploidy;							//Max ploidy
 
-	/* Count */
+	/* Denominator / Weight */
 	int kc;									//Number of alleles
 	int nc;									//Number of individuals
 	int nhaploc;							//Number of allele copies
 	int bmafc;								//Minor allele freq of biallelic locus
 	int ptypec;								//Genotype rate
 	int pvalc;								//P-val of genotype distribution test
-	int hec;								//Expected heterozygosity
-	int hoc;								//Observed heterozygosity
-	int picc;								//Polymorphic information contents
-	int aec;								//Effective number of alleles
-	int Ic;									//Shannon¡¯s Information Index
-	int fisc;								//Inbreeding coefficient
+	REAL how;								//Expected heterozygosity
+	REAL hew;								//Expected heterozygosity
+	REAL picw;								//Polymorphic information contents
+	REAL aew;								//Effective number of alleles
+	REAL Iw;									//Shannon¡¯s Information Index
 
 	/* Multiply */
 	REAL NE1P;							//Exclusion rate without known parent

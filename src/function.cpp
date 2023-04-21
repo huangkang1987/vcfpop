@@ -29,6 +29,7 @@ template TARGET double IND<double>::GenoFreq(POP<double>* grp, int model, int64 
 template TARGET double IND<float >::GenoFreq(POP<float >* grp, int model, int64 loc, double e);
 template TARGET void IND<double>::GetDyadGenotypeIdx(int& id1, int& id2, int64 l);
 template TARGET void IND<float >::GetDyadGenotypeIdx(int& id1, int& id2, int64 l);
+
 template TARGET double* POP<double>::GetFreq(int64 l);
 template TARGET float * POP<float >::GetFreq(int64 l);
 template TARGET double POP<double>::GetFreq(int64 l, int a);
@@ -43,6 +44,10 @@ template TARGET void POP<double>::UnAllocFreq();
 template TARGET void POP<float >::UnAllocFreq();
 template TARGET void POP<double>::GetLocStat2(LOCSTAT2<double>* loc_stat2);
 template TARGET void POP<float >::GetLocStat2(LOCSTAT2<float >* loc_stat2);
+template TARGET bool POP<double>::IsSubpop(POP<double>* pop);
+template TARGET bool POP<float >::IsSubpop(POP<float >* pop);
+template TARGET void POP<double>::CalcFreqGcount();
+template TARGET void POP<float >::CalcFreqGcount();
 
 template TARGET void Initialize<double>();
 template TARGET void Initialize<float >();
@@ -2247,16 +2252,19 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	TARGET char* GENOTYPE::GetGenepopStr()
 	{
 		int ploidy = Ploidy(), nalleles = Nalleles();
-		if (ploidy != 2) Exit("\nError: Genepop supports diploids only.\n");
-
+		if (convert_mode_val == 1 && ploidy != 2) Exit("\nError: Genepop supports diploids only.\n");
 		char* str = NULL;
-		conversion_memory2[threadid].Alloc(str, 8);
 
-		ushort* als = GetAlleleArray();
-		if (nalleles == 0)
-			sprintf(str, " 000000");
-		else
-			sprintf(str, " %03d%03d", als[0] + 1, als[1] + 1);
+		if (convert_mode_val == 1 || convert_mode_val == 2) //disable or truncate
+		{
+			conversion_memory2[threadid].Alloc(str, MAX_ALLELE_BYTE * 2 + 2);
+
+			ushort* als = GetAlleleArray();
+			if (nalleles == 0 || convert_mode_val != 1 && ploidy == 1)
+				sprintf(str, " 000000");
+			else
+				sprintf(str, " %03d%03d", als[0] + 1, als[1] + 1);
+		}
 
 		return str;
 	}
@@ -2264,25 +2272,33 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	/* Obtain Spagedi genotype string */
 	TARGET char* GENOTYPE::GetSpagediStr()
 	{
-		int ploidy = Ploidy(), nalleles = Nalleles();
+		int ploidy = Ploidy(), nalleles = Nalleles(); 
 		char* str = NULL;
 
-		ushort* als = GetAlleleArray();
-		if (nalleles == 0)
+		if (convert_mode_val == 1 || convert_mode_val == 2) //disable or truncate
 		{
-			conversion_memory2[threadid].Alloc(str, 3);
-			sprintf(str, "\t0");
-		}
-		else
-		{
-			conversion_memory2[threadid].Alloc(str, ploidy * 3 + 2);
-			char* re2 = str;
-			sprintf(re2, "\t");
-			while (*re2) re2++;
-			for (int i = 0; i < ploidy; ++i)
+			ushort* als = GetAlleleArray();
+			if (convert_mode_val == 1)
 			{
-				sprintf(re2, "%03d", als[i] + 1);
-				while (*re2) re2++;
+				conversion_memory2[threadid].Alloc(str, MAX_ALLELE_BYTE * ploidy + 2);
+				char* re2 = str;
+				sprintf(re2++, "\t");
+				for (int i = 0; i < ploidy; ++i)
+				{
+					if (nalleles == 0)
+						sprintf(re2, "000");
+					else
+						sprintf(re2, "%03d", (short)als[i] + 1);
+					while (*re2) re2++;
+				}
+			}
+			else if (convert_mode_val == 2)
+			{
+				conversion_memory2[threadid].Alloc(str, MAX_ALLELE_BYTE * 2 + 2);
+				if (ploidy == 1)
+					sprintf(str, "\t000000");
+				else
+					sprintf(str, "\t%03d%03d", (short)als[0] + 1, (short)als[1] + 1);
 			}
 		}
 		return str;
@@ -2292,19 +2308,22 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	TARGET char* GENOTYPE::GetCervusStr()
 	{
 		int ploidy = Ploidy(), nalleles = Nalleles();
-		if (ploidy != 2) Exit("\nError: Cervus supports diploids only.\n");
+		if (convert_mode_val == 1 && ploidy != 2) Exit("\nError: Cervus supports diploids only.\n");
 		char* str = NULL;
 
-		ushort* als = GetAlleleArray();
-		if (nalleles == 0)
+		if (convert_mode_val == 1 || convert_mode_val == 2) //disable or truncate
 		{
-			conversion_memory2[threadid].Alloc(str, 3);
-			sprintf(str, ",,");
-		}
-		else
-		{
-			conversion_memory2[threadid].Alloc(str, 9);
-			sprintf(str, ",%d,%d", als[0] + 1, als[1] + 1);
+			ushort* als = GetAlleleArray();
+			if (nalleles == 0 || convert_mode_val != 1 && ploidy == 1)
+			{
+				conversion_memory2[threadid].Alloc(str, 3);
+				sprintf(str, ",,");
+			}
+			else
+			{
+				conversion_memory2[threadid].Alloc(str, MAX_ALLELE_BYTE * 2 + 3);
+				sprintf(str, ",%d,%d", als[0] + 1, als[1] + 1);
+			}
 		}
 		return str;
 	}
@@ -2313,24 +2332,26 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	TARGET char* GENOTYPE::GetArlequinStr()
 	{
 		int ploidy = Ploidy(), nalleles = Nalleles();
-		if (ploidy != 2) Exit("\nError: Arlequin supports diploids only.\n");
+		if (convert_mode_val == 1 && ploidy != 2) Exit("\nError: Arlequin supports diploids only.\n");
 		char* str = NULL;
-		conversion_memory2[threadid].Alloc(str, 10);
 
-		ushort* als = GetAlleleArray();
-		if (nalleles == 0)
+		if (convert_mode_val == 1 || convert_mode_val == 2) //disable or truncate
 		{
-			sprintf(str, " ?");
-			sprintf(str + 5, " ?");
-		}
-		else
-		{
-			sprintf(str, " %d", als[0] + 1);
-			if (ploidy > 1)
-				sprintf(str + 5, " %d", als[1] + 1);
+			conversion_memory2[threadid].Alloc(str, (MAX_ALLELE_BYTE + 2) * 2);
+			ushort* als = GetAlleleArray();
+
+			if (nalleles == 0 || convert_mode_val != 1 && ploidy == 1)
+			{
+				sprintf(str,                       " ?");
+				sprintf(str + MAX_ALLELE_BYTE + 2, " ?");
+			}
 			else
-				sprintf(str + 5, " ?");
+			{
+				sprintf(str,                       " %d", als[0] + 1);
+				sprintf(str + MAX_ALLELE_BYTE + 2, " %d", als[1] + 1);
+			}
 		}
+
 		return str;
 	}
 
@@ -2339,22 +2360,36 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	{
 		int ploidy = Ploidy(), nalleles = Nalleles();
 		char* str = NULL;
-		conversion_memory2[threadid].Alloc(str, ploidy * 5);
-		char* re2 = str;
 
-		ushort* als = GetAlleleArray();
-		if (nalleles == 0)
-			for (byte i = 0; i < ploidy; ++i)
+		if (convert_mode_val == 1)
+		{
+			ushort* als = GetAlleleArray();
+			conversion_memory2[threadid].Alloc(str, (MAX_ALLELE_BYTE + 2) * ploidy);
+
+			if (nalleles == 0)
+				for (int i = 0; i < ploidy; ++i)
+					sprintf(str + i * (MAX_ALLELE_BYTE + 2), " -9");
+			else
+				for (int i = 0; i < ploidy; ++i)
+					sprintf(str + i * (MAX_ALLELE_BYTE + 2), " %d", als[i] + 1);
+		}
+		else if (convert_mode_val == 2)
+		{
+			ushort* als = GetAlleleArray();
+			conversion_memory2[threadid].Alloc(str, (MAX_ALLELE_BYTE + 2) * 2);
+
+			if (nalleles == 0 || ploidy == 1)
 			{
-				sprintf(re2, " -9");
-				re2 += 5;
+				sprintf(str,                         " -9");
+				sprintf(str + (MAX_ALLELE_BYTE + 2), " -9");
 			}
-		else
-			for (int i = 0; i < ploidy; ++i)
+			else
 			{
-				sprintf(re2, " %d", als[i] + 1);
-				re2 += 5;
+				sprintf(str,                         " %d", als[0] + 1);
+				sprintf(str + (MAX_ALLELE_BYTE + 2), " %d", als[1] + 1);
 			}
+		}
+
 		return str;
 	}
 
@@ -2364,23 +2399,31 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 		int ploidy = Ploidy(), nalleles = Nalleles();
 		char* str = NULL;
 
-		ushort* als = GetAlleleArray();
-		if (nalleles == 0)
+		if (convert_mode_val == 1 || convert_mode_val == 2) //disable or truncate
 		{
-			conversion_memory2[threadid].Alloc(str, 2);
-			sprintf(str, "\t");
-		}
-		else
-		{
-			conversion_memory2[threadid].Alloc(str, ploidy * 4 + 1);
-			char* re2 = str;
-			sprintf(re2, "\t");
-			while (*re2) re2++;
-			for (int i = 0; i < ploidy; ++i)
+			ushort* als = GetAlleleArray();
+
+			if (nalleles == 0 || convert_mode_val != 1 && ploidy == 1)
 			{
-				if (i != 0) sprintf(re2, ",%d", als[i] + 1);
-				else sprintf(re2, "%d", als[i] + 1);
-				while (*re2) re2++;
+				conversion_memory2[threadid].Alloc(str, 2);
+				sprintf(str, "\t");
+			}
+			else if (convert_mode_val == 1)
+			{
+				conversion_memory2[threadid].Alloc(str, (MAX_ALLELE_BYTE + 1) * ploidy + 1);
+				char* re2 = str;
+				sprintf(re2++, "\t");
+				for (int i = 0; i < ploidy; ++i)
+				{
+					if (i != 0) sprintf(re2, ",%d", als[i] + 1);
+					else sprintf(re2, "%d", als[i] + 1);
+					while (*re2) re2++;
+				}
+			}
+			else if (convert_mode_val == 2)
+			{
+				conversion_memory2[threadid].Alloc(str, (MAX_ALLELE_BYTE + 1) * 2 + 1);
+				sprintf(str, "\t%d,%d", als[0] + 1, als[1] + 1);
 			}
 		}
 		return str;
@@ -2391,17 +2434,38 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	{
 		int ploidy = Ploidy(), nalleles = Nalleles();
 		char* str = NULL;
-		conversion_memory2[threadid].Alloc(str, ploidy * 3 + 2);
 
-		ushort* als = GetAlleleArray();
-		char* re2 = str;
-		sprintf(re2, "\t");  while (*re2) re2++;
-		for (int i = 0; i < ploidy; ++i)
+		if (convert_mode_val == 1)
 		{
-			if (nalleles == 0) sprintf(re2, "000");
-			else sprintf(re2, "%03d", als[i] + 1);
-			while (*re2) re2++;
+			ushort* als = GetAlleleArray();
+			conversion_memory2[threadid].Alloc(str, MAX_ALLELE_BYTE * ploidy + 2);
+
+			char* re2 = str;
+			sprintf(re2++, "\t"); 
+			if (nalleles == 0)
+				for (int i = 0; i < ploidy; ++i)
+				{ 
+					sprintf(re2, "000"); 
+					re2 += 3;
+				}
+			else
+				for (int i = 0; i < ploidy; ++i)
+				{ 
+					sprintf(re2, "%03d", als[i] + 1); 
+					while (*re2) re2++;
+				}
 		}
+		else if (convert_mode_val == 2)
+		{
+			ushort* als = GetAlleleArray();
+			conversion_memory2[threadid].Alloc(str, MAX_ALLELE_BYTE * 2 + 2);
+
+			if (nalleles == 0 || convert_mode_val != 1 && ploidy == 1)
+				sprintf(str, "\t000000");
+			else
+				sprintf(str, "\t%03d%03d", als[0] + 1, als[1] + 1);
+		}
+
 		return str;
 	}
 
@@ -2410,17 +2474,62 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	{
 		int ploidy = Ploidy(), nalleles = Nalleles();
 		char* str = NULL;
-		conversion_memory2[threadid].Alloc(str, ploidy * 3 + 2);
 
-		ushort* als = GetAlleleArray();
-		char* re2 = str;
-		sprintf(re2, "\t");  while (*re2) re2++;
-		for (int i = 0; i < ploidy; ++i)
+		if (convert_mode_val == 1)
 		{
-			if (nalleles == 0) sprintf(re2, "000");
-			else sprintf(re2, "%03d", als[i] + 1);
-			while (*re2) re2++;
+			conversion_memory2[threadid].Alloc(str, MAX_ALLELE_BYTE * ploidy + 2);
+			ushort* als = GetAlleleArray();
+
+			char* re2 = str;
+			sprintf(re2++, "\t"); 
+			if (nalleles == 0) 
+				for (int i = 0; i < ploidy; ++i)
+				{ 
+					sprintf(re2, "000"); 
+					re2 += 3; 
+				}
+			else
+				for (int i = 0; i < ploidy; ++i)
+				{ 
+					sprintf(re2, "%03d", als[i] + 1);
+					while (*re2) re2++;
+				}
 		}
+		else if (convert_mode_val == 2)
+		{
+			conversion_memory2[threadid].Alloc(str, MAX_ALLELE_BYTE * 2 + 2);
+			ushort* als = GetAlleleArray();
+
+			if (nalleles == 0 || convert_mode_val != 1 && ploidy == 1)
+				sprintf(str, "\t000000");
+			else
+				sprintf(str, "\t%03d%03d", als[0] + 1, als[1] + 1);
+		}
+		return str;
+	}
+
+	/* Obtain Plink genotype string */
+	TARGET char* GENOTYPE::GetPlinkStr()
+	{
+		int ploidy = Ploidy(), nalleles = Nalleles();
+		if (convert_mode_val == 1 && ploidy != 2) Exit("\nError: Plink supports diploids only.\n");
+		char* str = NULL;
+
+		if (convert_mode_val == 1 || convert_mode_val == 2)
+		{
+			ushort* als = GetAlleleArray();
+			if (nalleles == 0 || convert_mode_val != 1 && ploidy == 1)
+			{
+				conversion_memory2[threadid].Alloc(str, 5);
+				sprintf(str, "\t0 0");
+			}
+			else
+			{
+				conversion_memory2[threadid].Alloc(str, (MAX_ALLELE_BYTE + 1) * 2 + 1);
+				sprintf(str, "\t%d %d", als[0] + 1, als[1] + 1);
+			}
+		}
+
 		return str;
 	}
 #endif
@@ -3052,7 +3161,7 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 		SetZero(this, 1);
 		ngeno = _ngenotype;
 		gasize = _gasize;
-		pos = (uint64)-1;
+		pos = 0xFFFFFFFFFFFFFFFF;
 		flag_pass = true;
 		gtab = (GENOTYPE*)memory.Alloc(ngeno * sizeof(GENOTYPE) + gasize * sizeof(ushort));
 		bits1 = (uint64)gtab;
@@ -3505,7 +3614,7 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	{
 		indid = id;
 		vmin = vmax = 0;
-		switch (abs( g_format_val ))//genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive
+		switch (abs( g_format_val ))//genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive|plink
 		{
 		case GENEPOP: genepop(t, iscount, gtab, gatab, wt); break;
 		case SPAGEDI: spagedi(t, iscount, gtab, gatab, wt); break;
@@ -3515,6 +3624,7 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 		case POLYGENE: polygene(t, iscount, gtab, gatab, wt); break;
 		case POLYRELATEDNESS: polyrelatedness(t, iscount, gtab, gatab, wt); break;
 		case GENODIVE: genodive(t, iscount, gtab, gatab, wt); break;
+		case PLINK: plink(t, iscount, gtab, gatab, wt); break;
 		}
 	}
 
@@ -3816,7 +3926,7 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 		LOCSTAT1 *nloc_stat = NULL;
 		if (loc_stat1)
 		{
-			new LOCSTAT1[nfilter];
+			nloc_stat = new LOCSTAT1[nfilter];
 			SetZero(nloc_stat, nfilter);
 		}
 
@@ -3974,6 +4084,20 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 			}
 		}
 	}
+
+	/* Is a argument a subpop of this */
+	template<typename REAL>
+	TARGET bool POP<REAL>::IsSubpop(POP<REAL>* subpop)
+	{
+		if (ispop) return false;
+		for (int i = 0; i < npop; ++i)
+		{
+			if (vpop[i]->IsSubpop(subpop) || vpop[i] == subpop)
+				return true;
+		}
+		return false;
+	}
+
 #endif
 
 /* Initialize */
@@ -3982,6 +4106,8 @@ TARGET void Initialize()
 {
 	if (g_eval_val == 1 && FileExists((g_output_val + ".eval.txt").c_str()))
 		FileDelete((g_output_val + ".eval.txt").c_str());
+
+	if (g_eval_val == 1)
 	{
 		FILE* f1 = fopen((g_output_val + ".eval.txt").c_str(), "wb");
 		fputs("Time expense (s)\tAnalysis", f1);
@@ -4337,6 +4463,48 @@ TARGET void Initialize()
 	GLOCK3 = new LOCK[256];
 	for (int i = 0; i < 256; ++i)
 		InitLock(GLOCK3[i]);
+
+
+	// check f_pop and slide_pop existence
+	if (diversity_filter && f_pop_b)
+	{
+		if ("total" != f_pop_val)
+		{
+			bool find = false;
+			for (int i = 0; i < npop; ++i)
+				if (pop<REAL>[i].name == f_pop_val)
+					find = true;
+
+			if (!find)
+			{
+				for (uint rl = 0; rl < reg<REAL>.size - 1; ++rl)
+					for (uint i = 0; i < reg<REAL>[rl].size; ++i)
+						if (reg<REAL>[rl][i].name == f_pop_val)
+							find = true;
+				if (!find) Exit("\nError: Cannot find target population %d, check parameter -f_pop.\n", f_pop_val.c_str());
+			}
+		}
+	}
+
+	if (slide && slide_pop_b)
+	{
+		if ("total" != slide_pop_val)
+		{
+			bool find = false;
+			for (int i = 0; i < npop; ++i)
+				if (pop<REAL>[i].name == slide_pop_val)
+					find = true;
+
+			if (!find)
+			{
+				for (uint rl = 0; rl < reg<REAL>.size - 1; ++rl)
+					for (uint i = 0; i < reg<REAL>[rl].size; ++i)
+						if (reg<REAL>[rl][i].name == slide_pop_val)
+							find = true;
+				if (!find) Exit("\nError: Cannot find target population %d, check parameter -f_pop.\n", slide_pop_val.c_str());
+			}
+		}
+	}
 }
 
 /* UnInitialize before Bayesian clustering*/
@@ -4458,7 +4626,7 @@ TARGET void CalcFreq()
 {
 	EvaluationBegin();
 	//Calculate allele frequency and genotype count
-	RunThreads(&CalcAlleleFreq<REAL>, NULL, NULL, nloc * (int64)nind * (lreg + 2), nloc * (int64)nind * (lreg + 2),
+	RunThreads(&CalcFreqThread<REAL>, NULL, NULL, nloc * (int64)nind * (lreg + 2), nloc * (int64)nind * (lreg + 2),
 		"\nCalculating allele frequencies:\n", 1, true);
 	EvaluationEnd("Allele frequency estimation");
 	CheckGenotypeId<REAL>();
@@ -4486,12 +4654,15 @@ TARGET void Calculate()
 	LoadFile<REAL>();
 
 	// 2. Filter
-	ApplyFilter<REAL>();//allow ad
+	ApplyFilter<REAL>();//allow ad, locpos
 
 	EvaluationStat();
 
-	// 3. Haplotype
-	CalcHaplotype<REAL>();//forbid ad
+	// 3. Sliding window
+	CalcSlide<REAL>(); //forbid ad, locpos
+
+	// 4. Haplotype
+	CalcHaplotype<REAL>();//forbid ad, locpos
 
 	AssignPloidy<REAL>();//allow ad
 
@@ -4504,49 +4675,55 @@ TARGET void Calculate()
 	//    Estimate pes model
 	EstimatePES<REAL>();//allow ad
 
-	// 4. Convert
-	ConvertFile<REAL>(); //forbid ad, circle buf
+	// 5. Convert
+	ConvertFile<REAL>(); //forbid ad, circle buf, locpos
 
-	// 5. Genetic diversity
+	if (locus_pos)
+	{
+		delete[] locus_pos;
+		locus_pos = NULL;
+	}
+
+	// 6. Genetic diversity
 	CalcDiversity<REAL>(); //allow ad, circle buf
 
-	// 6. Individual statistics
+	// 7. Individual statistics
 	CalcIndstat<REAL>(); //forbid ad, circle buf
 
-	// 7. Genetic differentiation
+	// 8. Genetic differentiation
 	CalcDiff<REAL>(); //allow ad
 
-	// 8. Genetic distance
+	// 9. Genetic distance
 	CalcDist<REAL>(); //allow ad, circle buf
 
-	// 9. AMOVA
+	// 10. AMOVA
 	CalcAMOVA<REAL>(); //forbid ad
 
-	// 10. Population assignment
+	// 11. Population assignment
 	CalcAssignment<REAL>(); //forbid ad
 
-	// 11. Relatedness coefficient
+	// 12. Relatedness coefficient
 	CalcRelatedness<REAL>(); //forbid ad, circle buf
 
-	// 12. Kinship coefficient
+	// 13. Kinship coefficient
 	CalcKinship<REAL>(); //forbid ad, circle buf
 
-	// 13. Principal coordinate analysis
+	// 14. Principal coordinate analysis
 	CalcPCOA<REAL>(); //allow ad
 
-	// 14. Hierarchical clustering
+	// 15. Hierarchical clustering
 	CalcClustering<REAL>(); //allow ad
 
 	//TEST SPA
 	CalcSPA<REAL>();//allow ad
 
-	//16. Ploidy Inference
+	// 16. Ploidy Inference
 	CalcPloidyInference<REAL>(); //forbid ad
 
-	//Free allele freq
+	// Free allele freq
 	UnInitialize1<REAL>();
 
-	//15. Bayesian clustering
+	// 17. Bayesian clustering
 	if (structure_eval_val == 1)
 	{
 		structure_nadmburnin_val = 0;
@@ -4581,12 +4758,12 @@ TARGET void Calculate()
 	else
 		CalcBayesian<REAL>(); //forbid ad
 
-	//Free allele freq
+	// Free allele freq
 	UnInitialize2<REAL>();
 }
 
 /* Calculate allele frequencies for each population and region */
-THREAD2(CalcAlleleFreq)
+THREAD2(CalcFreqThread)
 {
 	if (allele_freq_offset)      delete[] allele_freq_offset;
 	if (genotype_count_offset)   delete[] genotype_count_offset;
@@ -4701,11 +4878,11 @@ THREAD2(AssignPloidyThread)
 	}
 
 	//gather
-	for (int threadid = 1; threadid < g_nthread_val; ++threadid)
+	for (int tid = 1; tid < g_nthread_val; ++tid)
 	{
-		int64* vt = Vt + nind * threadid;
-		byte* vmin = Vmin + nind * threadid;
-		byte* vmax = Vmax + nind * threadid;
+		int64* vt = Vt + nind * tid;
+		byte* vmin = Vmin + nind * tid;
+		byte* vmax = Vmax + nind * tid;
 
 		for (int j = 0; j < nind; ++j)
 		{

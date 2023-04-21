@@ -8,6 +8,10 @@ template TARGET void RNG<double>::Permute<VESSEL<double>*>(VESSEL<double>** a, i
 template TARGET void RNG<float >::Permute<VESSEL<float >*>(VESSEL<float >** a, int n);
 template TARGET void RNG<double>::Permute<int64>(int64* a, int n);
 template TARGET void RNG<float >::Permute<int64>(int64* a, int n);
+template TARGET void RNG<double>::Permute<ushort>(ushort* a, int n);
+template TARGET void RNG<float >::Permute<ushort>(ushort* a, int n);
+template TARGET void RNG<double>::Permute<int>(int* a, int n);
+template TARGET void RNG<float >::Permute<int>(int* a, int n);
 
 template TARGET int RNG<double>::Poly<double>(double* a, int n);
 template TARGET int RNG<double>::PolyLog<double>(double* a, int n);

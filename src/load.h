@@ -12,6 +12,8 @@ extern int genotype_extracol;
 extern int genotype_missing;
 extern int genotype_ambiguous;
 extern bool load_complete;
+extern bool usephase;
+extern bool uselocpos;
 
 extern INCBUFFER* load_buf;							//Circle buffer for loading vcf/bcf files, NBUF
 extern char* vcf_header;							//Vcf header row
@@ -58,6 +60,9 @@ THREAD2H(LoadPolyRelatedness);
 
 /* load from PolyRelatedness input format */
 THREAD2H(LoadGenoDive);
+
+/* load from PolyRelatedness input format */
+THREAD2H(LoadPlink);
 
 /* Indexing alleles for non-vcf input, with allele identifier being the size */
 TARGET void IndexAlleleLength();

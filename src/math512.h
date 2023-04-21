@@ -150,6 +150,8 @@ TARGET512 void Add512(int64* A, int64* B, int64 n);
 
 TARGET512 void Add512(int* A, int* B, int64 n);
 
+TARGET512 void Add512(int* A, int B, int64 n);
+
 TARGET512 void Add512(double* A, double B, int64 n);
 
 TARGET512 void Add512(float* A, float B, int64 n);

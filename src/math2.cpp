@@ -1476,6 +1476,24 @@ TARGET void Add(int* A, int* B, int64 n)
 }
 
 /* Add B into A, A[i] += B */
+TARGET void Add(int* A, int B, int64 n)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: return AddNEO(A, B, n);
+#else
+	case 4: return Add512(A, B, n);
+	case 3: return AddAVX(A, B, n);
+	case 2: return AddSSE(A, B, n);
+#endif
+	}
+
+	for (int64 i = 0; i < n; ++i)
+		A[i] += B;
+}
+
+/* Add B into A, A[i] += B */
 TARGET void Add(double* A, double B, int64 n)
 {
 	switch (SIMD_TYPE)
@@ -1989,6 +2007,28 @@ TARGET double SSC(float* a, int64 k, bool isiam, ushort* alen2)
 				re += a[i] * a[j] * alen2[i * k + j];
 		}
 		return nt > 0 ? re / nt : 0;
+	}
+}
+
+/* Add a value to sum and add weight */
+TARGET void ChargeWeight(double val, double weight, double& numerator, double& denominator)
+{
+	double v1 = val * weight;
+	if (IsNormal(v1))
+	{
+		numerator += v1;
+		denominator += weight;
+	}
+}
+
+/* Add a value to sum and add weight */
+TARGET void ChargeWeight(float val, float weight, float& numerator, float& denominator)
+{
+	float v1 = val * weight;
+	if (IsNormal(v1))
+	{
+		numerator += v1;
+		denominator += weight;
 	}
 }
 

@@ -354,10 +354,10 @@ TARGET512 int64 GetMinIdx512(double* A, int64 n, double& val)
 			REP(N) nidx[kk] = _mm512_add_epi64(nidx[kk], msep);
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) midx[kk] = _mm512_mask_mov_epi64(midx[kk], _mm512_cmp_pd_mask(min1[kk], min1[kk + K], _CMP_GT_OS), midx[kk + K]);
-			REP(K) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + K]);
+			REP(KK) midx[kk] = _mm512_mask_mov_epi64(midx[kk], _mm512_cmp_pd_mask(min1[kk], min1[kk + KK], _CMP_GT_OS), midx[kk + KK]);
+			REP(KK) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + KK]);
 		}
 
 		for (int64 j = 0; j < N * sizeof(__m512d) / sizeof(double); ++j)
@@ -404,10 +404,10 @@ TARGET512 int64 GetMinIdx512(float* A, int64 n, float& val)
 			REP(N) nidx[kk] = _mm512_add_epi64(nidx[kk], msep);
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) midx[kk] = _mm512_mask_mov_epi32(midx[kk], _mm512_cmp_ps_mask(min1[kk], min1[kk + K], _CMP_GT_OS), midx[kk + K]);
-			REP(K) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + K]);
+			REP(KK) midx[kk] = _mm512_mask_mov_epi32(midx[kk], _mm512_cmp_ps_mask(min1[kk], min1[kk + KK], _CMP_GT_OS), midx[kk + KK]);
+			REP(KK) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + KK]);
 		}
 
 		for (int64 j = 0; j < sizeof(__m512) / sizeof(float); ++j)
@@ -452,10 +452,10 @@ TARGET512 void GetMinMaxVal512(double* A, int64 n, double& minv, double& maxv)
 			}
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + K]);
-			REP(K) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + K]);
+			REP(KK) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + KK]);
+			REP(KK) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + KK]);
 		}
 
 		minv = _mm512_reduce_min_pd(min1[0]);
@@ -493,10 +493,10 @@ TARGET512 void GetMinMaxVal512(float* A, int64 n, float& minv, float& maxv)
 			}
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + K]);
-			REP(K) max1[kk] = _mm512_max_ps(max1[kk], max1[kk + K]);
+			REP(KK) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + KK]);
+			REP(KK) max1[kk] = _mm512_max_ps(max1[kk], max1[kk + KK]);
 		}
 
 		minv = _mm512_reduce_min_ps(min1[0]);
@@ -530,9 +530,9 @@ TARGET512 double GetMaxVal512(double* A, int64 n)
 			}
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + K]);
-
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + KK]);
+		
 		val = _mm512_reduce_max_pd(max1[0]);
 	}
 
@@ -560,8 +560,8 @@ TARGET512 float GetMaxVal512(float* A, int64 n)
 			REP(N) { max1[kk] = _mm512_max_ps(max1[kk], _mm512_loadu_ps(A)); A += sizeof(__m512) / sizeof(float); }
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) max1[kk] = _mm512_max_ps(max1[kk], max1[kk + K]);
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) max1[kk] = _mm512_max_ps(max1[kk], max1[kk + KK]);
 
 		__m128* max2 = (__m128*)max1;
 		REP(2) max2[kk] = _mm_max_ps(max2[kk], max2[kk + 2]);
@@ -601,8 +601,8 @@ TARGET512 double GetMaxVal512(double* A, int64 n, int64 sep)
 			}
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + K]);
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + KK]);
 
 		val = _mm512_reduce_max_pd(max1[0]);
 	}
@@ -636,8 +636,8 @@ TARGET512 float GetMaxVal512(float* A, int64 n, int64 sep)
 			}
 		}
 
-		for (int K = sizeof(max1) / sizeof(max1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) max1[kk] = _mm256_max_ps(max1[kk], max1[kk + K]);
+		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) max1[kk] = _mm256_max_ps(max1[kk], max1[kk + KK]);
 
 		__m128* max2 = (__m128*)max1;
 		REP(1) max2[kk] = _mm_max_ps(max2[kk], max2[kk + 1]);
@@ -675,8 +675,8 @@ TARGET512 double GetMinVal512(double* A, int64 n)
 			}
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + K]);
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + KK]);
 
 		val = _mm512_reduce_min_pd(min1[0]);
 	}
@@ -705,8 +705,8 @@ TARGET512 float GetMinVal512(float* A, int64 n)
 			REP(N) { min1[kk] = _mm512_min_ps(min1[kk], _mm512_loadu_ps(A)); A += sizeof(__m512) / sizeof(float); }
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + K]);
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + KK]);
 
 		__m128* min2 = (__m128*)min1;
 		REP(2) min2[kk] = _mm_min_ps(min2[kk], min2[kk + 2]);
@@ -744,8 +744,8 @@ TARGET512 int64 GetMinVal512(int64* A, int64 n)
 			}
 		}
 
-		for (int K = sizeof(min1) / sizeof(min1[0]) / 2; K >= 1; K >>= 1)
-			REP(K) min1[kk] = _mm512_min_epi64(min1[kk], min1[kk + K]);
+		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) min1[kk] = _mm512_min_epi64(min1[kk], min1[kk + KK]);
 
 		val = _mm512_reduce_min_epi64(min1[0]);
 	}
@@ -1230,8 +1230,8 @@ TARGET512 double Sum512(double* A, int64 n)
 			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1263,8 +1263,8 @@ TARGET512 double Sum512(float* A, int64 n)
 			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1296,8 +1296,8 @@ TARGET512 float Sum512x(float* A, int64 n)
 			REP(N) s[kk] = _mm512_add_ps(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_ps(s[0]);
 	}
@@ -1358,8 +1358,8 @@ TARGET512 double Sum512(double* A, int64 n, int64 sep)
 			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1399,8 +1399,8 @@ TARGET512 double Sum512(float* A, int64 n, int64 sep)
 			}
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1435,8 +1435,8 @@ TARGET512 float Sum512x(float* A, int64 n, int64 sep)
 			REP(N) { s[kk] = _mm512_add_ps(s[kk], _mm512_i32xxgather_ps(vindex, A, sizeof(float))); A += sep * sizeof(__m512) / sizeof(float); }
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_ps(s[0]);
 	}
@@ -1451,7 +1451,7 @@ TARGET512 float Sum512x(float* A, int64 n, int64 sep)
 	*/
 }
 
-TARGET512 void Sum512(double* A, double** B, int64 k, int64 n)
+TARGET512 void Sum512(double* A, double** B, int64 KK, int64 n)
 {
 	constexpr int N = 16;
 	int64 i = 0;
@@ -1464,7 +1464,7 @@ TARGET512 void Sum512(double* A, double** B, int64 k, int64 n)
 		{
 			REP(N) a[kk] = _mm512_setzero_pd();
 
-			for (int64 j = 0; j < k; ++j)
+			for (int64 j = 0; j < KK; ++j)
 				REP(N) a[kk] = _mm512_add_pd(a[kk], _mm512_loadu_pd(&B[j][i + kk * sizeof(__m512d) / sizeof(double)]));
 
 			REP(N) { _mm512_storeu_pd(A, a[kk]); A += sizeof(__m512d) / sizeof(double); }
@@ -1474,13 +1474,13 @@ TARGET512 void Sum512(double* A, double** B, int64 k, int64 n)
 	for (; i < n; ++i)
 	{
 		double Ai = 0;
-		for (int64 j = 0; j < k; ++j)
+		for (int64 j = 0; j < KK; ++j)
 			Ai += B[j][i];
 		*A++ = Ai;
 	}
 }
 
-TARGET512 void Sum512(float* A, float** B, int64 k, int64 n)
+TARGET512 void Sum512(float* A, float** B, int64 KK, int64 n)
 {
 	constexpr int N = 16;
 	int64 i = 0;
@@ -1493,7 +1493,7 @@ TARGET512 void Sum512(float* A, float** B, int64 k, int64 n)
 		{
 			REP(N) a[kk] = _mm512_setzero_pd();
 
-			for (int64 j = 0; j < k; ++j)
+			for (int64 j = 0; j < KK; ++j)
 				REP(N) a[kk] = _mm512_add_pd(a[kk], _mm512_cvtps_pd(_mm256_loadu_ps(&B[j][i + kk * sizeof(__m256) / sizeof(float)])));
 
 			REP(N) { _mm256_storeu_ps(A, _mm512_cvtpd_ps(a[kk])); A += sizeof(__m256) / sizeof(float); }
@@ -1503,7 +1503,7 @@ TARGET512 void Sum512(float* A, float** B, int64 k, int64 n)
 	for (; i < n; ++i)
 	{
 		double Ai = 0;
-		for (int64 j = 0; j < k; ++j)
+		for (int64 j = 0; j < KK; ++j)
 			Ai += B[j][i];
 		*A++ = Ai;
 	}
@@ -1527,8 +1527,8 @@ TARGET512 double Prod512(double* A, int64 n)
 			REP(N) s[kk] = _mm512_mul_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_mul_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_mul_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_mul_pd(s[0]);
 	}
@@ -1563,8 +1563,8 @@ TARGET512 double Prod512(float* A, int64 n)
 			REP(N) s[kk] = _mm512_mul_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_mul_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_mul_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_mul_pd(s[0]);
 	}
@@ -1597,8 +1597,8 @@ TARGET512 float Prod512x(float* A, int64 n)
 			REP(N) s[kk] = _mm512_mul_ps(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_mul_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_mul_ps(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_mul_ps(s[0]);
 	}
@@ -1644,8 +1644,8 @@ TARGET512 double SumSquare512(double* A, int64 n)
 			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1679,8 +1679,8 @@ TARGET512 double SumSquare512(float* A, int64 n)
 			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1715,8 +1715,8 @@ TARGET512 float SumSquare512x(float* A, int64 n)
 			REP(N) s[kk] = _mm512_add_ps(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_ps(s[0]);
 	}
@@ -1794,10 +1794,10 @@ TARGET512 void SumSumSquare512(double* A, int64 n, double& sum, double& sumsq)
 			REP(N) s2[kk] = _mm512_add_pd(s2[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s1) / sizeof(s1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) s1[kk] = _mm512_add_pd(s1[kk], s1[kk + K]);
-			REP(K) s2[kk] = _mm512_add_pd(s2[kk], s2[kk + K]);
+			REP(KK) s1[kk] = _mm512_add_pd(s1[kk], s1[kk + KK]);
+			REP(KK) s2[kk] = _mm512_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = __mm512_reduce_add_pd(s1[0]);
@@ -1838,10 +1838,10 @@ TARGET512 void SumSumSquare512(float* A, int64 n, double& sum, double& sumsq)
 			REP(N) s2[kk] = _mm512_add_pd(s2[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s1) / sizeof(s1[0]) / 2; K >= 1; K >>= 1)
+		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
 		{
-			REP(K) s1[kk] = _mm512_add_pd(s1[kk], s1[kk + K]);
-			REP(K) s2[kk] = _mm512_add_pd(s2[kk], s2[kk + K]);
+			REP(KK) s1[kk] = _mm512_add_pd(s1[kk], s1[kk + KK]);
+			REP(KK) s2[kk] = _mm512_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = __mm512_reduce_add_pd(s1[0]);
@@ -1919,8 +1919,8 @@ TARGET512 double SumProd512(double* A, double* B, int64 n)
 			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1957,8 +1957,8 @@ TARGET512 double SumProd512(float* A, float* B, int64 n)
 			}
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_pd(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1994,8 +1994,8 @@ TARGET512 float SumProd512x(float* A, float* B, int64 n)
 			}
 		}
 
-		for (int K = sizeof(s) / sizeof(s[0]) / 2; K >= 1; K >>= 1)
-			REP(K) s[kk] = _mm512_add_ps(s[kk], s[kk + K]);
+		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
+			REP(KK) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_ps(s[0]);
 	}
@@ -2107,6 +2107,29 @@ TARGET512 void Add512(int* A, int* B, int64 n)
 
 	for (; i < n; ++i, A++, B++)
 		*A += *B;
+}
+
+TARGET512 void Add512(int* A, int B, int64 n)
+{
+	constexpr int N = 4;
+	int64 i = 0;
+
+	if (n >= N * sizeof(__m512i) / sizeof(int))
+	{
+		__m512i a[N], b = _mm512_set1_epi32(B);
+
+		for (int64 l1 = n - N * sizeof(__m512i) / sizeof(int); i <= l1; i += N * sizeof(__m512i) / sizeof(int))
+		{
+			REP(N) { a[kk] = _mm512_loadu_si512((__m512i*)A); A += sizeof(__m512i) / sizeof(int); }
+
+			REP(N) a[kk] = _mm512_add_epi32(a[kk], b);
+
+			REP(N) _mm512_storeu_si512((__m512i*)(A + (kk - N) * sizeof(__m512i) / sizeof(int)), a[kk]);
+		}
+	}
+
+	for (; i < n; ++i, A++)
+		*A += B;
 }
 
 TARGET512 void Add512(double* A, double B, int64 n)

@@ -25,6 +25,8 @@ TARGET void DIVSUM<REAL>::Init()
     NEPP = 1;
     NEID = 1;
     NESI = 1;
+	minploidy = 100;
+	maxploidy = 0;
     InitLock(lock);
 }
 /* Uninitialize sum */
@@ -37,6 +39,8 @@ TARGET void DIVSUM<REAL>::UnInit()
     NEPP = 1;
     NEID = 1;
     NESI = 1;
+	minploidy = 100;
+	maxploidy = 0;
     UnInitLock(lock);
 }
 
@@ -52,24 +56,30 @@ TARGET void DIVSUM<REAL>::Add(DIVERSITY<REAL>& loc)
 	if (IsNormal(loc.NEID)) NEID *= loc.NEID;
 	if (IsNormal(loc.NESI)) NESI *= loc.NESI;
 
-	ChargeSum(loc.k, k, kc);
-	ChargeSum(loc.n, n, nc);
-	ChargeSum(loc.nhaplo, nhaplo, nhaploc);
-	ChargeSum(loc.ptype, ptype, ptypec);
-	ChargeSum(loc.pval, pval, pvalc);
-	ChargeSum(loc.he, he, hec);
-	ChargeSum(loc.ho, ho, hoc);
-	ChargeSum(loc.pic, pic, picc);
-	ChargeSum(loc.ae, ae, aec);
-	ChargeSum(loc.I, I, Ic);
-	ChargeSum(loc.fis, fis, fisc);
-	minploidy = Min((int)loc.minploidy, minploidy);
-	maxploidy = Max((int)loc.maxploidy, maxploidy);
+	if (loc.k >= 2)
+	{
+		ChargeSum(loc.k, k, kc);
+		ChargeSum(loc.n, n, nc);
+		ChargeSum(loc.nhaplo, nhaplo, nhaploc);
+		ChargeSum(loc.ptype, ptype, ptypec);
+		ChargeSum(loc.pval, pval, pvalc);
+
+		ChargeWeight(loc.ho,  loc.how, ho,  how);
+		ChargeWeight(loc.he,  loc.hew, he,  hew);
+		ChargeWeight(loc.pic, loc.hew, pic, picw);
+		ChargeWeight(loc.ae,  loc.hew, ae,  aew);
+		ChargeWeight(loc.I,   loc.hew, I,   Iw);
+	}
+
+	if (loc.minploidy != 0 && loc.minploidy != 100)
+		minploidy = Min((int)loc.minploidy, minploidy);
+	if (loc.maxploidy != 0 && loc.maxploidy != 100)
+		maxploidy = Max((int)loc.maxploidy, maxploidy);
 
 	UnLock(lock);
 }
 
-/* Add loc to the sum */
+/* Output diversity indices */
 template<typename REAL>
 TARGET void DIVSUM<REAL>::Write(FILE* f, const char* name)
 {
@@ -78,32 +88,36 @@ TARGET void DIVSUM<REAL>::Write(FILE* f, const char* name)
 	nhaplo /= nhaploc;
 	ptype /= ptypec;
 	pval /= pvalc;
-	he /= hec;
-	ho /= hoc;
-	pic /= picc;
-	ae /= aec;
-	I /= Ic;
-	fis /= fisc;
+
+	ho /= how;
+	he /= hew;
+	pic /= picw;
+	ae /= aew;
+	I /= Iw;
 
 	fprintf(f, "%s%s%c(%llu)%c%d-%d%c",
 		g_linebreak_val, name,
 		g_delimiter_val, (uint64)nloc,
 		g_delimiter_val, minploidy,
 		maxploidy, g_delimiter_val);
+
 	WriteReal(f, k); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, n); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, nhaplo); fprintf(f, "%c", g_delimiter_val);
+
 	WriteReal(f, ho); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, he); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, pic); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, ae); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, I); fprintf(f, "%c", g_delimiter_val);
+
 	WriteReal(f, NE1P); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, NE2P); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, NEPP); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, NEID); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, NESI); fprintf(f, "%c", g_delimiter_val);
-	WriteReal(f, fis); fprintf(f, "%c", g_delimiter_val);
+
+	WriteReal(f, 1 - ho / he); fprintf(f, "%c", g_delimiter_val);
 	fprintf(f, "-%c-%c-", g_delimiter_val, g_delimiter_val);
 }
 
@@ -135,26 +149,32 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 		nhaplo = 0;
 		minploidy = 0;
 		maxploidy = 0;
+
 		bmaf = NAN;
 		k = 0;
 		ptype = NAN;
 		pval = NAN;
-		he = NAN;
+
+		how = NAN;
+		hew = NAN;
+
 		ho = NAN;
+		he = NAN;
 		pic = NAN;
 		ae = NAN;
 		I = NAN;
+
 		NE1P = NAN;
 		NE2P = NAN;
 		NEPP = NAN;
 		NEID = NAN;
 		NESI = NAN;
-		fis = NAN;
+
 		return;
 	}
 
 	REAL* fre = cpop->GetFreq(l);
-	ho = 0; nhaplo = 0;
+	ho = 0; how = 0; nhaplo = 0;
 
 	ushort* gcount = cpop->GetGenoCount(l);
 	LOCSTAT1& stat1 = cpop->loc_stat1[l];
@@ -184,7 +204,9 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 		if (ploidy == 0) ploidy = v;
 		if (maxploidy != minploidy) varploidy = true;
 
-		ho += gt.HIndex() * c * v * (v - 1) / 2;
+		ho += gt.HIndex() * c * v * (v - 1);
+		how += c * v * (v - 1);
+
 		n += c;
 		v2i += c * v * (v - 1) / 2;
 
@@ -207,7 +229,9 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 		if (ploidy == 0) ploidy = v;
 		if (maxploidy != minploidy) varploidy = true;
 
-		ho += gt.HIndex() * c * v * (v - 1) / 2;
+		ho += gt.HIndex() * c * v * (v - 1);
+		how += c * v * (v - 1);
+
 		n += c;
 		v2i += c * v * (v - 1) / 2;
 
@@ -221,20 +245,45 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 
 	if (maxploidy == 0) minploidy = maxploidy = 0;
 
-	ho /= v2i;
 	ptype = n / (REAL)ni;
 
 	if (!reassigned)
 		Unify(fre, k2);
+
+	k = stat1.k = n == 0 ? 0 : (ushort)CountK(fre, k2);
+
+	//set statistics to nan if k <= 2 to avoid involved in further average
+	if (k < 2)
+	{
+		how = NAN;
+		hew = NAN;
+
+		ho = NAN;
+		he = NAN;
+		pic = NAN;
+		ae = NAN;
+		I = NAN;
+		NE1P = NAN;
+		NE2P = NAN;
+		NEPP = NAN;
+		NESI = NAN;
+		NEID = NAN;
+		g = NAN;
+		df = NAN;
+		pval = NAN;
+		return;
+	}
+
+	ho = ho / how;
 	bmaf = 1;
 	he = 1;
 	pic = 0;
 	ae = 0;
 	I = 0;
-	k = stat1.k = (ushort)CountK(fre, k2);
+
 	if (ad == 0) stat1.nhaplo = nhaplo;
 	else nhaplo = stat1.nhaplo;
-	int nh = nhaplo;
+	int nh = nhaplo + 0.5;
 
 	REAL a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0;
 	for (int a = 0; a < k2; ++a)
@@ -256,9 +305,10 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 
 	if (bmaf > 0.5) bmaf = 1 - bmaf;
 
-	he -= a2;
+	hew = nhaplo * nhaplo;
+	he = he - a2;
+
 	ae = 1 / a2;
-	fis = 1 - ho / he;
 	NE1P = 1 - (1 - 4 * a2 + 2 * a2 * a2 + 4 * a3 - 3 * a4);
 	NE2P = 1 - (1 - 2 * a2 * a2 - 2 * a2 + a3 + 3 * a2 * a3 - 3 * a5 + 2 * a4);
 	NEPP = 1 - (1 + 4 * a4 - 4 * a5 - 3 * a6 - 8 * a2 * a2 + 8 * a2 * a3 + 2 * a3 * a3);
@@ -270,8 +320,8 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 	df = NAN;
 	pval = NAN;
 
-	//do perform HWE test for locus diversity filter
-	if (ad == 0 && !varploidy && !haplotype)
+	// perform HWE test for locus diversity filter
+	if (ad == 0 && !varploidy) // disable !haplotype on 2023-4-4
 	{
 		// initial mapping
 		ploidy = maxploidy;
@@ -292,7 +342,6 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 		VLA_NEW(amap, int, k2);
 
 		ushort alleles[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
-
 
 		bool flag = false;
 		for (int kk = k2; kk >= 1 && !flag; kk = (kk <= k ? kk - 1 : k))
@@ -470,24 +519,27 @@ TARGET void DIVERSITY<REAL>::WriteLocus(FILE* f, const char* name)
 	//sum pop, sum locus
 	char name_buf[NAME_BUF_LEN];
 	fprintf(f, "%s%s%c%s", g_linebreak_val, name, g_delimiter_val, GetLoc(l).GetNameStr(name_buf));
-	fprintf(f, "%c%d-%d", g_delimiter_val, minploidy, maxploidy);
-	fprintf(f, "%c%d", g_delimiter_val, k);
-	fprintf(f, "%c%d", g_delimiter_val, n);
-	fprintf(f, "%c%d%c", g_delimiter_val, nhaplo, g_delimiter_val);
+	fprintf(f, "%c%d-%d",  g_delimiter_val, minploidy, maxploidy);
+	fprintf(f, "%c%d",     g_delimiter_val, k);
+	fprintf(f, "%c%d",     g_delimiter_val, n);
+	fprintf(f, "%c%d%c",   g_delimiter_val, nhaplo, g_delimiter_val);
+
 	WriteReal(f, ho); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, he); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, pic); fprintf(f, "%c", g_delimiter_val);
-	WriteReal(f, ae); fprintf(f, "%c", g_delimiter_val);
-	WriteReal(f, I); fprintf(f, "%c", g_delimiter_val);
+	WriteReal(f, ae);  fprintf(f, "%c", g_delimiter_val);
+	WriteReal(f, I);   fprintf(f, "%c", g_delimiter_val);
+
 	WriteReal(f, NE1P); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, NE2P); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, NEPP); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, NEID); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, NESI); fprintf(f, "%c", g_delimiter_val);
-	WriteReal(f, fis); fprintf(f, "%c", g_delimiter_val);
-	WriteReal(f, g); fprintf(f, "%c", g_delimiter_val);
-	if (IsError(df)) fprintf(f, "0%c", g_delimiter_val);
-	else fprintf(f, "%0.0lf%c", df, g_delimiter_val);
+
+	WriteReal(f, 1 - ho / he); fprintf(f, "%c", g_delimiter_val);
+	WriteReal(f, g);   fprintf(f, "%c", g_delimiter_val);
+	if (IsError(df))   fprintf(f, "0%c", g_delimiter_val);
+	else               fprintf(f, "%0.0lf%c", df, g_delimiter_val);
 	WriteReal(f, pval);
 }
 

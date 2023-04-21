@@ -72,7 +72,6 @@ extern bool f_qual_b;							extern double f_qual_min, f_qual_max;
 extern bool f_type_b;							extern int f_type_val;
 extern bool f_original_b;						extern int f_original_val;
 extern bool f_pop_b;							extern string f_pop_val;
-extern bool f_region_b;							extern string f_region_val;
 extern bool f_bmaf_b;							extern double f_bmaf_min, f_bmaf_max;
 extern bool f_k_b;								extern int f_k_min, f_k_max;
 extern bool f_n_b;								extern int f_n_min, f_n_max;
@@ -104,6 +103,7 @@ extern bool haplotype_genotypes_b;				extern int haplotype_genotypes_min, haplot
 /* File conversion */
 extern bool convert;
 extern bool convert_format_b;					extern byte convert_format_val[N_MAX_OPTION];
+extern bool convert_mode_b;						extern int convert_mode_val;
 
 /* Individual statistics */
 extern bool indstat;
@@ -145,6 +145,17 @@ extern bool amova_test_b;						extern int amova_test_val;
 extern bool amova_nperm_b;						extern int amova_nperm_val;
 extern bool amova_pseudo_b;						extern int amova_pseudo_val;
 extern bool amova_printss_b;					extern int amova_printss_val;
+
+/* Sliding window */
+extern bool slide;
+extern bool slide_plot_b;						extern int slide_plot_val;
+extern bool slide_plot_columns_b;				extern int slide_plot_columns_val[N_MAX_SLIDEPLOT]; //values begins from 1
+extern bool slide_plot_styles_b;				extern int slide_plot_styles_val[N_MAX_SLIDEPLOT];
+extern bool slide_windowsize_b;					extern int slide_windowsize_val;
+extern bool slide_windowstep_b;					extern int slide_windowstep_val;
+extern bool slide_minvariants_b;				extern int slide_minvariants_val;
+extern bool slide_estimator_b;					extern byte slide_estimator_val[N_MAX_OPTION];
+extern bool slide_pop_b;						extern string slide_pop_val;
 
 /* Population assignment */
 extern bool popas;
@@ -302,7 +313,6 @@ TARGET void SetDefaultParameters()
 	f_type_b = false;				f_type_val = 0;
 	f_original_b = false;			f_original_val = 0;
 	f_pop_b = false;				f_pop_val = "total";
-	f_region_b = false;				f_region_val = "";
 	f_bmaf_b = false;				f_bmaf_min = 0;					f_bmaf_max = 0;
 	f_k_b = false;					f_k_min = 0;					f_k_max = 0;
 	f_n_b = false;					f_n_min = 0;					f_n_max = 0;
@@ -365,6 +375,7 @@ TARGET void SetDefaultParameters()
 
 	convert = false;
 	convert_format_b = false;		SetZero(convert_format_val, N_MAX_OPTION);		convert_format_val[1] = 2;
+	convert_mode_b = false;		    convert_mode_val = 1;
 
 	indstat = false;
 	indstat_type_b = false;			SetZero(indstat_type_val, N_MAX_OPTION);		indstat_type_val[1] = indstat_type_val[2] = 1;
@@ -378,9 +389,9 @@ TARGET void SetDefaultParameters()
 	diversity_model_b = false;		SetZero(diversity_model_val, N_MAX_OPTION);		diversity_model_val[1] = 1;
 
 	fst = false;
-	fst_level_b = false;			SetZero(fst_level_val, N_MAX_OPTION);			fst_level_val[1] = 1;
+	fst_level_b = false;			SetZero(fst_level_val, N_MAX_OPTION);			fst_level_val[5] = 1;
 	fst_estimator_b = false;		SetZero(fst_estimator_val, N_MAX_OPTION);		fst_estimator_val[1] = 1;
-	fst_fmt_b = false;				SetZero(fst_fmt_val, N_MAX_OPTION);				fst_estimator_val[1] = 1;
+	fst_fmt_b = false;				SetZero(fst_fmt_val, N_MAX_OPTION);				fst_fmt_val[1] = 1;
 	fst_locus_b = false;			SetZero(fst_locus_val, N_MAX_OPTION);			fst_locus_val[1] = 1;
 	fst_test_b = false;				SetZero(fst_test_val, N_MAX_OPTION);
 
@@ -399,6 +410,16 @@ TARGET void SetDefaultParameters()
 	amova_nperm_b = false;			amova_nperm_val = 9999;
 	amova_pseudo_b = false;			amova_pseudo_val = 50;
 	amova_printss_b = false;		amova_printss_val = 2;
+
+	slide = false;
+	slide_plot_b = false;			slide_plot_val = 2;
+	slide_plot_columns_b = false;	slide_plot_columns_val[0] = 1; slide_plot_columns_val[1] = 2; slide_plot_columns_val[2] = 3; slide_plot_columns_val[3] = 4; slide_plot_columns_val[4] = 5;
+	slide_plot_styles_b = false;	slide_plot_styles_val[0] = 1;  slide_plot_styles_val[1] = 2;  slide_plot_styles_val[2] = 3;  slide_plot_styles_val[3] = 4;  slide_plot_styles_val[4] = 5;
+	slide_windowsize_b = false;		slide_windowsize_val = 1000000;
+	slide_windowstep_b = false;		slide_windowstep_val = 100000;
+	slide_minvariants_b = false;	slide_minvariants_val = 10;
+	slide_estimator_b = false;		SetZero(slide_estimator_val, N_MAX_OPTION);	    slide_estimator_val[1] = 1;
+	slide_pop_b = false;			slide_pop_val = "total";
 
 	popas = false;
 	popas_model_b = false;			SetZero(popas_model_val, N_MAX_OPTION);			popas_model_val[1] = 1;
@@ -541,14 +562,6 @@ TARGET void SetParameters(bool isparfile)
 				if (f_pop_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
 				f_pop_b = true;
 				f_pop_val = TrimParQuote(argv[i]);
-				if (f_region_b) Exit("\nError: options -f_pop and -f_region are exclusive, delete sum.\n");
-			}
-			else if (!LwrLineCmp("-f_region=", argv[i]))
-			{
-				if (f_region_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
-				f_region_b = true;
-				f_region_val = TrimParQuote(argv[i]);
-				if (f_pop_b) Exit("\nError: options -f_pop and -f_region are exclusive, delete sum.\n");
 			}
 			else if (!LwrLineCmp("-f_bmaf=", argv[i]))
 				GetRangeParDouble(argv[i], f_bmaf_b, f_bmaf_min, f_bmaf_max, 0, 0.5);
@@ -674,7 +687,7 @@ TARGET void SetParameters(bool isparfile)
 				}
 			}
 			else if (!LwrLineCmp("-g_format=", argv[i]))
-				GetParString(argv[i], "vcf|bcf|genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive", g_format_b, g_format_val);
+				GetParString(argv[i], "vcf|bcf|genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive|plink", g_format_b, g_format_val);
 			else if (!LwrLineCmp("-g_locusname=", argv[i]))
 				GetParString(argv[i], "chr|pos|chr_pos|chr_ref_alt|pos_ref_alt|chr_pos_ref_alt", g_locusname_b, g_locusname_val);
 			else if (!LwrLineCmp("-g_extracol=", argv[i]))
@@ -758,12 +771,41 @@ TARGET void SetParameters(bool isparfile)
 			else
 				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
 		}
+		else if (!LwrLineCmp("-slide", argv[i]))
+		{
+			if (!LwrStrCmp("-slide", argv[i]))
+				GetParBool(argv[i], slide);
+			else if (!LwrLineCmp("-slide_plot=", argv[i]))
+				GetParString(argv[i], "yes|no", slide_plot_b, slide_plot_val);
+			else if (!LwrLineCmp("-slide_plot_columns=", argv[i]))
+				GetParIntegerArray(argv[i], slide_plot_columns_b, slide_plot_columns_val, 1, 100, N_MAX_SLIDEPLOT);
+			else if (!LwrLineCmp("-slide_plot_styles=", argv[i]))
+				GetParStringArray(argv[i], "dot|bar|line|heat", slide_plot_styles_b, slide_plot_styles_val, N_MAX_SLIDEPLOT);
+			else if (!LwrLineCmp("-slide_windowsize=", argv[i]))
+				GetParInteger(argv[i], slide_windowsize_b, slide_windowsize_val, 1000, 1000000000);
+			else if (!LwrLineCmp("-slide_windowstep=", argv[i]))
+				GetParInteger(argv[i], slide_windowstep_b, slide_windowstep_val, 1000, 1000000000);
+			else if (!LwrLineCmp("-slide_minvariants=", argv[i]))
+				GetParInteger(argv[i], slide_minvariants_b, slide_minvariants_val, 10, 1000000000);
+			else if (!LwrLineCmp("-slide_estimator=", argv[i]))
+				GetParStringMultiSel(argv[i], "Nei1973|Weir1984|Hudson1992|Hedrick2005|Jost2008|Huang2021_aneu|dxy|pi|thetaw|TajimaD|r2|D'|r2D|Delta'|fis|ho|he|pic|ae|I", slide_estimator_b, slide_estimator_val);
+			else if (!LwrLineCmp("-slide_pop=", argv[i]))
+			{
+				if (slide_pop_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
+				slide_pop_b = true;
+				slide_pop_val = TrimParQuote(argv[i]);
+			}
+			else
+				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
+		}
 		else if (!LwrLineCmp("-convert", argv[i]))
 		{
 			if (!LwrStrCmp("-convert", argv[i]))
 				GetParBool(argv[i], convert);
 			else if (!LwrLineCmp("-convert_format=", argv[i]))
-				GetParStringMultiSel(argv[i], "genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive", convert_format_b, convert_format_val);
+				GetParStringMultiSel(argv[i], "genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive|plink", convert_format_b, convert_format_val);
+			else if (!LwrLineCmp("-convert_mode=", argv[i]))
+				GetParString(argv[i], "disable|truncate|choose|split|shuffle", convert_mode_b, convert_mode_val);
 			else
 				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
 		}
@@ -1091,7 +1133,7 @@ TARGET void ReleaseParameters()
 	string().swap(g_output_val);
 	string().swap(g_tmpdir_val);
 	string().swap(f_pop_val);
-	string().swap(f_region_val);
+	string().swap(slide_pop_val);
 	string().swap(spa_coord_val);
 	string().swap(OUTDIR);
 	string().swap(EXEDIR);

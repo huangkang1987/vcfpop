@@ -32,14 +32,14 @@ start /min /b clang-cl.exe %FLAG% mom2.cpp
 start /min /b clang-cl.exe %FLAG% ml.cpp
 start /min /b clang-cl.exe %FLAG% mom.cpp 
 start /min /b clang-cl.exe %FLAG% dre.cpp mlbin.cpp matrix.cpp
-start /min /b clang-cl.exe %FLAG% vcfpop.cpp global.cpp hash.cpp math2.cpp mathNEO.cpp mathSSE.cpp parameters.cpp misc.cpp file.cpp string2.cpp statistics.cpp spa.cpp ploidyinfer.cpp function.cpp load.cpp filter.cpp diversity.cpp haplotype.cpp conversion.cpp indstat.cpp dist.cpp pcoa.cpp clustering.cpp diff.cpp kinship.cpp relatedness.cpp amova.cpp popas.cpp structure.cpp structureNEO.cpp structureSSE.cpp ad.cpp menu.cpp structureCUDA.cu
+start /min /b clang-cl.exe %FLAG% vcfpop.cpp global.cpp hash.cpp math2.cpp mathNEO.cpp mathSSE.cpp parameters.cpp misc.cpp file.cpp string2.cpp statistics.cpp spa.cpp ploidyinfer.cpp function.cpp load.cpp filter.cpp diversity.cpp slide.cpp haplotype.cpp conversion.cpp indstat.cpp dist.cpp pcoa.cpp clustering.cpp diff.cpp kinship.cpp relatedness.cpp amova.cpp popas.cpp structure.cpp structureNEO.cpp structureSSE.cpp ad.cpp menu.cpp structureCUDA.cu
 start /min /b clang-cl.exe %FLAG% -mavx -mavx2 -mfma /arch:AVX2 mathAVX.cpp structureAVX.cpp
 start /min /b clang-cl.exe %FLAG% -mavx -mavx2 -mfma -mavx512f -mavx512bw -mavx512 /arch:AVX512 math512.cpp structure512.cpp
 
 clang-cl.exe %FLAG% ml2.cpp
 
 ::link
-clang-cl.exe /Fe:vcfpop.msvc.clang.exe -MT -DSFML_STATIC vcfpop.obj dre.obj ml.obj ml2.obj mlbin.obj mom.obj mom2.obj global.obj hash.obj math2.obj mathNEO.obj mathSSE.obj mathAVX.obj math512.obj parameters.obj misc.obj file.obj string2.obj statistics.obj matrix.obj spa.obj ploidyinfer.obj function.obj load.obj filter.obj diversity.obj haplotype.obj conversion.obj indstat.obj dist.obj pcoa.obj clustering.obj diff.obj kinship.obj relatedness.obj amova.obj popas.obj structure.obj structureNEO.obj structureSSE.obj structureAVX.obj structure512.obj structureCUDA.obj ad.obj menu.obj cudart.lib zlibstat.lib kernel32.lib libomp.lib /link %LIBDIR%
+clang-cl.exe /Fe:vcfpop.msvc.clang.exe -MT -DSFML_STATIC vcfpop.obj dre.obj ml.obj ml2.obj mlbin.obj mom.obj mom2.obj global.obj hash.obj math2.obj mathNEO.obj mathSSE.obj mathAVX.obj math512.obj parameters.obj misc.obj file.obj string2.obj statistics.obj matrix.obj spa.obj ploidyinfer.obj function.obj load.obj filter.obj diversity.obj slide.obj haplotype.obj conversion.obj indstat.obj dist.obj pcoa.obj clustering.obj diff.obj kinship.obj relatedness.obj amova.obj popas.obj structure.obj structureNEO.obj structureSSE.obj structureAVX.obj structure512.obj structureCUDA.obj ad.obj menu.obj cudart.lib zlibstat.lib kernel32.lib libomp.lib /link %LIBDIR%
 
 ::copy and delete
 copy vcfpop.msvc.clang.exe ..\bin\vcfpop.msvc.clang.exe

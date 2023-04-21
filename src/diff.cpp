@@ -8,6 +8,8 @@ template struct FST<float >;
 
 template TARGET void CalcDiff<double>();
 template TARGET void CalcDiff<float >();
+template TARGET double FST<double>::dxy(POP<double>** grps, int n, double* buf, int64 l);
+template TARGET double FST<float >::dxy(POP<float >** grps, int n, double* buf, int64 l);
 
 #ifndef _FST
 /* Fst estimator warpper */
@@ -188,12 +190,12 @@ TARGET void FST<REAL>::Uninitialize()
 
 /* Nei 1973 Gst estimator based on heterozgysotiy */
 template<typename REAL>
-TARGET double FST<REAL>::Fst_Nei1973(POP<REAL>** grps, int n, double* each, double* buf)
+TARGET double FST<REAL>::Fst_Nei1973(POP<REAL>** grps, int n, double* each, double* buf, int64 _l, double* frac1, double* frac2)
 {
 	//weight by pop size chakraborty 1974, allow ad
 	double Dst = 0, Ht = 0;
 	double* pi = buf;
-	for (int64 l = 0; l < nloc; ++l)
+	for (int64 l = (_l == -1 ? 0 : _l); l < (_l == -1 ? nloc : _l + 1); ++l)
 	{
 		if (each) each[l] = NAN;
 		int k2 = GetLoc(l).k;
@@ -221,19 +223,20 @@ TARGET double FST<REAL>::Fst_Nei1973(POP<REAL>** grps, int n, double* each, doub
 		Ht += ht;
 		if (each) each[l] = IsError((ht - hs) / ht) ? NAN : (ht - hs) / ht;
 	}
+	if (_l != -1) { *frac1 = Dst; *frac2 = Ht; }
 	return Dst / Ht;
 }
 
 /* Weir 1984 Fst estimator based on variance components */
 template<typename REAL>
-TARGET double FST<REAL>::Fst_Weir1984(POP<REAL>** grps, int n, double* each)
+TARGET double FST<REAL>::Fst_Weir1984(POP<REAL>** grps, int n, double* each, int64 _l, double* frac1, double* frac2)
 {
 	//for diploid only, allow ad
 	if (minploidy != 2 || maxploidy != 2)
 		Exit("\nError: Weir1984 Fst estimator can only be applied for diploids\n");
 
 	double theta_W1 = 0, theta_W2 = 0;
-	for (int64 l = 0; l < nloc; ++l)
+	for (int64 l = (_l == -1 ? 0 : _l); l < (_l == -1 ? nloc : _l + 1); ++l)
 	{
 		if (each) each[l] = NAN;
 		int k2 = GetLoc(l).k;
@@ -289,17 +292,18 @@ TARGET double FST<REAL>::Fst_Weir1984(POP<REAL>** grps, int n, double* each)
 		if (each) each[l] = IsError(w1 / w2) ? NAN : w1 / w2;
 	}
 
+	if (_l != -1) { *frac1 = theta_W1; *frac2 = theta_W2; }
 	return theta_W1 / theta_W2;
 }
 
-/* Nei 1973 Fst estimator based on mean allele difference */
+/* Hudson 1992 Fst estimator based on mean allele difference */
 template<typename REAL>
-TARGET double FST<REAL>::Fst_Hudson1992(POP<REAL>** grps, int n, double* each, double* buf)
+TARGET double FST<REAL>::Fst_Hudson1992(POP<REAL>** grps, int n, double* each, double* buf, int64 _l, double* frac1, double* frac2)
 {
 	//do not need to weight, allow ad
 	double* Ni = buf;
 	double f1 = 0, f2 = 0;
-	for (int64 l = 0; l < nloc; ++l)
+	for (int64 l = (_l == -1 ? 0 : _l); l < (_l == -1 ? nloc : _l + 1); ++l)
 	{
 		if (each) each[l] = NAN;
 		int k2 = GetLoc(l).k;
@@ -343,12 +347,13 @@ TARGET double FST<REAL>::Fst_Hudson1992(POP<REAL>** grps, int n, double* each, d
 			f2 += hb;
 		}
 	}
+	if (_l != -1) { *frac1 = f1; *frac2 = f2; }
 	return f1 / f2;
 }
 
 /* Slatkin 1995 Fst estimator based on allele size */
 template<typename REAL>
-TARGET double FST<REAL>::Fst_Slatkin1995(POP<REAL>** grps, int n, double* each, double* buf)
+TARGET double FST<REAL>::Fst_Slatkin1995(POP<REAL>** grps, int n, double* each, double* buf, int64 _l, double* frac1, double* frac2)
 {
 	if (abs(g_format_val) <= BCF)
 		Exit("\nError: Slatkin1995 Fst estimator can only be applied for non-vcf input file, and should use size as allele identifier. \n");
@@ -356,7 +361,7 @@ TARGET double FST<REAL>::Fst_Slatkin1995(POP<REAL>** grps, int n, double* each, 
 	//do not need to weight, allow ad
 	double* nt = buf;
 	double f1 = 0, f2 = 0;
-	for (int64 l = 0; l < nloc; ++l)
+	for (int64 l = (_l == -1 ? 0 : _l); l < (_l == -1 ? nloc : _l + 1); ++l)
 	{
 		double Sw1 = 0, Sw2 = 0, St1 = 0, St2 = 0;
 		if (each) each[l] = NAN;
@@ -403,17 +408,19 @@ TARGET double FST<REAL>::Fst_Slatkin1995(POP<REAL>** grps, int n, double* each, 
 			f2 += St;
 		}
 	}
+
+	if (_l != -1) { *frac1 = f1; *frac2 = f2; }
 	return f1 / f2;
 }
 
 /* Hedrick 2005 G'st */
 template<typename REAL>
-TARGET double FST<REAL>::Fst_Hedrick2005(POP<REAL>** grps, int n, double* each, double* buf)
+TARGET double FST<REAL>::Fst_Hedrick2005(POP<REAL>** grps, int n, double* each, double* buf, int64 _l, double* frac1, double* frac2)
 {
 	//weight by pop size chakraborty 1974, allow ad
 	double DA = 0, DB = 0;
 	double* pi = buf;
-	for (int64 l = 0; l < nloc; ++l)
+	for (int64 l = (_l == -1 ? 0 : _l); l < (_l == -1 ? nloc : _l + 1); ++l)
 	{
 		if (each) each[l] = NAN;
 		int k2 = GetLoc(l).k;
@@ -442,17 +449,19 @@ TARGET double FST<REAL>::Fst_Hedrick2005(POP<REAL>** grps, int n, double* each, 
 		DB += db;
 		if (each) each[l] = IsError(da / db) ? NAN : da / db;
 	}
+
+	if (_l != -1) { *frac1 = DA; *frac2 = DB; }
 	return DA / DB;
 }
 
 /* Jost 2008 D */
 template<typename REAL>
-TARGET double FST<REAL>::Fst_Jost2008(POP<REAL>** grps, int n, double* each, double* buf)
+TARGET double FST<REAL>::Fst_Jost2008(POP<REAL>** grps, int n, double* each, double* buf, int64 _l, double* frac1, double* frac2)
 {
 	//weight by pop size chakraborty 1974, allow ad
 	double DA = 0, DB = 0;
 	double* pi = buf;
-	for (int64 l = 0; l < nloc; ++l)
+	for (int64 l = (_l == -1 ? 0 : _l); l < (_l == -1 ? nloc : _l + 1); ++l)
 	{
 		if (each) each[l] = NAN;
 		int k2 = GetLoc(l).k;
@@ -481,6 +490,8 @@ TARGET double FST<REAL>::Fst_Jost2008(POP<REAL>** grps, int n, double* each, dou
 		DB += db;
 		if (each) each[l] = IsError(da / db) ? NAN : da / db;
 	}
+
+	if (_l != -1) { *frac1 = DA; *frac2 = DB; }
 	return DA / DB;
 }
 
@@ -699,7 +710,7 @@ TARGET double FST<REAL>::Fst_Huang2021_homo(POP<REAL>** grps, int n, int layer, 
 
 /* Huang 2021 Fst estimator based on multi-level amova */
 template<typename REAL>
-TARGET double FST<REAL>::Fst_Huang2021_aneu(POP<REAL>** grps, int n, int layer, bool isiam, bool sumss, double* each, double* buf)
+TARGET double FST<REAL>::Fst_Huang2021_aneu(POP<REAL>** grps, int n, int layer, bool isiam, bool sumss, double* each, double* buf, int64 _l, double* frac1, double* frac2)
 {
 	//2 or 3 Level, ansioploids
 	if (ad && layer == 3) Exit("\nError: Huang2021 Fst estimator (-fst_estimator=Huang2021_aneu) is incompatible with allelic depth (-ad) option.\n");
@@ -707,7 +718,7 @@ TARGET double FST<REAL>::Fst_Huang2021_aneu(POP<REAL>** grps, int n, int layer, 
 	double* Na = buf;
 	double SStot = 0, SSwp = 0, SSwi = 0;
 	double N11 = 0, N21 = 0, N22 = 0, N31 = 0, N32 = 0, N33 = 0;
-	for (int64 l = 0; l < nloc; ++l)
+	for (int64 l = (_l == -1 ? 0 : _l); l < (_l == -1 ? nloc : _l + 1); ++l)
 	{
 		if (each) each[l] = NAN;
 		int k2 = GetLoc(l).k;
@@ -821,7 +832,62 @@ TARGET double FST<REAL>::Fst_Huang2021_aneu(POP<REAL>** grps, int n, int layer, 
 		Vap = (N11 * SStot - N22 * SSwp) / (N11 * N21);
 		Vtot = Vwp + Vap;
 	}
+
+	if (_l != -1) { *frac1 = Vap; *frac2 = Vtot; }
 	return Vap / Vtot;
+}
+
+/* Absolute divergence */
+template<typename REAL>
+TARGET double FST<REAL>::dxy(POP<REAL>** grps, int n, double* buf, int64 l)
+{
+	//do not need to weight, allow ad
+	double* Ni = buf;
+	double f1 = 0, f2 = 0;
+	int k2 = GetLoc(l).k;
+	if (k2 < 2) return -1;
+
+	int Nh = 0, Np = 0;
+	double Dw = 0, Nw = 0;
+	SetZero(Ni, k2);
+	for (int i = 0; i < n; ++i)
+	{
+		int nhaplo = grps[i]->loc_stat1[l].nhaplo;
+		if (nhaplo == 0) continue;
+
+		REAL* p = grps[i]->GetFreq(l);
+		AddProd(Ni, p, nhaplo, k2);
+
+		Nh += nhaplo;
+		Np++;
+
+		int nh = nhaplo;
+		Dw += nh * (nh - 1); //2x
+		Nw += nh * (nh - 1); //2x
+		for (int a = 0; a < k2; ++a)
+		{
+			double na = nh * p[a];
+			if (na > 1) Dw -= na * (na - 1); //substrate same
+		}
+	}
+
+	if (Np < 2) return -1;
+
+	double hw = Dw / Nw; //mean diff
+	double Db = (double)(Nh * (Nh - 1)), Nb = Db;
+	for (int a = 0; a < k2; ++a)
+		Db -= Ni[a] * (Ni[a] - 1);
+	double hb = (Db - Dw) / (Nb - Nw);
+
+	if (IsNormal(hw) && IsNormal(hb))
+	{
+		f1 += hb - hw;
+		f2 += hb;
+		return f1 / f2;
+	}
+	
+	return -1;
+	
 }
 
 /* Write results file in column format */
@@ -1106,10 +1172,10 @@ TARGET void CalcDiff()
 		switch (fst_type)
 		{
 		case 1: n1 = lreg >= 0 ? lreg : 0;  n2 = lreg >= 0 ? lreg : 0; break;
-		case 2: n1 = 1;     n2 = 1;    break;
-		case 3: n1 = nregt; n2 = nregt; break;
-		case 4: n1 = nregt2; n2 = (nregt2 - nregt) / 2;  break;
-		case 5: n1 = npop * npop; n2 = npop * (npop - 1) / 2; break;
+		case 2: n1 = 1;					    n2 = 1;    break;
+		case 3: n1 = nregt;					n2 = nregt; break;
+		case 4: n1 = nregt2;				n2 = (nregt2 - nregt) / 2;  break;
+		case 5: n1 = npop * npop;			n2 = npop * (npop - 1) / 2; break;
 		}
 
 		if (n1 == 0 || n2 == 0) continue;

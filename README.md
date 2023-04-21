@@ -3,23 +3,24 @@ Performing population genetics analyses based on NGS data for haploids, diploids
 
 The functions of VCFPOP consist of: 
 1.	Variant information, individual, genotype and locus filters; 
-2.	Haplotype extraction from phased genotypes;
-3.	File format conversion;
-4.	Genetic diversity index estimation and genotypic equilibrium test;
-5.	Individual statistics estimation (inbreeding coefficient, kinship coefficient, heterozygosity);
-6.	Genetic differentiation index estimation and test;
-7.	Genetic distance estimation;
-8.	Analysis of molecular variances;
-9.	Population assignment;
-10.	Relatedness coefficient estimation;
-11.	Kinship coefficient estimation;
-12.	Principal coordinate analysis;
-13.	Hierarchical clustering;
-14.	Bayesian clustering.
+2.	Calculate statistics for sliding windows;
+3.	Haplotype extraction from phased genotypes;
+4.	File format conversion;
+5.	Genetic diversity index estimation and genotypic equilibrium test;
+6.	Individual statistics estimation (inbreeding coefficient, kinship coefficient, heterozygosity);
+7.	Genetic differentiation index estimation and test;
+8.	Genetic distance estimation;
+9.	Analysis of molecular variances;
+10.	Population assignment;
+11.	Relatedness coefficient estimation;
+12.	Kinship coefficient estimation;
+13.	Principal coordinate analysis;
+14.	Hierarchical clustering;
+15.	Bayesian clustering.
 
-v 1.05
+v 1.06
 x64 executables (for Windows, Ubuntu and Mac OS X), user manual, source code and example files
-https://github.com/huangkang1987/vcfpop/blob/master/archive/vcfpop%20v1.05.zip?raw=true
+https://github.com/huangkang1987/vcfpop/blob/master/archive/vcfpop%20v1.06.zip?raw=true
 
 Bug report and suggestions
 huangkang@nwu.edu.cn

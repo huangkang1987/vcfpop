@@ -7,47 +7,7 @@ template TARGET void BUCKET::FilterIndividualGT<float >(BUCKET* obucket, int nfi
 template TARGET void BUCKET::FilterIndividualAD<double>(BUCKET* obucket, int nfilter, bool progress, int nthread);
 template TARGET void BUCKET::FilterIndividualAD<float >(BUCKET* obucket, int nfilter, bool progress, int nthread);
 
-
 #pragma pack(push, 1)
-
-/*
-TARGET void ReadWriteLock::lock_shared()
-{
-	for (;;)
-	{
-		int old_state = state;
-		if ((old_state >> 16 == 0) &&	//if all writer finish
-			state.compare_exchange_weak(old_state, old_state + 1)) //add nreader
-			break;
-	}
-}
-
-TARGET void ReadWriteLock::unlock_shared()
-{
-	state--;
-}
-
-TARGET void ReadWriteLock::lock()
-{
-	//add nwriter, disable new reader enter
-	state += 0x10000;
-
-	for (;;)
-	{
-		int old_state = state;
-		if ((old_state & 0xFFFF) == 0 &&  //if all reader finish
-			state.compare_exchange_weak(old_state, old_state | 0xFFFF)) //set low-16 bits to 0xFFFF
-			break;
-	}
-}
-
-TARGET void ReadWriteLock::unlock()
-{
-	//set low-16 bits to 0x0000 and minus nwriter 
-	state -= 0x1FFFF;
-}
-
-*/
 
 /* Set a bit in a variable */
 TARGET void SetBit(byte& b, int pos, bool val)
@@ -241,12 +201,19 @@ TARGET void RunRscript(string script)
 		Exit("\nError: Rscript binary executable is not found.\n");
 
 	if (!FileExists((EXEDIR + "rscripts" + PATH_DELIM + script).c_str()))
-		Exit("\nError: R script file %s is not found.\n", script.c_str());
+		Exit("\nError: R script file %s is not found.\n", (EXEDIR + "rscripts" + PATH_DELIM + script).c_str());
 
-	printf("\nPloting figure using %s ... ", script.c_str());
+	printf("\nPloting figure using %s ... \n", script.c_str());
+
+#ifdef _WIN64
 	string cmd = "\"\"" + g_rscript_val + "\" \"" +
 		EXEDIR + "rscripts" + PATH_DELIM + script + "\" \"" +
 		OUTFILE + "\"\"";
+#else
+	string cmd = "\"" + g_rscript_val + "\" \"" +
+		EXEDIR + "rscripts" + PATH_DELIM + script + "\" \"" +
+		OUTFILE + "\"";
+#endif
 
 	std::system(cmd.c_str());
 }
@@ -254,10 +221,9 @@ TARGET void RunRscript(string script)
 /* Exit program with a message */
 TARGET void Exit(const char* fmt, ...)
 {
-	static bool first = true;
-	if (first)
+	static atomic_flag first = ATOMIC_FLAG_INIT;
+	if (!first.test_and_set())
 	{
-		first = false;
 		va_list ap;
 		va_start(ap, fmt);
 		vprintf(fmt, ap);
@@ -266,7 +232,9 @@ TARGET void Exit(const char* fmt, ...)
 		exit(0);
 	}
 	else
+	{
 		Sleep(200000);
+	}
 }
 
 /* Atomic multiply val to ref */
@@ -930,7 +898,6 @@ TARGET byte* MEMORY::Alloc(int size)
 	{
 		//new(this) VMEMORY();
 		coffset = 0;
-		write_count = 0;
 		//expanding = false;
 	}
 
@@ -946,7 +913,6 @@ TARGET byte* MEMORY::Alloc(int size)
 		base_addr = NULL;
 		tail_addr = NULL;
 		head_addr = NULL;
-		write_count = 0;
 		//expanding = false;
 
 		vector<byte>().swap(flag);
@@ -959,7 +925,6 @@ TARGET byte* MEMORY::Alloc(int size)
 		new(&offset) LIST<OFFSET>();
 		new(this) VMEMORY(0);
 		coffset = 0;
-		write_count = 0;
 		//expanding = false;
 	}
 
@@ -967,7 +932,6 @@ TARGET byte* MEMORY::Alloc(int size)
 	TARGET void BUCKET::CreateBucketGT(LIST<HAPLO_DUMMY_LOCUS>& hlocus)
 	{
 		coffset = 0;
-		write_count = 0;
 		//expanding = false;
 
 		for (int64 l = 0; l < hlocus.size; ++l)
@@ -981,11 +945,27 @@ TARGET byte* MEMORY::Alloc(int size)
 		Alloc(base_addr + coffset + 7);
 	}
 
+	/* Create genotype table for unphase genotypes */
+	TARGET void BUCKET::CreateBucketGT(SLOCUS* loc)
+	{
+		coffset = 0;
+		//expanding = false;
+
+		for (int64 l = 0; l < nloc; ++l)
+		{
+			uint64 gtsize = CeilLog2((int)loc[l].ngeno);//in bits 
+			offset.Push(OFFSET{ coffset, gtsize });
+			coffset += (gtsize * nind + 7) >> 3; //xoffset
+		}
+
+		new(this) VMEMORY(coffset + 7);
+		Alloc(base_addr + coffset + 7);
+	}
+
 	/* Create genotype table for non-vcf/bcf input files */
 	TARGET void BUCKET::CreateBucketGT(LOCUS* loc)
 	{
 		coffset = 0;
-		write_count = 0;
 		//expanding = false;
 
 		for (int64 l = 0; l < nloc; ++l)
@@ -1004,7 +984,6 @@ TARGET byte* MEMORY::Alloc(int size)
 	TARGET void BUCKET::FilterIndividualGT(BUCKET* obucket, int nfilt, bool progress, int nthread)
 	{
 		coffset = 0;
-		write_count = 0;
 		//expanding = false;
 
 		for (int64 l = 0; l < nloc; ++l)
@@ -1133,7 +1112,6 @@ TARGET byte* MEMORY::Alloc(int size)
 	TARGET void BUCKET::FilterIndividualAD(BUCKET* obucket, int nfilt, bool progress, int nthread)
 	{
 		coffset = 0;
-		write_count = 0;
 		//expanding = false;
 
 		for (int64 l = 0; l < nloc; ++l)
@@ -1271,7 +1249,6 @@ TARGET byte* MEMORY::Alloc(int size)
 	{
 		//genotype id offset
 		coffset = 0;
-		write_count = 0;
 		//expanding = false;
 
 		uint* newid = new uint[nloc];
@@ -1328,7 +1305,7 @@ TARGET byte* MEMORY::Alloc(int size)
 
 					//deep copy locus
 					new(&nslocus[nl]) SLOCUS(mem[threadid], slocus[l]);
-					if (haplotype) nlocus_pos[nl] = GetLocPos(l);
+					if (uselocpos) nlocus_pos[nl] = GetLocPos(l);
 				}
 
 				if (progress) PROGRESS_VALUE++;
@@ -1375,7 +1352,7 @@ TARGET byte* MEMORY::Alloc(int size)
 
 					//deep copy locus
 					new(&nslocus[nl]) SLOCUS(mem[threadid], slocus[l]);
-					if (haplotype) nlocus_pos[nl] = GetLocPos(l);
+					if (uselocpos) nlocus_pos[nl] = GetLocPos(l);
 				}
 
 				//Release memory if finish read a block
@@ -1410,7 +1387,6 @@ TARGET byte* MEMORY::Alloc(int size)
 	{
 		//genotype id offset
 		coffset = 0;
-		write_count = 0;
 		//expanding = false;
 
 		uint* newid = new uint[nloc];
@@ -1544,7 +1520,7 @@ TARGET byte* MEMORY::Alloc(int size)
 			coffset.fetch_add((gtsize * nind + 7) >> 3),
 			gtsize };
 
-		offset.Place(re, id, lock, write_count);
+		offset.Place(re, id, rwlock);
 
 		//insufficient size, expand
 		if (coffset > size)
@@ -1560,7 +1536,7 @@ TARGET byte* MEMORY::Alloc(int size)
 			coffset.fetch_add((adsize * k * nind + 7) >> 3),
 			adsize };
 
-		offset.Place(re, id, lock, write_count);
+		offset.Place(re, id, rwlock);
 
 		//insufficient size, expand
 		if (coffset > size)
@@ -1584,7 +1560,6 @@ TARGET byte* MEMORY::Alloc(int size)
 
 		coffset = ref.coffset.load();
 		//expanding = false;
-		write_count = 0;
 		offset = ref.offset;
 		flag.swap(ref.flag);
 
@@ -1595,7 +1570,6 @@ TARGET byte* MEMORY::Alloc(int size)
 		ref.tail_addr = NULL;
 		ref.head_addr = NULL;
 		ref.coffset = 0;
-		ref.write_count = 0;
 		//ref.expanding = false;
 	}
 
@@ -1608,6 +1582,7 @@ TARGET byte* MEMORY::Alloc(int size)
 	{
 		len = INCREASE_BUFFER;
 		data = (char*)malloc(len);
+		derived = data;
 	}
 
 	/* Uninitialize */
@@ -1616,6 +1591,7 @@ TARGET byte* MEMORY::Alloc(int size)
 		if (data) free(data);
 		data = NULL;
 		len = 0;
+		derived = data;
 	}
 
 	/* Expand and memmove */
@@ -1655,10 +1631,11 @@ TARGET byte* MEMORY::Alloc(int size)
 	TARGET int64 INCBUFFER::Gets(FILE* handle, char*& p2)
 	{
 		int64 offset = p2 == NULL ? 0 : p2 - data;
-		int64 nread = 0, rlen = len - offset, pos = FTell(handle);
+		int64 pos = FTell(handle);
 
 		for (;;)
 		{
+			int64 rlen = len - offset;
 			p2[0] = '\0';
 
 			if (g_format_val < 0)
@@ -1666,7 +1643,7 @@ TARGET byte* MEMORY::Alloc(int size)
 			else
 				fgets(p2, (int)rlen, handle);
 
-			nread = FTell(handle) - pos;
+			int64 nread = FTell(handle) - pos;
 
 			if (nread >= rlen - 1)
 			{
@@ -1710,6 +1687,8 @@ TARGET byte* MEMORY::Alloc(int size)
 				memmove(tdata, data, len);
 				free(data);
 			}
+
+			derived += (int64)(tdata - data);
 
 			data = tdata;
 			len = nlen;

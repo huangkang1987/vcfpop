@@ -149,7 +149,7 @@ TARGET void IND<REAL>::PrintPloidyInference(FILE* fout)
 			continue;
 		}
 
-		if (ad2[0] == 0 || ad2[1] == 0 || ad2[1] + ad2[0] < 20) { unused++; continue; }
+		if (ad2[0] == 0 || ad2[1] == 0 || ad2[1] + ad2[0] < 10) { unused++; continue; }
 		int64 ha = (int64)ad2[0] << 32 | ad2[1];
 		if (depth.find(ha) == depth.end()) depth[ha] = tspf;
 		depth[ha].count++;

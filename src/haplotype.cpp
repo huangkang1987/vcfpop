@@ -50,7 +50,7 @@ for (int64 l = st, sc = 0; l <= ed; ++l)
 #define extern 
 extern atomic<int64> haplotype_contig;				//1st locus in the current contig 
 extern LIST<QUICKSORT_PARAMETER> qslstack;			//Sort loci in haplotype extraction
-extern LIST<HAPLO_DUMMY_LOCUS> haplotype_locus;	//Dummy locus information in haplotype extraction
+extern LIST<HAPLO_DUMMY_LOCUS> haplotype_locus;		//Dummy locus information in haplotype extraction
 extern SLOCUS* haplotype_nslocus;					//Extracted locus
 extern uint64* locus_pos;							//Locus pos for small locus used in haplotype extraction
 extern LOCN* locus_id;								//Locus id for small locus used in haplotype extraction
@@ -104,13 +104,9 @@ THREAD2(CheckAneuploid)
 template<typename REAL>
 TARGET void CalcHaplotype()
 {
-	if (abs(g_format_val) > BCF || !haplotype)
+	if (!haplotype) return;
+	if (abs(g_format_val) > BCF)
 	{
-		if (locus_pos)
-		{
-			delete[] locus_pos;
-			locus_pos = NULL;
-		}
 		haplotype = false;
 		return;
 	}
@@ -187,9 +183,6 @@ TARGET void CalcHaplotype()
 
 	delete[] locus_id;
 	locus_id = NULL;
-
-	delete[] locus_pos;
-	locus_pos = NULL;
 
 	delete[] omemory;
 
@@ -427,9 +420,10 @@ THREAD2(CreateHaplotypeLocus)
 
 		//1. Set i = 1 and j = 1 in the beginning.
 		contig_st = contig_ed = contig_ed + 1;
+		if (contig_st >= nloc) break;
 		while (contig_ed < nloc && strcmp(GetLoc(contig_st).GetChrom(), GetLoc(contig_ed).GetChrom()) == 0) contig_ed++; contig_ed--;
 		chrid++;
-		int64 st = contig_st, ed = contig_st;
+		int64 st = contig_st, ed = contig_st; 
 
 		//2. If the value of j exceeds the number of variants in this chromosome or contig, then terminate this algorithm. 
 	step2:
@@ -438,7 +432,6 @@ THREAD2(CreateHaplotypeLocus)
 			PROGRESS_VALUE += st - ed;
 			ed = st;
 		}
-		if (ed >= contig_ed) continue;
 
 		//3. Calculate the values of several parameters (the length of each haplotype, the number of variants, the number of alleles and the number of genotypes). 
 		int64 clen = GetLocPos(ed) - GetLocPos(st) + 1;
@@ -476,7 +469,10 @@ THREAD2(CreateHaplotypeLocus)
 
 		//7. Set i and j to the next applicable variant according to -haplotype_interval, and do to Step 2.
 		int64 nextpos = (int64)GetLocPos(ed) + haplotype_interval_val;
-		while (st < nloc && (int64)GetLocPos(st) <= nextpos) st++;
+		while (st <= contig_ed && (int64)GetLocPos(st) <= nextpos) st++;
+		PROGRESS_VALUE += st - ed;
+		ed = st;
+		if (st > contig_ed) continue;
 		goto step2;
 	}
 }

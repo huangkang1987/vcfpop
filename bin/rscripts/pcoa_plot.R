@@ -14,8 +14,8 @@ UseLibrary <- function(lib)
   }
 }
 
-UseLibrary("ggplot2")
-UseLibrary("cowplot")
+suppressWarnings(suppressMessages(UseLibrary("ggplot2")))
+suppressWarnings(suppressMessages(UseLibrary("cowplot")))
 
 # set path here
 file <- paste(commandArgs(trailingOnly = TRUE), '.pcoa.txt', sep = '')
@@ -84,4 +84,4 @@ for (id in 1 : length(start))
 # save figure
 figfile <- paste(substr(file, 0, nchar(file) - 4), ".pdf", sep = '')
 ggsave(figfile, plot = tfig, width = sfigw, height = nfig * sfigh, limitsize = FALSE)
-cat(paste('\n', basename(figfile), '\n', sep='')
+cat(paste('\n', basename(figfile), '\n', sep=''))

@@ -14,10 +14,10 @@ UseLibrary <- function(lib)
   }
 }
 
-UseLibrary("ggplot2")
-UseLibrary("ggh4x")
-UseLibrary("paletteer")
-UseLibrary("cowplot")
+suppressWarnings(suppressMessages(UseLibrary("ggplot2")))
+suppressWarnings(suppressMessages(UseLibrary("ggh4x")))
+suppressWarnings(suppressMessages(UseLibrary("paletteer")))
+suppressWarnings(suppressMessages(UseLibrary("cowplot")))
 
 # set path here
 file <- paste(commandArgs(trailingOnly = TRUE), '.popas.txt', sep = '')
@@ -140,6 +140,7 @@ for (i in 1:length(figw))
   pheight <- pheight - figh[i] / theight
   tfig <- tfig + draw_plot(figs[[i]], x = 0.0, y = pheight, width = figw[i] / twidth, height = figh[i] / theight)
 }  
+
 figfile <- paste(substr(file, 0, nchar(file) - 4), ".pdf", sep = '')
 ggsave(figfile, plot = tfig, width = twidth, height = theight, limitsize = FALSE)
 cat(paste('\n', basename(figfile), '\n', sep=''))

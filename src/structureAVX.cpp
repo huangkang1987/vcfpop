@@ -340,7 +340,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQNoAdmixAVX(int tid)
 	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
+		int tid2 = thread_counter.fetch_add(1);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -382,7 +382,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQNoAdmixAVX(int tid)
 				__m256d freq[16];
 				__m128i* allele2 = (__m128i*)allele;
 
-				int64* buf1 = (int64*)bufNK1 + N * K * tid; double* buf2 = bufNK2 + N * K * tid;
+				int64* buf1 = (int64*)bufNK1 + N * K * tid2; double* buf2 = bufNK2 + N * K * tid2;
 
 				for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
 				{
@@ -459,7 +459,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQNoAdmixAVX(int tid)
 		}
 
 		//avoid thread-conflict
-		CloseLog((int64*)bufNK1 + N * K * tid, bufNK2 + N * K * tid, N * K);
+		CloseLog((int64*)bufNK1 + N * K * tid2, bufNK2 + N * K * tid2, N * K);
 	}
 }
 
@@ -493,11 +493,8 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZNoAdmixAVX(int tid)
 	static int PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
 	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
-
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
 			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
@@ -645,7 +642,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
+		int tid2 = thread_counter.fetch_add(1);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -690,7 +687,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 
 				REAL* bufi = (REAL*)bufNK1, * q = Q;
 				//avoid thread-conflict
-				double* buf1 = bufN1 + N * tid, * buf2 = bufN2 + N * tid;
+				double* buf1 = bufN1 + N * tid2, * buf2 = bufN2 + N * tid2;
 
 				for (int i = 0; i < N; ++i, q += K, bufi += K, buf1++, buf2++)
 				{
@@ -809,8 +806,8 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 							REP(16) f1[kk] = _mm256_blendv_pd(maskoned, f1[kk], _mm256_castsi256_pd(typed64[kk]));
 						}
 
-						for (int K = sizeof(f1) / sizeof(f1[0]) / 2; K >= 1; K >>= 1)
-							REP(K) f1[kk] = _mm256_mul_pd(f1[kk], f1[kk + K]);
+						for (int KK = sizeof(f1) / sizeof(f1[0]) / 2; KK >= 1; KK >>= 1)
+							REP(KK) f1[kk] = _mm256_mul_pd(f1[kk], f1[kk + KK]);
 
 						ChargeLog(*(int64*)buf1, *buf2, _mm256_reduce_mul_pd(f1[0]));
 					}
@@ -819,7 +816,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 		}
 
 		//avoid thread-conflict
-		CloseLog((int64*)bufN1 + N * tid, bufN2 + N * tid, N);
+		CloseLog((int64*)bufN1 + N * tid2, bufN2 + N * tid2, N);
 	}
 }
 
@@ -862,11 +859,11 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZAdmixAVX(int tid)
 	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
+		int tid2 = thread_counter.fetch_add(1);
 
 		//64 * K  * sizeof(double)
-		__m256d* bufkd = (__m256d*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
-		__m256* bufks = (__m256*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
+		__m256d* bufkd = (__m256d*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid2);
+		__m256* bufks = (__m256*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid2);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -925,7 +922,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZAdmixAVX(int tid)
 
 				REAL* q = Q;
 				//avoid thread-conflict
-				int64* mi = Mi + N * K * tid;
+				int64* mi = Mi + N * K * tid2;
 
 				for (int i = 0; i < N; ++i, q += K, mi += K)
 				{
@@ -1062,7 +1059,7 @@ TARGETAVX void BAYESIAN<REAL>::RecordAVX(int tid)
 	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
+		int tid2 = thread_counter.fetch_add(1);
 
 		int64 slog = 0; double prod = 1;
 		OpenLog(slog, prod);
@@ -1215,8 +1212,8 @@ TARGETAVX void BAYESIAN<REAL>::RecordAVX(int tid)
 
 						REP(16) f2[kk] = _mm256_blendv_pd(maskoned, f2[kk], _mm256_castsi256_pd(typed64[kk]));
 
-						for (int K = sizeof(f2) / sizeof(f2[0]) / 2; K >= 1; K >>= 1)
-							REP(K) f2[kk] = _mm256_mul_pd(f2[kk], f2[kk + K]);
+						for (int KK = sizeof(f2) / sizeof(f2[0]) / 2; KK >= 1; KK >>= 1)
+							REP(KK) f2[kk] = _mm256_mul_pd(f2[kk], f2[kk + KK]);
 
 						ChargeLog(slog, prod, _mm256_reduce_mul_pd(f2[0]));
 					}
@@ -1225,7 +1222,7 @@ TARGETAVX void BAYESIAN<REAL>::RecordAVX(int tid)
 		}
 
 		CloseLog(slog, prod);
-		bufNK1[tid] = prod;
+		bufNK1[tid2] = prod;
 	}
 }
 

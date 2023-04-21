@@ -1066,7 +1066,7 @@ TARGETCUDA void ResetDeviceCUDA()
 template<typename REAL>
 __device__ double SumProdDiv(REAL* A1, REAL* A2, REAL* B, int64 sep, int n)
 {
-    double re1 = 0, re2 = 0, b;
+    double re1 = 0, re2 = 0;
     for (int i = 0; i < n; ++i, A1++, A2++, B += sep)
     {
         volatile double v1 = (double)* A1 * (double)*B, v2 = (double)*A2 * (double)*B;

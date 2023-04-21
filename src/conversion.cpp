@@ -21,6 +21,8 @@ template TARGET void ConvertPolyRelatedness<double>(int ntot, bool& isfirst);
 template TARGET void ConvertPolyRelatedness<float >(int ntot, bool& isfirst);
 template TARGET void ConvertGenoDive<double>(int ntot, bool& isfirst);
 template TARGET void ConvertGenoDive<float >(int ntot, bool& isfirst);
+template TARGET void ConvertPlink<double>(int ntot, bool& isfirst);
+template TARGET void ConvertPlink<float >(int ntot, bool& isfirst);
 
 #define extern 
 extern MEMORY* conversion_memory;					//Memory class for conversion_string
@@ -76,6 +78,7 @@ TARGET void ConvertFile()
 		case 6: ConvertPolygene<REAL>(ntot, isfirst); break;
 		case 7: ConvertPolyRelatedness<REAL>(ntot, isfirst); break;
 		case 8: ConvertGenoDive<REAL>(ntot, isfirst); break;
+		case 9: ConvertPlink<REAL>(ntot, isfirst); break;
 		}
 
 		free(conversion_string);
@@ -115,8 +118,19 @@ THREAD2(ConvertArlequinGuard)
 		{
 			ushort popid = (ushort)rinds[ii]->popid;
 			if (ii) fprintf(convert_file, "\t\t}\r\n\r\n");
+
+			int noutput = apops[popid]->nind;
+			if (convert_mode_val >= 4)
+			{
+				noutput = 0;
+				for (int j = 0; j < apops[popid]->nind; ++j)
+				{
+					IND<REAL>* ind = apops[popid]->inds[j];
+					noutput += ind->vmax <= 2 ? 1 : ind->vmax / 2;
+				}
+			}
 			fprintf(convert_file, "\t\tSampleName=\"%s\"\r\n\t\tSampleSize=%d\r\n\t\tSampleData={\r\n",
-				apops[popid]->name, apops[popid]->nind);
+				apops[popid]->name, noutput);
 		}
 
 		fwrite(convert_buf[ii % NBUF], (int)strlen(convert_buf[ii % NBUF]), 1, convert_file);
@@ -163,6 +177,7 @@ TARGET void PrepareGenotypeString(int format)
 			case 6: str = gtab[gi].GetPolygeneStr(); break;
 			case 7: str = gtab[gi].GetPolyRelatednessStr(); break;
 			case 8: str = gtab[gi].GetGenoDiveStr(); break;
+			case 9: str = gtab[gi].GetPlinkStr(); break;
 			}
 			conversion_string[l].Push(str);
 		}
@@ -186,7 +201,10 @@ TARGET void ConvertGenepop(int ntot, bool& isfirst)
 	for (int64 l = 0; l < nloc; ++l)
 		fprintf(convert_file, "%s\r\n", GetLoc(l).GetNameStr(name_buf));
 
-	convert_linesize = IND_NAME_LEN + 7 * nloc;
+	convert_linesize = convert_mode_val <= 3 ? 
+		IND_NAME_LEN + (2 * MAX_ALLELE_BYTE + 1) * nloc :
+		(IND_NAME_LEN + (2 * MAX_ALLELE_BYTE + 1) * nloc) * (maxploidy / 2);
+
 	for (int j = 0; j < NBUF; ++j)
 		conversion_memory2->Alloc(convert_buf[j], convert_linesize);
 
@@ -209,12 +227,108 @@ THREAD2(ConvertGenepopInd)
 		char* str = convert_buf[ii % NBUF];
 		IND<REAL>& ind = *rinds[ii];
 
-		AppendString(str, ind.name);
-		AppendString(str, ",");
+		switch (convert_mode_val)
+		{
+		default:
+		case 1:
+		case 2://disable,truncate
+		{
+			AppendString(str, ind.name);
+			AppendString(str, ",");
 
-		for (int64 l = 0; l < nloc; ++l)
-			AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
-		AppendString(str, "\r\n");
+			for (int64 l = 0; l < nloc; ++l)
+				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 3://choose
+		{
+			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			AppendString(str, ind.name);
+			AppendString(str, ",");
+
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				GENOTYPE& gt = ind.GetGenotype(l);
+				ushort* als = gt.GetAlleleArray();
+				int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+				if (nalleles == 0 || ploidy == 1) 
+					AppendString(str, " 000000");
+				else
+				{
+					int a1 = rng.Next(ploidy), a2 = rng.NextAvoid(ploidy, a1);
+					sprintf(str, " %03d%03d", als[a1] + 1, als[a2] + 1);
+					while (*str) str++; 
+				}
+			}
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 4://split
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				AppendString(str, ind.name);
+				AppendString(str, "A,"); str[-2] += j / 2;
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+					if (nalleles == 0 || ploidy == 1 || j + 1 >= ploidy) 
+						AppendString(str, " 000000");
+					else
+					{
+						sprintf(str, " %03d%03d", als[j] + 1, als[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		case 5://shuffle
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				AppendString(str, ind.name);
+				AppendString(str, "A,"); str[-2] += j / 2;
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+
+					if (nalleles == 0 || ploidy == 1) 
+						AppendString(str, " 000000");
+					else
+					{
+						SetVal(permals16, als, ploidy);
+						rng.Permute(permals16, ploidy);
+						SetFF(permals16 + ploidy - ploidy % 2, nsplit2 - ploidy + ploidy % 2);
+						rng.Permute(permals, nsplit);
+						sprintf(str, " %03d%03d", (short)permals16[j] + 1, (short)permals16[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		}
 
 		*str++ = '\0';
 
@@ -236,13 +350,29 @@ TARGET void ConvertSpagedi(int ntot, bool& isfirst)
 	fprintf(convert_file, "//spagedi data file created by vcfpop %s on %04d-%02d-%02d %02d:%02d:%02d\r\n",
 		VERSION, t1->tm_year + 1900, t1->tm_mon + 1, t1->tm_mday, t1->tm_hour, t1->tm_min, t1->tm_sec);
 	fprintf(convert_file, "//#individuals	#categories	#coordinates	#loci	#digits/allele	max ploidy\r\n");
-	fprintf(convert_file, "%d	%d	0	%llu	3	%d\r\n-3\r\nind	pop", nind, npop, (uint64)nloc, maxploidy);
+
+	int noutput = nind;
+	if (convert_mode_val >= 4)
+	{
+		noutput = 0;
+		for (int j = 0; j < nind; ++j)
+		{
+			IND<REAL>* ind = ainds[j];
+			noutput += ind->vmax <= 2 ? 1 : ind->vmax / 2;
+		}
+	}
+	
+	fprintf(convert_file, "%d	%d	0	%llu	3	%d\r\n-3\r\nind	pop", noutput, npop, (uint64)nloc, maxploidy);
 
 	for (int64 l = 0; l < nloc; ++l)
 		fprintf(convert_file, "\t%s", GetLoc(l).GetNameStr(name_buf));
 	fprintf(convert_file, "\r\n");
 
-	convert_linesize = IND_NAME_LEN + (maxploidy * 3 + 1) * nloc;
+	convert_linesize =
+		convert_mode_val == 1 ? IND_NAME_LEN + (maxploidy * MAX_ALLELE_BYTE + 1) * nloc :
+		(convert_mode_val <= 3 ? IND_NAME_LEN + (2 * MAX_ALLELE_BYTE + 1) * nloc :
+		(IND_NAME_LEN + (2 * MAX_ALLELE_BYTE + 1) * nloc) * (maxploidy / 2));
+
 	for (int j = 0; j < NBUF; ++j)
 		conversion_memory2->Alloc(convert_buf[j], convert_linesize);
 
@@ -266,13 +396,117 @@ THREAD2(ConvertSpagediInd)
 		char* str = convert_buf[ii % NBUF];
 		IND<REAL>& ind = *rinds[ii];
 
-		AppendInt(str, ind.popid + 1);
-		AppendString(str, "\t");
-		AppendString(str, ind.name);
+		switch (convert_mode_val)
+		{
+		default:
+		case 1:
+		case 2://disable,truncate
+		{
+			AppendString(str, ind.name);
+			AppendString(str, "\t");
+			AppendString(str, apops[ind.popid]->name);
 
-		for (int64 l = 0; l < nloc; ++l)
-			AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
-		AppendString(str, "\r\n");
+			for (int64 l = 0; l < nloc; ++l)
+				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 3://choose
+		{
+			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			AppendString(str, ind.name);
+			AppendString(str, "\t");
+			AppendString(str, apops[ind.popid]->name);
+
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				GENOTYPE& gt = ind.GetGenotype(l);
+				ushort* als = gt.GetAlleleArray();
+				int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+				if (nalleles == 0 || ploidy == 1)
+					AppendString(str, "\t000000");
+				else
+				{
+					int a1 = rng.Next(ploidy), a2 = rng.NextAvoid(ploidy, a1);
+					sprintf(str, "\t%03d%03d", als[a1] + 1, als[a2] + 1);
+					while (*str) str++;
+				}
+			}
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 4://split
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				AppendString(str, ind.name);
+				AppendString(str, "A\t"); str[-2] += j / 2;
+				AppendString(str, apops[ind.popid]->name);
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+					if (nalleles == 0 || ploidy == 1 || j + 1 >= ploidy)
+						AppendString(str, "\t000000");
+					else
+					{
+						sprintf(str, "\t%03d%03d", als[j] + 1, als[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		case 5://shuffle
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				AppendString(str, ind.name);
+				AppendString(str, "A\t"); str[-2] += j / 2;
+				AppendString(str, apops[ind.popid]->name);
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+
+					if (nalleles == 0 || ploidy == 1)
+						AppendString(str, "\t000000");
+					else
+					{
+						SetVal(permals16, als, ploidy);
+						rng.Permute(permals16, ploidy);
+						SetFF(permals16 + ploidy - ploidy % 2, nsplit2 - ploidy + ploidy % 2);
+						rng.Permute(permals, nsplit);
+						if (permals16[j] == 0xFFFF || permals16[j + 1] == 0xFFFF)
+							AppendString(str, "\t000000");
+						else
+						{
+							sprintf(str, "\t%03d%03d", (short)permals16[j] + 1, (short)permals16[j + 1] + 1);
+							while (*str) str++;
+						}
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		}
 
 		*str++ = '\0';
 
@@ -293,7 +527,10 @@ TARGET void ConvertCervus(int ntot, bool& isfirst)
 		fprintf(convert_file, ",%sA,%sB", GetLoc(l).GetNameStr(name_buf), GetLoc(l).GetNameStr(name_buf));
 	fprintf(convert_file, "\r\n");
 
-	convert_linesize = IND_NAME_LEN + 8 * nloc;
+	convert_linesize = convert_mode_val <= 3 ?
+		IND_NAME_LEN + (2 * MAX_ALLELE_BYTE + 2) * nloc :
+		(IND_NAME_LEN + (2 * MAX_ALLELE_BYTE + 2) * nloc) * (maxploidy / 2);
+
 	for (int j = 0; j < NBUF; ++j)
 		conversion_memory2->Alloc(convert_buf[j], convert_linesize);
 
@@ -315,13 +552,117 @@ THREAD2(ConvertCervusInd)
 		char* str = convert_buf[ii % NBUF];
 		IND<REAL>& ind = *rinds[ii];
 
-		AppendString(str, ind.name);
-		AppendString(str, ",");
-		AppendString(str, apops[ind.popid]->name);
+		switch (convert_mode_val)
+		{
+		default:
+		case 1:
+		case 2://disable,truncate
+		{
+			AppendString(str, ind.name);
+			AppendString(str, ",");
+			AppendString(str, apops[ind.popid]->name);
 
-		for (int64 l = 0; l < nloc; ++l)
-			AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
-		AppendString(str, "\r\n");
+			for (int64 l = 0; l < nloc; ++l)
+				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 3://choose
+		{
+			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			AppendString(str, ind.name);
+			AppendString(str, ",");
+			AppendString(str, apops[ind.popid]->name);
+
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				GENOTYPE& gt = ind.GetGenotype(l);
+				ushort* als = gt.GetAlleleArray();
+				int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+				if (nalleles == 0 || ploidy == 1) 
+					AppendString(str, ",,");
+				else
+				{
+					int a1 = rng.Next(ploidy), a2 = rng.NextAvoid(ploidy, a1);
+					sprintf(str, ",%d,%d", als[a1] + 1, als[a2] + 1);
+					while (*str) str++;
+				}
+			}
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 4://split
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				AppendString(str, ind.name);
+				AppendString(str, "A,"); str[-2] += j / 2;
+				AppendString(str, apops[ind.popid]->name);
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+					if (nalleles == 0 || ploidy == 1 || j + 1 >= ploidy) 
+						AppendString(str, ",,");
+					else
+					{
+						sprintf(str, ",%d,%d", als[j] + 1, als[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		case 5://shuffle
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				AppendString(str, ind.name);
+				AppendString(str, "A,"); str[-2] += j / 2;
+				AppendString(str, apops[ind.popid]->name);
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+
+					if (nalleles == 0 || ploidy == 1) 
+						AppendString(str, ",,");
+					else
+					{
+						SetVal(permals16, als, ploidy);
+						rng.Permute(permals16, ploidy);
+						SetFF(permals16 + ploidy - ploidy % 2, nsplit2 - ploidy + ploidy % 2);
+						rng.Permute(permals, nsplit);
+						if (permals16[j] == 0xFFFF || permals16[j + 1] == 0xFFFF)
+							AppendString(str, ",,");
+						else
+						{
+							sprintf(str, ",%d,%d", (short)permals16[j] + 1, (short)permals16[j + 1] + 1);
+							while (*str) str++;
+						}
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		}
 
 		*str++ = '\0';
 
@@ -348,7 +689,10 @@ TARGET void ConvertArlequin(int ntot, bool& isfirst)
 		fprintf(convert_file, "\r\n# %s", GetLoc(l).GetNameStr(name_buf));
 	fprintf(convert_file, "\r\n\r\n[Data]\r\n\t[[Samples]]\r\n");
 
-	convert_linesize = IND_NAME_LEN + 9 * nloc;
+	convert_linesize = convert_mode_val <= 3 ?
+		IND_NAME_LEN + 12 + (2 * MAX_ALLELE_BYTE + 2) * nloc :
+		(IND_NAME_LEN + 12 + (2 * MAX_ALLELE_BYTE + 2) * nloc) * (maxploidy / 2);
+
 	for (int j = 0; j < NBUF; ++j)
 		conversion_memory2->Alloc(convert_buf[j], convert_linesize);
 
@@ -382,17 +726,134 @@ THREAD2(ConvertArlequinInd)
 		char* str = convert_buf[ii % NBUF];
 		IND<REAL>& ind = *rinds[ii];
 
-		AppendString(str, "\t\t\t");
-		AppendString(str, ind.name);
-		AppendString(str, " 1");
+		switch (convert_mode_val)
+		{
+		default:
+		case 1:
+		case 2://disable,truncate
+		{
+			AppendString(str, "\t\t\t");
+			AppendString(str, ind.name);
+			AppendString(str, " 1");
 
-		for (int64 l = 0; l < nloc; ++l)
-			AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
-		AppendString(str, "\r\n\t\t\t");
+			for (int o = 0; o < 2; ++o)
+			{
+				for (int64 l = 0; l < nloc; ++l)
+					AppendString(str, conversion_string[l][ind.GetGenotypeId(l)] + o * (MAX_ALLELE_BYTE + 2));
 
-		for (int64 l = 0; l < nloc; ++l)
-			AppendString(str, conversion_string[l][ind.GetGenotypeId(l)] + 5);
-		AppendString(str, "\r\n");
+				AppendString(str, o == 0 ? "\r\n\t\t\t       " : "\r\n");
+			}
+
+			break;
+		}
+		case 3://choose
+		{
+			AppendString(str, "\t\t\t");
+			AppendString(str, ind.name);
+			AppendString(str, " 1");
+
+			for (int o = 0; o < 2; ++o)
+			{
+				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+					if (nalleles == 0 || ploidy == 1)
+						AppendString(str, " ?");
+					else
+					{
+						int a[2];
+						a[0] = rng.Next(ploidy);
+						a[1] = rng.NextAvoid(ploidy, a[0]);
+						sprintf(str, " %d", als[a[o]] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, o == 0 ? "\r\n\t\t\t       " : "\r\n");
+			}
+			break;
+		}
+		case 4://split
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				AppendString(str, "\t\t\t");
+				AppendString(str, ind.name);
+				AppendString(str, "A"); str[-1] += j / 2;
+				AppendString(str, " 1");
+
+				for (int o = 0; o < 2; ++o)
+				{
+					for (int64 l = 0; l < nloc; ++l)
+					{
+						GENOTYPE& gt = ind.GetGenotype(l);
+						ushort* als = gt.GetAlleleArray();
+						int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+						if (nalleles == 0 || ploidy == 1 || j + 1 >= ploidy)
+							AppendString(str, " ?");
+						else
+						{
+							sprintf(str, " %d", als[j + o] + 1);
+							while (*str) str++;
+						}
+					}
+
+					AppendString(str, o == 0 ? "\r\n\t\t\t       " : "\r\n");
+				}
+			}
+			break;
+		}
+		case 5://shuffle
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				AppendString(str, "\t\t\t");
+				AppendString(str, ind.name);
+				AppendString(str, "A"); str[-1] += j / 2;
+				AppendString(str, " 1");
+
+				for (int o = 0; o < 2; ++o)
+				{
+					RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+					for (int64 l = 0; l < nloc; ++l)
+					{
+						GENOTYPE& gt = ind.GetGenotype(l);
+						ushort* als = gt.GetAlleleArray();
+						int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+
+						if (nalleles == 0 || ploidy == 1)
+							AppendString(str, " ?");
+						else
+						{
+							SetVal(permals16, als, ploidy);
+							rng.Permute(permals16, ploidy);
+							SetFF(permals16 + ploidy - ploidy % 2, nsplit2 - ploidy + ploidy % 2);
+							rng.Permute(permals, nsplit);
+							if (permals16[j] == 0xFFFF || permals16[j + 1] == 0xFFFF)
+								AppendString(str, " ?");
+							else
+							{
+								sprintf(str, " %d", (short)permals16[j + o] + 1);
+								while (*str) str++;
+							}
+						}
+					}
+
+					AppendString(str, o == 0 ? "\r\n\t\t\t       " : "\r\n");
+				}
+			}
+			break;
+		}
+		}
 
 		*str++ = '\0';
 		THREAD_END
@@ -416,7 +877,11 @@ TARGET void ConvertStructure(int ntot, bool& isfirst)
 	FSeek(convert_file, -1, SEEK_CUR);
 	fprintf(convert_file, "\r\n");
 
-	convert_linesize = IND_NAME_LEN + (maxploidy * 4) * nloc;
+	convert_linesize = 
+		convert_mode_val == 1 ? (IND_NAME_LEN + (MAX_ALLELE_BYTE + 1) * nloc) * maxploidy :
+		(convert_mode_val <= 3 ? (IND_NAME_LEN + (MAX_ALLELE_BYTE + 1) * nloc) * 2 :
+		(IND_NAME_LEN + (MAX_ALLELE_BYTE + 1) * nloc) * 2 * (maxploidy / 2));
+
 	for (int j = 0; j < NBUF; ++j)
 		conversion_memory2->Alloc(convert_buf[j], convert_linesize);
 
@@ -438,21 +903,136 @@ THREAD2(ConvertStructureInd)
 		char* str = convert_buf[ii % NBUF];
 		IND<REAL>& ind = *rinds[ii];
 
-		if (ind.vmin != ind.vmax)
-			Exit("\nError: Cannot convert structure format due to it is a aneuploid.\n", ind.name);
-
-		for (int h = 0; h < ind.vmin; ++h)
+		switch (convert_mode_val)
 		{
-			AppendString(str, ind.name);
-			AppendString(str, " ");
-			AppendString(str, apops[ind.popid]->name);
-
-			for (int64 l = 0; l < nloc; ++l)
+		default:
+		case 1://disable
+			if (ind.vmin != ind.vmax)
+				Exit("\nError: Cannot convert structure format due to it is a aneuploid.\n", ind.name);
+		case 2://truncate
+		{	
+			for (int h = 0; h < (convert_mode_val == 1 ? ind.vmin : 2); ++h)
 			{
+				AppendString(str, ind.name);
 				AppendString(str, " ");
-				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)] + h * 5);
+				AppendString(str, apops[ind.popid]->name);
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					AppendString(str, " ");
+					AppendString(str, conversion_string[l][ind.GetGenotypeId(l)] + h * (MAX_ALLELE_BYTE + 2));
+				}
+
+				AppendString(str, "\r\n");
 			}
-			AppendString(str, "\r\n");
+			break;
+		}
+		case 3://choose
+		{
+			for (int h = 0; h < 2; ++h)
+			{
+				AppendString(str, ind.name);
+				AppendString(str, " ");
+				AppendString(str, apops[ind.popid]->name);
+				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+					if (nalleles == 0 || ploidy == 1)
+						AppendString(str, " -9");
+					else
+					{
+						int a[2];
+						a[0] = rng.Next(ploidy);
+						a[1] = rng.NextAvoid(ploidy, a[0]);
+						sprintf(str, " %d", als[a[h]] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		case 4://split
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				for (int h = 0; h < 2; ++h)
+				{
+					AppendString(str, ind.name);
+					AppendString(str, "A "); str[-2] += j / 2;
+					AppendString(str, apops[ind.popid]->name);
+
+					for (int64 l = 0; l < nloc; ++l)
+					{
+						GENOTYPE& gt = ind.GetGenotype(l);
+						ushort* als = gt.GetAlleleArray();
+						int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+						if (nalleles == 0 || ploidy == 1 || j + 1 >= ploidy)
+							AppendString(str, " -9");
+						else
+						{
+							sprintf(str, " %d", als[j + h] + 1);
+							while (*str) str++;
+						}
+					}
+
+					AppendString(str, "\r\n");
+				}
+			}
+			break;
+		}
+		case 5://shuffle
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				for (int h = 0; h < 2; ++h)
+				{
+					RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+					AppendString(str, ind.name);
+					AppendString(str, "A "); str[-2] += j / 2;
+					AppendString(str, apops[ind.popid]->name);
+
+					for (int64 l = 0; l < nloc; ++l)
+					{
+						GENOTYPE& gt = ind.GetGenotype(l);
+						ushort* als = gt.GetAlleleArray();
+						int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+
+						if (nalleles == 0 || ploidy == 1)
+							AppendString(str, " -9");
+						else
+						{
+							SetVal(permals16, als, ploidy);
+							rng.Permute(permals16, ploidy);
+							SetFF(permals16 + ploidy - ploidy % 2, nsplit2 - ploidy + ploidy % 2);
+							rng.Permute(permals, nsplit);
+
+							if (permals16[j] == 0xFFFF || permals16[j + 1] == 0xFFFF)
+								AppendString(str, " -9");
+							else
+							{
+								sprintf(str, " %d", (short)permals16[j + h] + 1);
+								while (*str) str++;
+							}
+						}
+					}
+
+					AppendString(str, "\r\n");
+				}
+			}
+			break;
+		}
 		}
 
 		*str++ = '\0';
@@ -474,7 +1054,11 @@ TARGET void ConvertPolygene(int ntot, bool& isfirst)
 		fprintf(convert_file, "\t%s", GetLoc(l).GetNameStr(name_buf));
 	fprintf(convert_file, "\r\n");
 
-	convert_linesize = IND_NAME_LEN + maxploidy * 4 * nloc;
+	convert_linesize =
+		convert_mode_val == 1 ? IND_NAME_LEN + maxploidy * (MAX_ALLELE_BYTE + 1) * nloc :
+		(convert_mode_val <= 3 ? IND_NAME_LEN + 2 * (MAX_ALLELE_BYTE + 1) * nloc :
+		(IND_NAME_LEN + 2 * (MAX_ALLELE_BYTE + 1) * nloc) * (maxploidy / 2));
+
 	for (int j = 0; j < NBUF; ++j)
 		conversion_memory2->Alloc(convert_buf[j], convert_linesize);
 
@@ -496,18 +1080,124 @@ THREAD2(ConvertPolygeneInd)
 		char* str = convert_buf[ii % NBUF];
 		IND<REAL>& ind = *rinds[ii];
 
-		if (ind.vmin != ind.vmax)
-			Exit("\nError: Cannot convert structure format due to it is a aneuploid.\n", ind.name);
+		switch (convert_mode_val)
+		{
+		default:
+		case 1://disable,
+			if (ind.vmin != ind.vmax)
+				Exit("\nError: Cannot convert structure format due to it is a aneuploid.\n", ind.name);
+		case 2://truncate
+		{
+			AppendString(str, ind.name);
+			AppendString(str, "\t");
+			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, "\t");
+			AppendInt(str, convert_mode_val == 1 ? ind.vmin : 2);
 
-		AppendString(str, ind.name);
-		AppendString(str, "\t");
-		AppendString(str, apops[ind.popid]->name);
-		AppendString(str, "\t");
-		AppendInt(str, ind.vmin);
+			for (int64 l = 0; l < nloc; ++l)
+				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
 
-		for (int64 l = 0; l < nloc; ++l)
-			AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
-		AppendString(str, "\r\n");
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 3://choose
+		{
+			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			AppendString(str, ind.name);
+			AppendString(str, "\t");
+			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, "\t2");
+
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				GENOTYPE& gt = ind.GetGenotype(l);
+				ushort* als = gt.GetAlleleArray();
+				int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+				if (nalleles == 0 || ploidy == 1)
+					AppendString(str, "\t");
+				else
+				{
+					int a1 = rng.Next(ploidy), a2 = rng.NextAvoid(ploidy, a1);
+					sprintf(str, "\t%d,%d", als[a1] + 1, als[a2] + 1);
+					while (*str) str++;
+				}
+			}
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 4://split
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				AppendString(str, ind.name);
+				AppendString(str, "A\t"); str[-2] += j / 2;
+				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, "\t2");
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+					if (nalleles == 0 || ploidy == 1 || j + 1 >= ploidy)
+						AppendString(str, "\t");
+					else
+					{
+						sprintf(str, "\t%d,%d", als[j] + 1, als[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		case 5://shuffle
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				AppendString(str, ind.name);
+				AppendString(str, "A\t"); str[-2] += j / 2;
+				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, "\t2");
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+
+					if (nalleles == 0 || ploidy == 1)
+						AppendString(str, "\t");
+					else
+					{
+						SetVal(permals16, als, ploidy);
+						rng.Permute(permals16, ploidy);
+						SetFF(permals16 + ploidy - ploidy % 2, nsplit2 - ploidy + ploidy % 2);
+						rng.Permute(permals, nsplit);
+						if (permals16[j] == 0xFFFF || permals16[j + 1] == 0xFFFF)
+							AppendString(str, "\t");
+						else
+						{
+							sprintf(str, "\t%d,%d", (short)permals16[j] + 1, (short)permals16[j + 1] + 1);
+							while (*str) str++;
+						}
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		}
 
 		*str++ = '\0';
 		THREAD_END
@@ -530,7 +1220,11 @@ TARGET void ConvertPolyRelatedness(int ntot, bool& isfirst)
 		fprintf(convert_file, "\t%s", GetLoc(l).GetNameStr(name_buf));
 	fprintf(convert_file, "\r\n");
 
-	convert_linesize = IND_NAME_LEN + (maxploidy * 3 + 1) * nloc;
+	convert_linesize =
+		convert_mode_val == 1 ? IND_NAME_LEN + (MAX_ALLELE_BYTE * maxploidy + 1) * nloc :
+		(convert_mode_val <= 3 ? IND_NAME_LEN + (MAX_ALLELE_BYTE * 2 + 1) * nloc :
+		(IND_NAME_LEN + (MAX_ALLELE_BYTE * 2 + 1) * nloc) * (maxploidy / 2));
+
 	for (int j = 0; j < NBUF; ++j)
 		conversion_memory2->Alloc(convert_buf[j], convert_linesize);
 
@@ -554,13 +1248,112 @@ THREAD2(ConvertPolyRelatednessInd)
 		char* str = convert_buf[ii % NBUF];
 		IND<REAL>& ind = *rinds[ii];
 
-		AppendString(str, ind.name);
-		AppendString(str, "\t");
-		AppendString(str, apops[ind.popid]->name);
+		switch (convert_mode_val)
+		{
+		default:
+		case 1:
+		case 2://disable,truncate
+		{
+			AppendString(str, ind.name);
+			AppendString(str, "\t");
+			AppendString(str, apops[ind.popid]->name);
 
-		for (int64 l = 0; l < nloc; ++l)
-			AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
-		AppendString(str, "\r\n");
+			for (int64 l = 0; l < nloc; ++l)
+				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 3://choose
+		{
+			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			AppendString(str, ind.name);
+			AppendString(str, "\t");
+			AppendString(str, apops[ind.popid]->name);
+
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				GENOTYPE& gt = ind.GetGenotype(l);
+				ushort* als = gt.GetAlleleArray();
+				int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+				if (nalleles == 0 || ploidy == 1)
+					AppendString(str, "\t000000");
+				else
+				{
+					int a1 = rng.Next(ploidy), a2 = rng.NextAvoid(ploidy, a1);
+					sprintf(str, "\t%03d%03d", als[a1] + 1, als[a2] + 1);
+					while (*str) str++;
+				}
+			}
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 4://split
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				AppendString(str, ind.name);
+				AppendString(str, "A\t"); str[-2] += j / 2;
+				AppendString(str, apops[ind.popid]->name);
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+					if (nalleles == 0 || ploidy == 1 || j + 1 >= ploidy)
+						AppendString(str, "\t000000");
+					else
+					{
+						sprintf(str, "\t%03d%03d", als[j] + 1, als[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		case 5://shuffle
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				AppendString(str, ind.name);
+				AppendString(str, "A\t"); str[-2] += j / 2;
+				AppendString(str, apops[ind.popid]->name);
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+
+					if (nalleles == 0 || ploidy == 1)
+						AppendString(str, "\t000000");
+					else
+					{
+						SetVal(permals16, als, ploidy);
+						rng.Permute(permals16, ploidy);
+						SetFF(permals16 + ploidy - ploidy % 2, nsplit2 - ploidy + ploidy % 2);
+						rng.Permute(permals, nsplit);
+						sprintf(str, "\t%03d%03d", (short)permals16[j] + 1, (short)permals16[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		}
 
 		*str++ = '\0';
 		THREAD_END
@@ -580,7 +1373,19 @@ TARGET void ConvertGenoDive(int ntot, bool& isfirst)
 	convert_file = FOpen(filename, "wb", "%s%s", g_output_val.c_str(), ".convert.genodive.txt");
 	fprintf(convert_file, "//genodive data file created by vcfpop %s on %04d-%02d-%02d %02d:%02d:%02d\r\n",
 		VERSION, t1->tm_year + 1900, t1->tm_mon + 1, t1->tm_mday, t1->tm_hour, t1->tm_min, t1->tm_sec);
-	fprintf(convert_file, "%d	%d	%d	%u	3\r\n", nind, npop, nloc, maxploidy);
+
+	int noutput = nind;
+	if (convert_mode_val >= 4)
+	{
+		noutput = 0;
+		for (int j = 0; j < nind; ++j)
+		{
+			IND<REAL>* ind = ainds[j];
+			noutput += ind->vmax <= 2 ? 1 : ind->vmax / 2;
+		}
+	}
+
+	fprintf(convert_file, "%d	%d	%d	%u	3\r\n", noutput, npop, nloc, maxploidy);
 
 	for (int i = 0; i < npop; ++i)
 	{
@@ -599,13 +1404,17 @@ TARGET void ConvertGenoDive(int ntot, bool& isfirst)
 		fprintf(convert_file, "\t%s", GetLoc(l).GetNameStr(name_buf));
 	fprintf(convert_file, "\r\n");
 
-	convert_linesize = IND_NAME_LEN + (maxploidy * 3 + 1) * nloc;
+	convert_linesize =
+		convert_mode_val == 1 ? IND_NAME_LEN + (maxploidy * MAX_ALLELE_BYTE + 1) * nloc :
+		(convert_mode_val <= 3 ? IND_NAME_LEN + (MAX_ALLELE_BYTE * 2 + 1) * nloc :
+		(IND_NAME_LEN + (MAX_ALLELE_BYTE * 2 + 1) * nloc) * (maxploidy / 2));
+
 	for (int j = 0; j < NBUF; ++j)
 		conversion_memory2->Alloc(convert_buf[j], convert_linesize);
 
 	PrepareGenotypeString(8);
 
-	RunThreads(&ConvertSpagediInd<REAL>, &ConvertGuard<REAL>, NULL, ntot, nind,
+	RunThreads(&ConvertGenoDiveInd<REAL>, &ConvertGuard<REAL>, NULL, ntot, nind,
 		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
 
 	isfirst = false;
@@ -623,13 +1432,288 @@ THREAD2(ConvertGenoDiveInd)
 		char* str = convert_buf[ii % NBUF];
 		IND<REAL>& ind = *rinds[ii];
 
-		AppendString(str, ind.name);
-		AppendString(str, "\t");
-		AppendString(str, apops[ind.popid]->name);
+		switch (convert_mode_val)
+		{
+		default:
+		case 1:
+		case 2://disable,truncate
+		{
+			AppendInt(str, ind.popid + 1);
+			AppendString(str, "\t");
+			AppendString(str, ind.name);
 
-		for (int64 l = 0; l < nloc; ++l)
-			AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
-		AppendString(str, "\r\n");
+			for (int64 l = 0; l < nloc; ++l)
+				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 3://choose
+		{
+			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			AppendInt(str, ind.popid + 1);
+			AppendString(str, "\t");
+			AppendString(str, ind.name);
+
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				GENOTYPE& gt = ind.GetGenotype(l);
+				ushort* als = gt.GetAlleleArray();
+				int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+				if (nalleles == 0 || ploidy == 1)
+					AppendString(str, "\t000000");
+				else
+				{
+					int a1 = rng.Next(ploidy), a2 = rng.NextAvoid(ploidy, a1);
+					sprintf(str, "\t%03d%03d", als[a1] + 1, als[a2] + 1);
+					while (*str) str++;
+				}
+			}
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 4://split
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				AppendInt(str, ind.popid + 1);
+				AppendString(str, "\t");
+				AppendString(str, ind.name);
+				AppendString(str, "A"); str[-1] += j / 2;
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+					if (nalleles == 0 || ploidy == 1 || j + 1 >= ploidy)
+						AppendString(str, "\t000000");
+					else
+					{
+						sprintf(str, "\t%03d%03d", als[j] + 1, als[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		case 5://shuffle
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				AppendInt(str, ind.popid + 1);
+				AppendString(str, "\t");
+				AppendString(str, ind.name);
+				AppendString(str, "A"); str[-1] += j / 2;
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+
+					if (nalleles == 0 || ploidy == 1)
+						AppendString(str, "\t000000");
+					else
+					{
+						SetVal(permals16, als, ploidy);
+						rng.Permute(permals16, ploidy);
+						SetFF(permals16 + ploidy - ploidy % 2, nsplit2 - ploidy + ploidy % 2);
+						rng.Permute(permals, nsplit);
+						sprintf(str, "\t%03d%03d", (short)permals16[j] + 1, (short)permals16[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		}
+
+		*str++ = '\0';
+
+		THREAD_END
+	}
+}
+
+/* Convert into plink format */
+template<typename REAL>
+TARGET void ConvertPlink(int ntot, bool& isfirst)
+{
+	char filename[PATH_LEN];
+	char name_buf[NAME_BUF_LEN];
+
+	time_t time1;
+	time(&time1);
+	FRES_TIME = localtime(&time1);
+	FRES = FOpen(FRES_NAME, "wb", "%s.%s", g_output_val.c_str(), "convert.plink.map");
+	OpenTempFiles(g_nthread_val, ".convert.plink");
+	convert_file = FOpen(filename, "wb", "%s%s", g_output_val.c_str(), "convert.plink.ped");
+
+	convert_linesize = convert_mode_val <= 3 ?
+		IND_NAME_LEN + (MAX_ALLELE_BYTE * 2 + 2) * nloc + 12 :
+		(IND_NAME_LEN + (MAX_ALLELE_BYTE * 2 + 2) * nloc + 12) * (maxploidy / 2);
+
+	for (int j = 0; j < NBUF; ++j)
+		conversion_memory2->Alloc(convert_buf[j], convert_linesize);
+
+	PrepareGenotypeString(9);
+
+	RunThreads(&ConvertPlinkInd<REAL>, &ConvertGuard<REAL>, NULL, ntot, nind,
+		"\nConverting population genetics software format:\n", g_nthread_val, isfirst);
+	
+	isfirst = false;
+	fclose(convert_file);
+	JoinTempFiles(g_nthread_val);
+	CloseResFile();
+}
+
+/* Convert individual genotypes into plink format in multiple threads */
+THREAD2(ConvertPlinkInd)
+{
+	// map file
+	int64 lst = threadid * nloc / g_nthread_val, led = (threadid + 1) * nloc / g_nthread_val;
+	FILE* ftmp = TEMP_FILES[threadid];
+
+	for (int64 l = lst; l < led; ++l)
+	{
+		//chrom	locus	genetic pos	physical pos
+		fprintf(ftmp, "%s\t%s\t0\t%lld\r\n",
+			GetLoc(l).GetChrom(),
+			GetLoc(l).GetName(),
+			uselocpos ? GetLocPos(l) : 0ll);
+	}
+
+	// individual genotype file
+	for (int64 ii = 0; ii < nind; ++ii)
+	{
+		THREAD_BEGIN
+
+		char* str = convert_buf[ii % NBUF];
+		IND<REAL>& ind = *rinds[ii];
+
+		switch (convert_mode_val)
+		{
+		default:
+		case 1:
+		case 2://disable,truncate
+		{
+			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, "\t");
+			AppendString(str, ind.name);
+			AppendString(str, "\t0\t0\t0\t0");
+
+			for (int64 l = 0; l < nloc; ++l)
+				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
+
+			AppendString(str, "\r\n");
+
+			break;
+		}
+		case 3://choose
+		{
+			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, "\t");
+			AppendString(str, ind.name);
+			AppendString(str, "\t0\t0\t0\t0");
+
+			for (int64 l = 0; l < nloc; ++l)
+			{
+				GENOTYPE& gt = ind.GetGenotype(l);
+				ushort* als = gt.GetAlleleArray();
+				int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+				if (nalleles == 0 || ploidy == 1)
+					AppendString(str, "\t0 0");
+				else
+				{
+					int a1 = rng.Next(ploidy), a2 = rng.NextAvoid(ploidy, a1);
+					sprintf(str, "\t%d %d", als[a1] + 1, als[a2] + 1);
+					while (*str) str++;
+				}
+			}
+
+			AppendString(str, "\r\n");
+			break;
+		}
+		case 4://split
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, "\t");
+				AppendString(str, ind.name);
+				AppendString(str, "A\t0\t0\t0\t0"); str[-9] += j / 2;
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+					if (nalleles == 0 || ploidy == 1 || j + 1 >= ploidy)
+						AppendString(str, "\t0 0");
+					else
+					{
+						sprintf(str, "\t%d %d", als[j] + 1, als[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		case 5://shuffle
+		{
+			int vmax = ind.vmax, nsplit = vmax / 2, nsplit2 = nsplit * 2, permals[N_MAX_PLOIDY];
+			ushort* permals16 = (ushort*)permals;
+
+			for (int j = 0; j < nsplit2; j += 2)
+			{
+				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, "\t");
+				AppendString(str, ind.name);
+				AppendString(str, "A\t0\t0\t0\t0"); str[-9] += j / 2;
+
+				for (int64 l = 0; l < nloc; ++l)
+				{
+					GENOTYPE& gt = ind.GetGenotype(l);
+					ushort* als = gt.GetAlleleArray();
+					int ploidy = gt.Ploidy(), nalleles = gt.Nalleles();
+
+					if (nalleles == 0 || ploidy == 1)
+						AppendString(str, "\t0 0");
+					else
+					{
+						SetVal(permals16, als, ploidy);
+						rng.Permute(permals16, ploidy);
+						SetFF(permals16 + ploidy - ploidy % 2, nsplit2 - ploidy + ploidy % 2);
+						rng.Permute(permals, nsplit);
+						sprintf(str, "\t%d %d", (short)permals16[j] + 1, (short)permals16[j + 1] + 1);
+						while (*str) str++;
+					}
+				}
+
+				AppendString(str, "\r\n");
+			}
+			break;
+		}
+		}
 
 		*str++ = '\0';
 

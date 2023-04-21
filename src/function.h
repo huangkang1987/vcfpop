@@ -143,6 +143,9 @@ struct GENOTYPE
 
 	/* Obtain GenoDive genotype string */
 	TARGET char* GetGenoDiveStr();
+
+	/* Obtain Plink genotype string */
+	TARGET char* GetPlinkStr();
 };
 
 struct SLOCUS
@@ -403,6 +406,9 @@ struct IND
 	/* Create individual from genodive */
 	TARGET void genodive(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
 
+	/* Create individual from plink */
+	TARGET void plink(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
+
 	/* Calculate the likelihood of genotype data */
 	TARGET double GenoFreq(POP<REAL>* grp, int model, int64 loc, double e);
 
@@ -481,7 +487,7 @@ struct POP
 
 	int rid;								//Index of the region it belongs
 
-	POP<REAL>* *vpop;								//Subpopulations
+	POP<REAL>** vpop;						//Subpopulations
 	int npop;								//Number of subpopulations
 	int nhaplotypes;						//Number of haplotypes, used in amova homoploid method
 
@@ -528,6 +534,9 @@ struct POP
 
 	/* Calculate loc_stat2 in a pre-allocated buffer, used in relatedness estimation */
 	TARGET void GetLocStat2(LOCSTAT2<REAL>* loc_stat2);
+
+	/* Is a argument a subpop of this */
+	TARGET bool IsSubpop(POP<REAL>* pop);
 };
 
 /* Initialize */
@@ -563,7 +572,7 @@ template<typename REAL>
 TARGET void Calculate();
 
 /* Calculate allele frequencies for each population and region */
-THREAD2H(CalcAlleleFreq);
+THREAD2H(CalcFreqThread);
 
 /* Calculate individual minimum and maximum ploidy, and sum ploidy levels */
 THREAD2H(AssignPloidyThread);

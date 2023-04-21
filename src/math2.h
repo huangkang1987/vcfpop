@@ -220,6 +220,9 @@ TARGET void Add(int64* A, int64* B, int64 n);
 /* Add B into A, A[i] += B[i] */
 TARGET void Add(int* A, int* B, int64 n);
 
+/* Add B into A, A[i] += B[i] */
+TARGET void Add(int* A, int B, int64 n);
+
 /* Add B into A, A[i] += B */
 TARGET void Add(double* A, double B, int64 n);
 
@@ -595,6 +598,12 @@ TARGET void QuickSort(T* arr, int64 left, int64 right)
 		}
 	}
 }
+
+/* Add a value to sum and add weight */
+TARGET void ChargeWeight(double val, double weight, double& numerator, double& denominator);
+
+/* Add a value to sum and add weight */
+TARGET void ChargeWeight(float val, float weight, float& numerator, float& denominator);
 
 /* Add a value to sum and add count */
 TARGET void ChargeSum(double val, double& mean, int& count);

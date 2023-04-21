@@ -63,28 +63,31 @@ struct FST
 	TARGET void Uninitialize();
 
 	/* Nei 1973 Fst estimator based on heterozgysotiy */
-	TARGET static double Fst_Nei1973(POP<REAL>** grps, int n, double* each, double* buf);
+	TARGET static double Fst_Nei1973(POP<REAL>** grps, int n, double* each, double* buf, int64 _l = -1, double* frac1 = NULL, double* frac2 = NULL);
 
-	/* Nei 1973 Fst estimator based on anova */
-	TARGET static double Fst_Weir1984(POP<REAL>** grps, int n, double* each);
+	/* Weir 1984 Fst estimator based on anova */
+	TARGET static double Fst_Weir1984(POP<REAL>** grps, int n, double* each, int64 _l = -1, double* ffrac1 = NULL, double* frac2 = NULL);
 
-	/* Nei 1973 Fst estimator based on mean allele difference */
-	TARGET static double Fst_Hudson1992(POP<REAL>** grps, int n, double* each, double* buf);
+	/* Hudson 1992 Fst estimator based on mean allele difference */
+	TARGET static double Fst_Hudson1992(POP<REAL>** grps, int n, double* each, double* buf, int64 _l = -1, double* ffrac1 = NULL, double* frac2 = NULL);
 
 	/* Slatkin 1995 Fst estimator based on allele size */
-	TARGET static double Fst_Slatkin1995(POP<REAL>** grps, int n, double* each, double* buf);
+	TARGET static double Fst_Slatkin1995(POP<REAL>** grps, int n, double* each, double* buf, int64 _l = -1, double* ffrac1 = NULL, double* frac2 = NULL);
 
 	/* Hedrick 2005 G'st */
-	TARGET static double Fst_Hedrick2005(POP<REAL>** grps, int n, double* each, double* buf);
+	TARGET static double Fst_Hedrick2005(POP<REAL>** grps, int n, double* each, double* buf, int64 _l = -1, double* ffrac1 = NULL, double* frac2 = NULL);
 
 	/* Jost 2008 D */
-	TARGET static double Fst_Jost2008(POP<REAL>** grps, int n, double* each, double* buf);
+	TARGET static double Fst_Jost2008(POP<REAL>** grps, int n, double* each, double* buf, int64 _l = -1, double* ffrac1 = NULL, double* frac2 = NULL);
 
 	/* Huang 2021 Fst estimator based on multi-level amova */
 	TARGET static double Fst_Huang2021_homo(POP<REAL>** grps, int n, int layer, bool isiam, double* each);
 
 	/* Huang 2021 Fst estimator based on multi-level amova */
-	TARGET static double Fst_Huang2021_aneu(POP<REAL>** grps, int n, int layer, bool isiam, bool sumss, double* each, double* buf);
+	TARGET static double Fst_Huang2021_aneu(POP<REAL>** grps, int n, int layer, bool isiam, bool sumss, double* each, double* buf, int64 _l = -1, double* ffrac1 = NULL, double* frac2 = NULL);
+
+	/* Hudson 1992 Fst estimator based on anova */
+	TARGET static double dxy(POP<REAL>** grps, int n, double* buf, int64 l);
 
 	/* Write results file in column format */
 	TARGET static void ColumnPrint(FILE* fout);

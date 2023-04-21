@@ -44,7 +44,6 @@ extern bool f_qual_b;							extern double f_qual_min, f_qual_max;
 extern bool f_type_b;							extern int f_type_val;
 extern bool f_original_b;						extern int f_original_val;
 extern bool f_pop_b;							extern string f_pop_val;
-extern bool f_region_b;							extern string f_region_val;
 extern bool f_bmaf_b;							extern double f_bmaf_min, f_bmaf_max;
 extern bool f_k_b;								extern int f_k_min, f_k_max;
 extern bool f_n_b;								extern int f_n_min, f_n_max;
@@ -76,6 +75,7 @@ extern bool haplotype_genotypes_b;				extern int haplotype_genotypes_min, haplot
 /* File conversion */
 extern bool convert;
 extern bool convert_format_b;					extern byte convert_format_val[N_MAX_OPTION];
+extern bool convert_mode_b;						extern int convert_mode_val;
 
 /* Individual statistics */
 extern bool indstat;
@@ -117,6 +117,17 @@ extern bool amova_test_b;						extern int amova_test_val;
 extern bool amova_nperm_b;						extern int amova_nperm_val;
 extern bool amova_pseudo_b;						extern int amova_pseudo_val;
 extern bool amova_printss_b;					extern int amova_printss_val;
+
+/* Sliding window */
+extern bool slide;
+extern bool slide_plot_b;						extern int slide_plot_val;
+extern bool slide_plot_columns_b;				extern int slide_plot_columns_val[N_MAX_SLIDEPLOT]; //values begins from 1
+extern bool slide_plot_styles_b;				extern int slide_plot_styles_val[N_MAX_SLIDEPLOT];
+extern bool slide_windowsize_b;					extern int slide_windowsize_val;
+extern bool slide_windowstep_b;					extern int slide_windowstep_val;
+extern bool slide_minvariants_b;				extern int slide_minvariants_val;
+extern bool slide_estimator_b;					extern byte slide_estimator_val[N_MAX_OPTION];
+extern bool slide_pop_b;						extern string slide_pop_val;
 
 /* Population assignment */
 extern bool popas;

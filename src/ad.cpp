@@ -11,6 +11,10 @@ template struct IND<float >;
 
 template TARGET void IND<double>::SetAlleleDepth(int64 l, uint* depth, int K, int indid);
 template TARGET void IND<float >::SetAlleleDepth(int64 l, uint* depth, int K, int indid);
+template TARGET void IND<double>::SetAlleleDepth(int64 l, uint* depth, int K);
+template TARGET void IND<float >::SetAlleleDepth(int64 l, uint* depth, int K);
+template TARGET void IND<double>::SetAlleleDepth(int64 l, uint* depth, int K, OFFSET* _offset, byte* bucket);
+template TARGET void IND<float >::SetAlleleDepth(int64 l, uint* depth, int K, OFFSET* _offset, byte* bucket);
 template TARGET void IND<double>::GetAlleleDepth(int64 l, uint* depth);
 template TARGET void IND<float >::GetAlleleDepth(int64 l, uint* depth);
 

@@ -96,6 +96,11 @@ typedef std::chrono::time_point<std::chrono::steady_clock> timepoint;
 	#pragma warning(disable:4244)
 	#pragma warning(disable:4503)
 	#pragma warning(disable:4819)
+	#pragma warning(disable:4702)
+	#pragma warning(disable:6386)
+	#pragma warning(disable:6387)
+	#pragma warning(disable:6031)
+	#pragma warning(disable:4661)
 
 	#define TARGET    
 	#define TARGETSSE 
@@ -331,6 +336,7 @@ struct FILEINFO;
 #include "load.h"
 #include "filter.h"
 #include "diversity.h"
+#include "slide.h"
 #include "haplotype.h"
 #include "conversion.h"
 #include "indstat.h"

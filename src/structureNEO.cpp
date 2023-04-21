@@ -377,7 +377,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
 	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
+		int tid2 = thread_counter.fetch_add(1);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -419,7 +419,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
 				int* allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
 				float64x2_t freq[32];
 
-				int64* buf1 = (int64*)bufNK1 + N * K * tid; double* buf2 = bufNK2 + N * K * tid;
+				int64* buf1 = (int64*)bufNK1 + N * K * tid2; double* buf2 = bufNK2 + N * K * tid2;
 
 				for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
 				{
@@ -501,8 +501,8 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
 								}
 							}
 
-							for (int K = sizeof(freq) / sizeof(freq[0]) / 2; K >= 1; K >>= 1)
-								REP(K) freq[kk] = vmulq_f64(freq[kk], freq[kk + K]);
+							for (int KK = sizeof(freq) / sizeof(freq[0]) / 2; KK >= 1; KK >>= 1)
+								REP(KK) freq[kk] = vmulq_f64(freq[kk], freq[kk + KK]);
 
 							ChargeLog(buf1[k], buf2[k], vgetq_lane_f64(freq[0], 0) * vgetq_lane_f64(freq[0], 1));
 						}
@@ -512,7 +512,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
 		}
 
 		//avoid thread-conflict
-		CloseLog((int64*)bufNK1 + N * K * tid, bufNK2 + N * K * tid, N * K);
+		CloseLog((int64*)bufNK1 + N * K * tid2, bufNK2 + N * K * tid2, N * K);
 	}
 }
 
@@ -547,11 +547,8 @@ TARGETNEO void BAYESIAN<REAL>::UpdateZNoAdmixNEO(int tid)
 	static uint PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
 	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
-
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
 			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
@@ -880,8 +877,8 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid)
 							}
 						}
 
-						for (int K = sizeof(f1) / sizeof(f1[0]) / 2; K >= 1; K >>= 1)
-							REP(K) f1[kk] = vmulq_f64(f1[kk], f1[kk + K]);
+						for (int KK = sizeof(f1) / sizeof(f1[0]) / 2; KK >= 1; KK >>= 1)
+							REP(KK) f1[kk] = vmulq_f64(f1[kk], f1[kk + KK]);
 
 						ChargeLog(*(int64*)buf1, *buf2, vgetq_lane_f64(f1[0], 0) * vgetq_lane_f64(f1[0], 1));
 					}
@@ -1310,8 +1307,8 @@ TARGETNEO void BAYESIAN<REAL>::RecordNEO(int tid)
 
 						REP(32) f2[kk] = vbslq_f64(typed64[kk], f2[kk], maskoned);
 
-						for (int K = sizeof(f2) / sizeof(f2[0]) / 2; K >= 1; K >>= 1)
-							REP(K) f2[kk] = vmulq_f64(f2[kk], f2[kk + K]);
+						for (int KK = sizeof(f2) / sizeof(f2[0]) / 2; KK >= 1; KK >>= 1)
+							REP(KK) f2[kk] = vmulq_f64(f2[kk], f2[kk + KK]);
 
 						ChargeLog(slog, prod, vgetq_lane_f64(f2[0], 0) * vgetq_lane_f64(f2[0], 1));
 					}

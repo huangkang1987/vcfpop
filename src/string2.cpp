@@ -656,6 +656,11 @@ TARGET int ReadInteger(char*& p)
 			c = *(p++);
 			break;
 		}
+		else if (c == '?')
+		{
+			return -1;
+			break;
+		}
 	}
 
 	for (; c >= '0' && c <= '9'; c = *p++)
@@ -1030,6 +1035,58 @@ TARGET void GetParLong(string gpar, bool& parid, int64& val, int64 min, int64 ma
 		Exit("\nError: parameter %s out of range, whose value should between %lld and %lld.\n", gpar.c_str(), min, max);
 }
 
+/* Read 32bit integer array parameter */
+TARGET void GetParIntegerArray(string gpar, bool& parid, uint* val, uint min, uint max, int npar)
+{
+	if (parid) Exit("\nError: parameter %s has been assigned twice.\n", gpar.c_str());
+	parid = true;
+	int s1 = 0;
+	while (gpar[s1] && gpar[s1] != '=') s1++;
+
+	SetZero(val, npar);
+	for (int i = 0; i < npar; ++i)
+	{
+		if (!gpar[s1]) Exit("\nError: cannot parse parameter %s, check format.\n", gpar.c_str());
+		s1++;
+		if (!gpar[s1]) Exit("\nError: cannot parse parameter %s, check format.\n", gpar.c_str());
+
+		sscanf(gpar.c_str() + s1, "%u", &val[i]);
+
+		if (val[i] < min || val[i] > max)
+			Exit("\nError: parameter %s out of range, whose value should between %u and %u.\n", gpar.c_str(), min, max);
+
+		while (gpar[s1] && gpar[s1] != ',') s1++;
+
+		if (!gpar[s1]) break;
+	}
+}
+
+/* Read 32bit integer array parameter */
+TARGET void GetParIntegerArray(string gpar, bool& parid, int* val, int min, int max, int npar)
+{
+	if (parid) Exit("\nError: parameter %s has been assigned twice.\n", gpar.c_str());
+	parid = true;
+	int s1 = 0;
+	while (gpar[s1] && gpar[s1] != '=') s1++;
+
+	SetZero(val, npar);
+	for (int i = 0; i < npar; ++i)
+	{
+		if (!gpar[s1]) Exit("\nError: cannot parse parameter %s, check format.\n", gpar.c_str());
+		s1++;
+		if (!gpar[s1]) Exit("\nError: cannot parse parameter %s, check format.\n", gpar.c_str());
+
+		sscanf(gpar.c_str() + s1, "%d", &val[i]);
+
+		if (val[i] < min || val[i] > max)
+			Exit("\nError: parameter %s out of range, whose value should between %d and %d.\n", gpar.c_str(), min, max);
+
+		while (gpar[s1] && gpar[s1] != ',') s1++;
+
+		if (!gpar[s1]) break;
+	}
+}
+
 /* Read boolean parameter */
 TARGET void GetParBool(string gpar, bool& parid)
 {
@@ -1056,6 +1113,30 @@ TARGET void GetParString(string gpar, const string& ref, bool& parid, int& val)
 		Exit("\nError: Unrecognized parameter: %s.\n ", gpar.c_str());
 
 	val = std::distance(refs.begin(), it) + 1;
+}
+
+/* Read string array parameter */
+TARGET void GetParStringArray(string gpar, const string& ref, bool& parid, int* val, int npar)
+{
+	if (parid) Exit("\nError: parameter %s has been assigned twice.\n", gpar.c_str());
+	parid = true;
+
+	int idx = (int)gpar.find_first_of('=');
+	if (idx == -1)
+		Exit("\nError: cannot parse parameter %s, check format.\n", gpar.c_str());
+
+	vector<string> gpar2 = SplitStr(gpar.substr(idx + 1), ",");
+	vector<string> refs = SplitStr(ref, "|");
+
+	for (int i = 0; i < gpar2.size(); ++i)
+	{
+		auto it = std::find(refs.begin(), refs.end(), gpar2[i]);
+
+		if (it == refs.end())
+			Exit("\nError: Unrecognized parameter: %s.\n ", gpar.c_str());
+
+		val[i] = std::distance(refs.begin(), it);
+	}
 }
 
 /* Read multiple section parameters */

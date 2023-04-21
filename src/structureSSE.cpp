@@ -237,7 +237,7 @@ TARGETSSE void BAYESIAN<REAL>::UpdateQNoAdmixSSE(int tid)
 	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
+		int tid2 = thread_counter.fetch_add(1);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -279,7 +279,7 @@ TARGETSSE void BAYESIAN<REAL>::UpdateQNoAdmixSSE(int tid)
 				int* allele2 = (int*)allele, * gtploidy2 = (int*)gtploidy, * gtaddr2 = (int*)gtaddr;
 				__m128d freq[32];
 
-				int64* buf1 = (int64*)bufNK1 + N * K * tid; double* buf2 = bufNK2 + N * K * tid;
+				int64* buf1 = (int64*)bufNK1 + N * K * tid2; double* buf2 = bufNK2 + N * K * tid2;
 
 				for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
 				{
@@ -370,8 +370,8 @@ TARGETSSE void BAYESIAN<REAL>::UpdateQNoAdmixSSE(int tid)
 								}
 							}
 
-							for (int K = sizeof(freq) / sizeof(freq[0]) / 2; K >= 1; K >>= 1)
-								REP(K) freq[kk] = _mm_mul_pd(freq[kk], freq[kk + K]);
+							for (int KK = sizeof(freq) / sizeof(freq[0]) / 2; KK >= 1; KK >>= 1)
+								REP(KK) freq[kk] = _mm_mul_pd(freq[kk], freq[kk + KK]);
 
 							ChargeLog(buf1[k], buf2[k], simp_f64(freq, 0) * simp_f64(freq, 1));
 						}
@@ -381,7 +381,7 @@ TARGETSSE void BAYESIAN<REAL>::UpdateQNoAdmixSSE(int tid)
 		}
 
 		//avoid thread-conflict
-		CloseLog((int64*)bufNK1 + N * K * tid, bufNK2 + N * K * tid, N * K);
+		CloseLog((int64*)bufNK1 + N * K * tid2, bufNK2 + N * K * tid2, N * K);
 	}
 }
 
@@ -419,11 +419,8 @@ TARGETSSE void BAYESIAN<REAL>::UpdateZNoAdmixSSE(int tid)
 	static int PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
 	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
-
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
 			int64 lstart = structure_loc_lend[lsize - 1], lend = structure_loc_lend[lsize];
@@ -591,7 +588,7 @@ TARGETSSE void BAYESIAN<REAL>::UpdateQMetroSSE(int tid)
 	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
+		int tid2 = thread_counter.fetch_add(1);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -636,7 +633,7 @@ TARGETSSE void BAYESIAN<REAL>::UpdateQMetroSSE(int tid)
 
 				REAL* bufi = (REAL*)bufNK1, * q = Q;
 				//avoid thread-conflict
-				double* buf1 = bufN1 + N * tid, * buf2 = bufN2 + N * tid;
+				double* buf1 = bufN1 + N * tid2, * buf2 = bufN2 + N * tid2;
 
 				for (int i = 0; i < N; ++i, q += K, bufi += K, buf1++, buf2++)
 				{
@@ -765,8 +762,8 @@ TARGETSSE void BAYESIAN<REAL>::UpdateQMetroSSE(int tid)
 							}
 						}
 
-						for (int K = sizeof(f1) / sizeof(f1[0]) / 2; K >= 1; K >>= 1)
-							REP(K) f1[kk] = _mm_mul_pd(f1[kk], f1[kk + K]);
+						for (int KK = sizeof(f1) / sizeof(f1[0]) / 2; KK >= 1; KK >>= 1)
+							REP(KK) f1[kk] = _mm_mul_pd(f1[kk], f1[kk + KK]);
 
 						ChargeLog(*(int64*)buf1, *buf2, simp_f64(f1, 0) * simp_f64(f1, 1));
 					}
@@ -775,7 +772,7 @@ TARGETSSE void BAYESIAN<REAL>::UpdateQMetroSSE(int tid)
 		}
 
 		//avoid thread-conflict
-		CloseLog((int64*)bufN1 + N * tid, bufN2 + N * tid, N);
+		CloseLog((int64*)bufN1 + N * tid2, bufN2 + N * tid2, N);
 	}
 }
 
@@ -820,11 +817,11 @@ TARGETSSE void BAYESIAN<REAL>::UpdateZAdmixSSE(int tid)
 	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
+		int tid2 = thread_counter.fetch_add(1);
 
 		//64 * K  * sizeof(double)
-		__m128d* bufkd = (__m128d*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
-		__m128* bufks = (__m128*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
+		__m128d* bufkd = (__m128d*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid2);
+		__m128* bufks = (__m128*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid2);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -876,7 +873,7 @@ TARGETSSE void BAYESIAN<REAL>::UpdateZAdmixSSE(int tid)
 
 				REAL* q = Q;
 				//avoid thread-conflict
-				int64* mi = Mi + N * K * tid;
+				int64* mi = Mi + N * K * tid2;
 
 				for (int i = 0; i < N; ++i, q += K, mi += K)
 				{
@@ -1033,7 +1030,7 @@ TARGETSSE void BAYESIAN<REAL>::RecordSSE(int tid)
 	atomic<int> thread_counter = 0;
 #pragma omp parallel num_threads(structure_nsubthread)
 	{
-		int tid = thread_counter.fetch_add(1);
+		int tid2 = thread_counter.fetch_add(1);
 
 		int64 slog = 0; double prod = 1;
 		OpenLog(slog, prod);
@@ -1199,8 +1196,8 @@ TARGETSSE void BAYESIAN<REAL>::RecordSSE(int tid)
 
 						REP(32) f2[kk] = _mm_blendv_pd(maskoned, f2[kk], _mm_castsi128_pd(typed64[kk]));
 
-						for (int K = sizeof(f2) / sizeof(f2[0]) / 2; K >= 1; K >>= 1)
-							REP(K) f2[kk] = _mm_mul_pd(f2[kk], f2[kk + K]);
+						for (int KK = sizeof(f2) / sizeof(f2[0]) / 2; KK >= 1; KK >>= 1)
+							REP(KK) f2[kk] = _mm_mul_pd(f2[kk], f2[kk + KK]);
 
 						ChargeLog(slog, prod, simp_f64(f2, 0) * simp_f64(f2, 1));
 					}
@@ -1209,7 +1206,7 @@ TARGETSSE void BAYESIAN<REAL>::RecordSSE(int tid)
 		}
 
 		CloseLog(slog, prod);
-		bufNK1[tid] = prod;
+		bufNK1[tid2] = prod;
 	}
 }
 

@@ -168,11 +168,20 @@ TARGET void GetParLong(string gpar, bool& parid, uint64& val, uint64 min, uint64
 /* Read 64bit integer parameter */
 TARGET void GetParLong(string gpar, bool& parid, int64& val, int64 min, int64 max);
 
+/* Read 32bit integer array parameter */
+TARGET void GetParIntegerArray(string gpar, bool& parid, uint* val, uint min, uint max, int npar);
+
+/* Read 32bit integer array parameter */
+TARGET void GetParIntegerArray(string gpar, bool& parid, int* val, int min, int max, int npar);
+
 /* Read boolean parameter */
 TARGET void GetParBool(string gpar, bool& parid);
 
 /* Read string parameter */
 TARGET void GetParString(string gpar, const string& ref, bool& parid, int& val);
+
+/* Read string array parameter */
+TARGET void GetParStringArray(string gpar, const string& ref, bool& parid, int* val, int npar);
 
 /* Read multiple section parameters */
 TARGET void GetParStringMultiSel(string gpar, const string& ref, bool& parid, byte* val);

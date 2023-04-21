@@ -13,9 +13,9 @@ TARGET bool PrintHelp()
 	bool gpar = false;
 	for (uint i = 0; i < argv.size(); ++i)
 	{
-		if (!LwrLineCmp("-help", argv[i]) || !LwrLineCmp("-h", argv[i]) ||
+		if (!LwrLineCmp("-help", argv[i])  || !LwrLineCmp("-h", argv[i])  ||
 			!LwrLineCmp("--help", argv[i]) || !LwrLineCmp("--h", argv[i]) ||
-			!LwrLineCmp("/help", argv[i]) || !LwrLineCmp("/h", argv[i]))
+			!LwrLineCmp("/help", argv[i])  || !LwrLineCmp("/h", argv[i]))
 			helpcat[0] = true;
 		if (!LwrLineCmp("-p=", argv[i]))
 			gpar = true;
@@ -24,34 +24,36 @@ TARGET bool PrintHelp()
 			helpcat[1] = true;
 		if ("-f" == argv[i] || !LwrLineCmp("-f_", argv[i]))
 			helpcat[2] = true;
-		if (!LwrLineCmp("-haplotype", argv[i]))
+		if (!LwrLineCmp("-slide", argv[i]))
 			helpcat[3] = true;
-		if (!LwrLineCmp("-convert", argv[i]))
+		if (!LwrLineCmp("-slide", argv[i]))
 			helpcat[4] = true;
-		if (!LwrLineCmp("-diversity", argv[i]))
+		if (!LwrLineCmp("-convert", argv[i]))
 			helpcat[5] = true;
-		if (!LwrLineCmp("-indstat", argv[i]))
+		if (!LwrLineCmp("-diversity", argv[i]))
 			helpcat[6] = true;
-		if (!LwrLineCmp("-fst", argv[i]))
+		if (!LwrLineCmp("-indstat", argv[i]))
 			helpcat[7] = true;
-		if (!LwrLineCmp("-gdist", argv[i]))
+		if (!LwrLineCmp("-fst", argv[i]))
 			helpcat[8] = true;
-		if (!LwrLineCmp("-amova", argv[i]))
+		if (!LwrLineCmp("-gdist", argv[i]))
 			helpcat[9] = true;
-		if (!LwrLineCmp("-popas", argv[i]))
+		if (!LwrLineCmp("-amova", argv[i]))
 			helpcat[10] = true;
-		if (!LwrLineCmp("-relatedness", argv[i]))
+		if (!LwrLineCmp("-popas", argv[i]))
 			helpcat[11] = true;
-		if (!LwrLineCmp("-kinship", argv[i]))
+		if (!LwrLineCmp("-relatedness", argv[i]))
 			helpcat[12] = true;
-		if (!LwrLineCmp("-pcoa", argv[i]))
+		if (!LwrLineCmp("-kinship", argv[i]))
 			helpcat[13] = true;
-		if (!LwrLineCmp("-cluster", argv[i]))
+		if (!LwrLineCmp("-pcoa", argv[i]))
 			helpcat[14] = true;
-		if (!LwrLineCmp("-structure", argv[i]))
+		if (!LwrLineCmp("-cluster", argv[i]))
 			helpcat[15] = true;
-		if (!LwrLineCmp("-ploidyinfer", argv[i]))
+		if (!LwrLineCmp("-structure", argv[i]))
 			helpcat[16] = true;
+		if (!LwrLineCmp("-ploidyinfer", argv[i]))
+			helpcat[17] = true;
 	}
 
 	for (uint i = 0; i < N_FUNC; ++i)
@@ -70,26 +72,27 @@ TARGET bool PrintHelp()
 		printi("Basic commands, type -h -function_name to view detail help information:\n");
 		printi("  1. General settings: -g\n");
 		printi("  2. Filter for individual, locus or genotype: -f\n");
-		printi("  3. Haplotype extraction: -haplotype\n");
-		printi("  4. File conversion: -convert\n");
-		printi("  5. Genetic diversity indices: -diversity\n");
-		printi("  6. Individual statistics: -indstat\n");
-		printi("  7. Genetic differentiation: -fst\n");
-		printi("  8. Genetic distance: -gdist\n");
-		printi("  9. Analysis of molecular variance: -amova\n");
-		printi("  10. Population assignment: -popas\n");
-		printi("  11. Relatedness coefficient: -relatedness\n");
-		printi("  12. Kinship coefficient: -kinship\n");
-		printi("  13. Principal coordinate analysis: -pcoa\n");
-		printi("  14. Hierarchical clustering: -cluster\n");
-		printi("  15. Bayesian clustering: -structure\n");
-		//printi("  16. Ploidy inference: -ploidyinfer\n");
+		printi("  3. Sliding window: -slide\n");
+		printi("  4. Haplotype extraction: -haplotype\n");
+		printi("  5. File conversion: -convert\n");
+		printi("  6. Genetic diversity indices: -diversity\n");
+		printi("  7. Individual statistics: -indstat\n");
+		printi("  8. Genetic differentiation: -fst\n");
+		printi("  9. Genetic distance: -gdist\n");
+		printi("  10. Analysis of molecular variance: -amova\n");
+		printi("  11. Population assignment: -popas\n");
+		printi("  12. Relatedness coefficient: -relatedness\n");
+		printi("  13. Kinship coefficient: -kinship\n");
+		printi("  14. Principal coordinate analysis: -pcoa\n");
+		printi("  15. Hierarchical clustering: -cluster\n");
+		printi("  16. Bayesian clustering: -structure\n");
+		//printi("  17. Ploidy inference: -ploidyinfer\n");
 		printf("  -p=pars.txt\n");
 		printi("Load parameters set file, the formats are the same as command-line parameters, and linebreak can be used as the parameter sepreator in the parameters set file.\n");
 		printf("\n");
 	}
 
-	//2. General settings
+	//1. General settings
 	if (helpcat[1])
 	{
 		printf("1. General settings\n");
@@ -120,7 +123,7 @@ TARGET bool PrintHelp()
 		printi("The number of characters used for the progress bar.\n");
 		printf("-g_input=file_path, string\n");
 		printi("Input file. Multiple VCF/BCF files using '|' and '&' as the column and row separators, respectively, e.g., var1-4ind1-3.vcf|var1-4ind4-6.vcf&var5-9ind1-3.vcf|var5-9ind4-6.vcf. The 'FORMAT' field in each file should be equal.\n");
-		printf("-g_format=vcf|bcf|genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness, string, default:vcf\n");
+		printf("-g_format=vcf|bcf|genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive|plink, string, default:vcf\n");
 		printi("Input file format. The population and region should be defined in g_indtext, and the within input file will not be used. For GENEPOP format, VCFPOP do not support extra information; for CERVUS, at most one extra column (population or sex) is allowed; for SPAGEDI, multiple extra columns (population or coordinate) are allowed; for STRUCTURE, the number of extra columns can be specified.\n");
 		printf("-g_locusname=chr|pos|chr_pos|chr_ref_alt|pos_ref_alt|chr_pos_ref_alt, string, default:chr_pos\n");
 		printi("Locus name definition, only appliable for VCF/BCF input files.\n");
@@ -234,10 +237,35 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//3. Haplotype
+	//3. Sliding window
 	if (helpcat[3])
 	{
-		printf("3. Haplotype extraction\n");
+		printf("3. Sliding window\n");
+		printf("-slide\n");
+		printi("Estimates statistics for each sliding window. Results are saved in *.slide.txt.\n");
+		printf("-slide_plot=yes|no, string, default:no\n");
+		printi("Draws a circle figure for the results of sliding window. Results are saved in *.slide.html. This webpage is interactive and can be converted into PDF file with web browsers and PDF printers. \n");
+		printf("-slide_plot_columns=1~100, integer array, default:1,2,3,4\n");
+		printi("The columns used to draw the circles from innermost to outermost, supporting a maximum of five columns. The elements are separated by commas. \n");
+		printf("-slide_plot_styles=dot|bar|line|heat, string array, default:dot,bar,line,heat\n");
+		printi("The styles for the circles from innermost to outermost. The options are dot (scatter plot), bar (bar plot), line (line chart), and heat (heat map). \n");
+		printf("-slide_windowsize=1000~1000000000, integer, default:1000000\n");
+		printi("Sliding window size.\n");
+		printf("-slide_windowstep=1000~1000000000, integer, default:100000\n");
+		printi("Sliding window step size, smaller size yields more smooth curves.\n");
+		printf("-slide_minvariants=10~1000000000, integer, default:100\n");
+		printi("Minimum number of variants a sliding window should consist to perform further calculations. \n");
+		printf("-slide_estimator=Nei1973|Weir1984|Hudson1992|Hedrick2005|Jost2008|Huang2021_aneu|dxy|pi|thetaw|TajimaD|fis|ho|he|pic|ae|I, string, multiple selections, default:Nei1973|dxy|pi|TajimaD|fis\n");
+		printi("Estimates fst (differentiation among populations), dxy (absolute divergence), pi (nucleotide diversity), thetaw (Watterson's thetaW),  TajimaD (Tajima's D), fis (inbreeding coefficient), and ho (mean observed heterozygosity), he (mean expected heterozygosity), pic (mean polymorphic information content), ae (mean effective number of alleles), and I (mean Shannon's information index) for each sliding window. \n");
+		printf("-slide_pop=pop_identifier|reg_identifier|tot, string, default:tot\n");
+		printi("Estimates fst, dxy, pi, thetaw, tajimaD, r2, D', r2D, Delta', fis, ho, he, pic, ae, I for a population, a region or in the total population. Note that fst and dxy are not calculated for a population. \n");	
+		printf("\n");
+	}
+
+	//4. Haplotype
+	if (helpcat[4])
+	{
+		printf("4. Haplotype extraction\n");
 		printf("-haplotype\n");
 		printi("Extracts haplotypes from phased genotypes, then use the haplotypes as alleles for further analysis. Note that all genotypes must be phased and only the variants genotyped in all individuals are used. The haplotype definitions are saved in *.haplotype.txt.\n");
 		printf("-haplotype_ptype=[min_val,max_val], real range, default:[0.8,1]\n");
@@ -255,21 +283,23 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//4. Conversion
-	if (helpcat[4])
+	//5. Conversion
+	if (helpcat[5])
 	{
-		printf("4. Conversion\n");
+		printf("5. Conversion\n");
 		printf("-convert\n");
 		printi("Converts filtered data (and extracted haplotype) into the input format of other software. The result is saved in *.convert.genepop.txt.\n");
-		printf("-convert_format=genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive, string, multiple selections, default:spagedi\n");
-		printi("Target format, where genepop, cervus and arlequin formats only support diploids.\n");
+		printf("-convert_format=genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive|plink, string, multiple selections, default:spagedi\n");
+		printi("Target format, where genepop, cervus, arlequin and plink formats only support diploids.\n");
+		printf("-convert_mode=disable|truncate|choose|split|shuffle, string, default:disable\n");
+		printi("Converts polyploid genotype into diploid genotype: truncate (use first two alleles), choose (randomly sample two alleles without replacement), split (split one polyploid into floor(v/2) diploids), and shuffle (shuffle alleles and split). Haploid genotypes are considered as missing.\n");
 		printf("\n");
 	}
 
-	//5. Genetic diversity indices
-	if (helpcat[5])
+	//6. Genetic diversity indices
+	if (helpcat[6])
 	{
-		printf("5. Genetic diversity indices\n");
+		printf("6. Genetic diversity indices\n");
 		printf("-diversity\n");
 		printi("Estimates the genetic diversity indices. Results are saved in *.diversity.txt.\n");
 		printf("-diversity_level=pop|reg|tot|popXloc|regXloc|totXloc, string, multiple selections, default:loc,pop\n");
@@ -279,10 +309,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//6. Individual statistics
-	if (helpcat[6])
+	//7. Individual statistics
+	if (helpcat[7])
 	{
-		printf("6. Individual statistics\n");
+		printf("7. Individual statistics\n");
 		printf("-indstat\n");
 		printi("Calculates individual statistics (e.g., inbreeding coefficient, heterozygosity, and etc). Results are saved in *.indstat.txt.\n");
 		printf("-indstat_type=hidx|lnpg|f|theta, string, multiple selections, default:hidx,lnpg\n");
@@ -298,10 +328,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//7. Genetic differentiation
-	if (helpcat[7])
+	//8. Genetic differentiation
+	if (helpcat[8])
 	{
-		printf("7. Genetic differentiation\n");
+		printf("8. Genetic differentiation\n");
 		printf("-fst\n");
 		printi("Estimates the genetic differentiation statistics. Results are saved in *.fst.txt.\n");
 		printf("-fst_plot=yes|no, string, default:no\n");
@@ -319,10 +349,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//8. Genetic distance
-	if (helpcat[8])
+	//9. Genetic distance
+	if (helpcat[9])
 	{
-		printf("8. Genetic distance\n");
+		printf("9. Genetic distance\n");
 		printf("-gdist\n");
 		printi("Estimates the genetic distance. Results are saved in *.gdist.txt.\n");
 		printf("-gdist_plot=yes|no, string, default:no\n");
@@ -338,10 +368,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//9. Analysis of molecular variance
-	if (helpcat[9])
+	//10. Analysis of molecular variance
+	if (helpcat[10])
 	{
-		printf("9. Analysis of molecular variance\n");
+		printf("10. Analysis of molecular variance\n");
 		printf("-amova\n");
 		printi("Performs analysis of molecular variance. Results are saved in *.amova.txt.\n");
 		printf("-amova_method=homoploid|aneuploid|likelihood, string, multiple selections, default:homoploid\n");
@@ -363,10 +393,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//10. Population assignment
-	if (helpcat[10])
+	//11. Population assignment
+	if (helpcat[11])
 	{
-		printf("10. Population assignment\n");
+		printf("11. Population assignment\n");
 		printf("-popas\n");
 		printi("Assigns individuals to their natal population according to their genotypic frequencies in each population. Results are saved in *.popas.txt.\n");
 		printf("-popas_plot=yes|no, string, default:no\n");
@@ -380,10 +410,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//11. Relatedness coefficient
-	if (helpcat[11])
+	//12. Relatedness coefficient
+	if (helpcat[12])
 	{
-		printf("11. Relatedness coefficient\n");
+		printf("12. Relatedness coefficient\n");
 		printf("-relatedness\n");
 		printi("Estimates pairwise relatedness between individuals. Results are saved in *.relatedness.txt.\n");
 		printf("-relatedness_plot=yes|no, string, default:no\n");
@@ -397,10 +427,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//12. Kinship coefficient
-	if (helpcat[12])
+	//13. Kinship coefficient
+	if (helpcat[13])
 	{
-		printf("12. Kinship coefficient\n");
+		printf("13. Kinship coefficient\n");
 		printf("-kinship\n");
 		printi("Estimates kinship coefficient between individuals. Results are saved in *.kinship.txt.\n");
 		printf("-kinship_plot=yes|no, string, default:no\n");
@@ -414,10 +444,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//13. Principal coordinate analysis
-	if (helpcat[13])
+	//14. Principal coordinate analysis
+	if (helpcat[14])
 	{
-		printf("13. Principal coordinate analysis\n");
+		printf("14. Principal coordinate analysis\n");
 		printf("-pcoa\n");
 		printi("Performs a principal coordinate analysis for individuals, populations or regions. Results are saved in *.pcoa.txt.\n");
 		printf("-pcoa_plot=yes|no, string, default:no\n");
@@ -431,10 +461,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//14. Hierarchical clustering
-	if (helpcat[14])
+	//15. Hierarchical clustering
+	if (helpcat[15])
 	{
-		printf("14. Hierarchical clustering\n");
+		printf("15. Hierarchical clustering\n");
 		printf("-cluster\n");
 		printi("Perform hierarchical clustering for individuals, populations or regions. Results are saved in *.cluster.txt in standard tree format.\n");
 		printf("-cluster_plot=yes|no, string, default:no\n");
@@ -448,10 +478,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//15. Bayesian clustering
-	if (helpcat[15])
+	//16. Bayesian clustering
+	if (helpcat[16])
 	{
-		printf("15. Bayesian clustering\n");
+		printf("16. Bayesian clustering\n");
 		printf("-structure\n");
 		printi("Perform Bayesian clustering. Results are saved in *.structure.txt and *.structure.k=?.rep=?_id=?.txt. The former is the summary and the latter is the result of each run.\n");
 		printf("-structure_nstream=1~32, integer, default:4\n");
@@ -541,10 +571,10 @@ TARGET bool PrintHelp()
 		printf("\n");
 	}
 
-	//16. PloidyInfer
-	if (helpcat[16])
+	//17. PloidyInfer
+	if (helpcat[17])
 	{
-		printf("16. Ploidy Inference\n");
+		printf("17. Ploidy Inference\n");
 		printf("-ploidyinfer\n");
 		printi("Inference on individual ploidy levels (assuming autopolyploids). Results are saved in '*.ploidyinfer.txt'.\n");
 		printf("-ploidyinfer_histogram=yes|no, string, default:no\n");

@@ -6,7 +6,7 @@ FLAGS		= -fpermissive -std=c++20 -O3 -w -static -m64 -fopenmp -DNDEBUG -DENABLE_
 
 HEADER		= vcfpop.h
 
-OBJ		= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathNEO.o mathSSE.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureNEO.o structureSSE.o structureAVX.o structure512.o ad.o menu.o 
+OBJ		= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathNEO.o mathSSE.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o slide.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureNEO.o structureSSE.o structureAVX.o structure512.o structureCUDA.o ad.o menu.o 
 
 BIN_PATH	= ../bin/
 
@@ -93,6 +93,9 @@ filter.o: filter.cpp $(HEADER)
 diversity.o: diversity.cpp $(HEADER) 
 	$(CC) $(INCLUDE) -c diversity.cpp $(FLAGS)
 
+slide.o: slide.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c slide.cpp $(FLAGS)
+
 haplotype.o: haplotype.cpp $(HEADER) 
 	$(CC) $(INCLUDE) -c haplotype.cpp $(FLAGS)
 
@@ -140,6 +143,9 @@ structureAVX.o: structureAVX.cpp $(HEADER)
 
 structure512.o: structure512.cpp $(HEADER) 
 	$(CC) $(INCLUDE) -c structure512.cpp $(FLAGS) 
+
+structureCUDA.o: structureCUDA.cpp $(HEADER) 
+	$(CC) $(INCLUDE) -c structureCUDA.cpp $(FLAGS) 
 
 ad.o: ad.cpp $(HEADER) 
 	$(CC) $(INCLUDE) -c ad.cpp $(FLAGS)

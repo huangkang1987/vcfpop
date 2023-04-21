@@ -12,7 +12,7 @@ FLAGSCUDA   = -DNDEBUG -DCUDAx -DCUDA_NDEBUG -DENABLE_RELATEDNESSx -O3 -w -m64 -
 
 HEADER		= vcfpop.h
 
-OBJ		= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathSSE.o mathNEO.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureSSE.o structureNEO.o structureAVX.o structure512.o ad.o menu.o structureCUDA.o
+OBJ		= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathSSE.o mathNEO.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o slide.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureSSE.o structureNEO.o structureAVX.o structure512.o ad.o menu.o structureCUDA.o
 
 BIN_PATH	= ../bin/
 
@@ -101,6 +101,9 @@ filter.o: filter.cpp $(HEADER)
 
 diversity.o: diversity.cpp $(HEADER) 
 	$(CC) $(INCLUDE) $(FLAGS) -c diversity.cpp
+
+slide.o: slide.cpp $(HEADER) 
+	$(CC) $(INCLUDE) $(FLAGS) -c slide.cpp
 
 haplotype.o: haplotype.cpp $(HEADER) 
 	$(CC) $(INCLUDE) $(FLAGS) -c haplotype.cpp
