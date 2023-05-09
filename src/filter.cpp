@@ -50,12 +50,12 @@ TARGET void ApplyFilter()
 	{
 		if (f_pop_b)
 		{
-			if ("total" == f_pop_val)
+			if ("total" == f_pop_val || "Total" == f_pop_val)
 				cpop = total_pop;
 			else
 			{
 				bool find = false;
-				for (int i = 0; i < npop; ++i)
+				for (int i = 0; i < pop<REAL>.size; ++i)
 					if (pop<REAL>[i].name == f_pop_val)
 					{
 						find = true;
@@ -71,7 +71,7 @@ TARGET void ApplyFilter()
 								find = true;
 								cpop = &reg<REAL>[rl][i];
 							}
-					if (!find) Exit("\nError: Cannot find target population %d, check parameter -f_pop.\n", f_pop_val.c_str());
+					if (!find) Exit("\nError: Cannot find target population %s, check parameter -f_pop.\n", f_pop_val.c_str());
 				}
 			}
 		}

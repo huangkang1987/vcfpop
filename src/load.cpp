@@ -1752,7 +1752,7 @@ THREAD2(LoadBCF)
 				if (usedploidy[v])
 					gftab[missing_hash[v]] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]);
 
-			//geno_bucket.offset[ii] = off;
+			geno_bucket.offset[ii] = off;//patch
 			GENO_WRITER wt(ii);
 			for (int j = 0; j < nind; ++j)
 				ainds[j]->AddBCFGenotype(ii, gt, gq, dp, adval, maxv, asize, gqlen, dplen, adlen, depth, gfid, gtab, gatab, wt);
@@ -1764,7 +1764,6 @@ THREAD2(LoadBCF)
 					if (pad_missing[v])
 						gftab[missing_hash[v]] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]); //bug fixed
 
-
 			if (ploidyinfer)
 			{
 				//add allele depth
@@ -1774,8 +1773,8 @@ THREAD2(LoadBCF)
 				delete[] depth2;
 			}
 
-			//geno_bucket.offset[ii] = off;
-			PROGRESS_VALUE++;
+			geno_bucket.offset[ii] = off;//patch
+			PROGRESS_VALUE++; 
 
 			state_lock[ii % NBUF] = (ii + NBUF) * 4;
 		}
@@ -1797,6 +1796,7 @@ THREAD2(LoadBCF)
 	{
 		for (int j = 0; j < g_input_col; ++j)
 		{
+			//FILE_INFO[i][j].decompressed_len = 
 			next_line[j] = original_position[i * g_input_col + j] = FTell(FILE_INFO[i][j].handle);
 			previous_offset[i * g_input_col + j] = FOffset(FILE_INFO[i][j].handle);
 			PROGRESS_VALUE += previous_offset[i * g_input_col + j];
@@ -1819,25 +1819,14 @@ THREAD2(LoadBCF)
 			uint64 byteflag = 0;
 			bool breakflag = false;
 
-			for (int j = 0; j < g_input_col; ++j)
+			for (int j = 0; !breakflag && j < g_input_col; ++j)
 			{
-				if (FEof(FILE_INFO[i][j].handle))
-				{
-					breakflag = true;
-					break;
-				}
-
-				uint64 coffset = FOffset(FILE_INFO[i][j].handle);
-				PROGRESS_VALUE += coffset - previous_offset[i * g_input_col + j];
-				previous_offset[i * g_input_col + j] = coffset;
-
 				int infolen = FGetUint(FILE_INFO[i][j].handle);
 
-				if (FEof(FILE_INFO[i][j].handle))
-				{
+				if (FEof(FILE_INFO[i][j].handle) || g_maxlen_b && FTell(FILE_INFO[i][j].handle) >= g_maxlen_val)
 					breakflag = true;
-					break;
-				}
+				
+				if (breakflag) break;
 
 				int64 fmtpos = next_line[j] + 8 + infolen;
 				next_line[j] = fmtpos + FGetUint(FILE_INFO[i][j].handle);
@@ -1916,7 +1905,6 @@ THREAD2(LoadBCF)
 					else if (g_input_col > 1)
 					{
 						jloc[0]++;
-
 						locinfo.Move(buf.data, bufj - buf.data + 1);
 					}
 				}
@@ -2026,10 +2014,15 @@ THREAD2(LoadBCF)
 
 				FSeek(FILE_INFO[i][j].handle, next_line[j], SEEK_SET);
 
+				if (FEof(FILE_INFO[i][j].handle) || g_maxlen_b && FTell(FILE_INFO[i][j].handle) >= g_maxlen_val)
+					breakflag = true;
+
+				uint64 coffset = FOffset(FILE_INFO[i][j].handle);
+				PROGRESS_VALUE += coffset - previous_offset[i * g_input_col + j];
+				previous_offset[i * g_input_col + j] = coffset;
 			}
 
-			if (breakflag) 
-				break;
+			if (breakflag) break;
 
 			sprintf(bufj, "%lf", qual); while (*bufj) bufj++;
 			if (pass) AppendString(bufj, "\tPASS\t\tGT");
@@ -2080,15 +2073,17 @@ THREAD2(LoadBCF)
 
 		for (int j = 0; j < g_input_col; ++j)
 		{
-			FGetUint(FILE_INFO[i][j].handle);
-			if (!FEof(FILE_INFO[i][j].handle))
+			//check each column have the same number of variants
+			if (!g_maxlen_b)
+			{
+				FGetUint(FILE_INFO[i][j].handle);
+				if (!FEof(FILE_INFO[i][j].handle))
+					Exit("\nError: number of variants in %s mismatch that in %s.\n", FILE_INFO[i][j].name.c_str(), FILE_INFO[i][0].name.c_str());
+				if (jloc[j] != jloc[0])
+					Exit("\nError: number of variants in %s mismatch that in %s.\n", FILE_INFO[i][j].name.c_str(), FILE_INFO[i][0].name.c_str());
+			}
+			else if (jloc[j] != jloc[0] && jloc[j] != jloc[0] - 1)
 				Exit("\nError: number of variants in %s mismatch that in %s.\n", FILE_INFO[i][j].name.c_str(), FILE_INFO[i][0].name.c_str());
-			if (jloc[j] != jloc[0])
-				Exit("\nError: number of variants in %s mismatch that in %s.\n", FILE_INFO[i][j].name.c_str(), FILE_INFO[i][0].name.c_str());
-
-			uint64 coffset = FOffset(FILE_INFO[i][j].handle);
-			PROGRESS_VALUE += coffset - previous_offset[i * g_input_col + j];
-			previous_offset[i * g_input_col + j] = coffset;
 		}
 	}
 
@@ -2098,6 +2093,7 @@ THREAD2(LoadBCF)
 		{
 			FILE_INFO[i][j].decompressed_len = FTell(FILE_INFO[i][j].handle);
 			TOTLEN_DECOMPRESS += FILE_INFO[i][j].decompressed_len;
+			PROGRESS_VALUE -= FOffset(FILE_INFO[i][j].handle) - FILE_INFO[i][j].compressed_len;
 			FSeek(FILE_INFO[i][j].handle, original_position[i * g_input_col + j], SEEK_SET);
 		}
 
@@ -2285,9 +2281,10 @@ THREAD2(LoadVCF)
 			locus[ii].nploidy = nploidy;
 			uint* depth = ploidyinfer ? new uint[locus[ii].k * nind] : NULL, *depth2 = depth;
 
-			//geno_bucket.offset[ii] = off;
+			geno_bucket.offset[ii] = off;//patch
 			TABLE<HASH, GENOTYPE*>& gftab = locus[ii].gftab;
 			GENO_WRITER wt(ii);
+
 			for (int j = 0; j < nind; ++j)
 				ainds[j]->AddVCFGenotype(str, ii, depth, gfid, gtab, gatab, wt);
 			wt.FinishWrite();
@@ -2305,7 +2302,7 @@ THREAD2(LoadVCF)
 				delete[] depth2;
 			}
 
-			//geno_bucket.offset[ii] = off;
+			geno_bucket.offset[ii] = off;//patch
 			PROGRESS_VALUE++;
 
 			state_lock[ii % NBUF] = (ii + NBUF) * 4;
@@ -2329,7 +2326,7 @@ THREAD2(LoadVCFGuard)
 	{
 		for (int j = 0; j < g_input_col; ++j)
 		{
-			original_position[i * g_input_col + j] = FTell(FILE_INFO[i][j].handle);
+			FILE_INFO[i][j].decompressed_len = original_position[i * g_input_col + j] = FTell(FILE_INFO[i][j].handle);
 			vbuf[j].Read1(FILE_INFO[i][j].handle);
 		}
 
@@ -2362,6 +2359,10 @@ THREAD2(LoadVCFGuard)
 				}
 
 				vbuf[j].line_len = next_line - this_line;
+				FILE_INFO[i][j].decompressed_len += vbuf[j].line_len;
+
+				if (g_maxlen_b && FILE_INFO[i][j].decompressed_len > g_maxlen_val)
+					vbuf[j].line_len = 0;
 
 				//nothing to read
 				if (vbuf[j].line_len == 0 || this_line[0] == '\0')
@@ -2377,11 +2378,8 @@ THREAD2(LoadVCFGuard)
 					{
 						//compare CHROM POS ID REF ALT
 						if (LineCmp(locinfo.data, this_line))
-						{
 							Exit("\nError: variant information in %s and %s mismatch, at lines %d:\n%s\nvs\n%s\n",
 								FILE_INFO[i][0].name.c_str(), FILE_INFO[i][j].name.c_str(), vbuf[j].jloc, locinfo.data, this_line);
-						}
-
 					}
 					else
 					{
@@ -2490,6 +2488,7 @@ THREAD2(LoadVCFGuard)
 		for (int j = 0; j < g_input_col; ++j)
 		{
 			FILE_INFO[i][j].decompressed_len = FTell(FILE_INFO[i][j].handle);
+			PROGRESS_VALUE -= FOffset(FILE_INFO[i][j].handle) - FILE_INFO[i][j].compressed_len;
 			TOTLEN_DECOMPRESS += FILE_INFO[i][j].decompressed_len;
 			FSeek(FILE_INFO[i][j].handle, original_position[i * g_input_col + j], SEEK_SET);
 		}
@@ -3516,7 +3515,8 @@ TARGET void IND<REAL>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<
 	//convert hash
 	char* genostr = GetTagValue(linebegin, gtid);
 	int v = CountPloidy(genostr);
-	if (v > N_MAX_PLOIDY) Exit("\nError: ploidy level greater than %d in individual %s at locus %s_%s.\n", N_MAX_PLOIDY, name, loc.GetChrom(), loc.GetName());
+	if (v > N_MAX_PLOIDY) 
+		Exit("\nError: ploidy level greater than %d in individual %s at locus %s_%s.\n", N_MAX_PLOIDY, name, loc.GetChrom(), loc.GetName());
 	
 	//if use phased genotype, exclude unphased genotype as missing
 	if (usephase && ContainsChar(genostr, '/'))
@@ -3603,8 +3603,9 @@ TARGET char* IND<REAL>::GetTagValue(char* re, int tagid)
 /* Count ploidy level from VCF genotype string */
 __forceinline TARGET int CountPloidy(char* str)
 {
+	if (str[0] == '\0') return 0;
 	int count = 1;
-	for (int i = 1; str[i + 1]; ++i)
+	for (int i = 1; str[i]; ++i)
 		count += (str[i] == '|') | (str[i] == '/');
 	return count;
 }
@@ -3612,36 +3613,36 @@ __forceinline TARGET int CountPloidy(char* str)
 /* Count ploidy level from VCF genotype string */
 __forceinline TARGET int CountPloidy(char* str, int len)
 {
-	int re = 1;
+	int count = 1;
 	switch (len)
 	{
 	case  0: return 0;
 	default :
 	{
 		for (int i = 1; i < len - 1; ++i)
-			re += (str[i] == '|') | (str[i] == '/');
-		return re;
+			count += (str[i] == '|') | (str[i] == '/');
+		return count;
 	}
-	case 20: re += (str[18] == '|') | (str[18] == '/');
-	case 19: re += (str[17] == '|') | (str[17] == '/');
-	case 18: re += (str[16] == '|') | (str[16] == '/');
-	case 17: re += (str[15] == '|') | (str[15] == '/');
-	case 16: re += (str[14] == '|') | (str[14] == '/');
-	case 15: re += (str[13] == '|') | (str[13] == '/');
-	case 14: re += (str[12] == '|') | (str[12] == '/');
-	case 13: re += (str[11] == '|') | (str[11] == '/');
-	case 12: re += (str[10] == '|') | (str[10] == '/');
-	case 11: re += (str[ 9] == '|') | (str[ 9] == '/');
-	case 10: re += (str[ 8] == '|') | (str[ 8] == '/');
-	case  9: re += (str[ 7] == '|') | (str[ 7] == '/');
-	case  8: re += (str[ 6] == '|') | (str[ 6] == '/');
-	case  7: re += (str[ 5] == '|') | (str[ 5] == '/');
-	case  6: re += (str[ 4] == '|') | (str[ 4] == '/');
-	case  5: re += (str[ 3] == '|') | (str[ 3] == '/');
-	case  4: re += (str[ 2] == '|') | (str[ 2] == '/');
-	case  3: re += (str[ 1] == '|') | (str[ 1] == '/');
+	case 20: count += (str[18] == '|') | (str[18] == '/');
+	case 19: count += (str[17] == '|') | (str[17] == '/');
+	case 18: count += (str[16] == '|') | (str[16] == '/');
+	case 17: count += (str[15] == '|') | (str[15] == '/');
+	case 16: count += (str[14] == '|') | (str[14] == '/');
+	case 15: count += (str[13] == '|') | (str[13] == '/');
+	case 14: count += (str[12] == '|') | (str[12] == '/');
+	case 13: count += (str[11] == '|') | (str[11] == '/');
+	case 12: count += (str[10] == '|') | (str[10] == '/');
+	case 11: count += (str[ 9] == '|') | (str[ 9] == '/');
+	case 10: count += (str[ 8] == '|') | (str[ 8] == '/');
+	case  9: count += (str[ 7] == '|') | (str[ 7] == '/');
+	case  8: count += (str[ 6] == '|') | (str[ 6] == '/');
+	case  7: count += (str[ 5] == '|') | (str[ 5] == '/');
+	case  6: count += (str[ 4] == '|') | (str[ 4] == '/');
+	case  5: count += (str[ 3] == '|') | (str[ 3] == '/');
+	case  4: count += (str[ 2] == '|') | (str[ 2] == '/');
+	case  3: count += (str[ 1] == '|') | (str[ 1] == '/');
 	case  2: ;
 	case  1: ;
 	}
-	return re;
+	return count;
 }

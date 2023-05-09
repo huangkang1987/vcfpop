@@ -66,6 +66,7 @@ TARGET void DIVSUM<REAL>::Add(DIVERSITY<REAL>& loc)
 
 		ChargeWeight(loc.ho,  loc.how, ho,  how);
 		ChargeWeight(loc.he,  loc.hew, he,  hew);
+		ChargeWeight(loc.pi,  loc.piw, pi,  piw);
 		ChargeWeight(loc.pic, loc.hew, pic, picw);
 		ChargeWeight(loc.ae,  loc.hew, ae,  aew);
 		ChargeWeight(loc.I,   loc.hew, I,   Iw);
@@ -91,6 +92,7 @@ TARGET void DIVSUM<REAL>::Write(FILE* f, const char* name)
 
 	ho /= how;
 	he /= hew;
+	pi /= piw;
 	pic /= picw;
 	ae /= aew;
 	I /= Iw;
@@ -107,6 +109,7 @@ TARGET void DIVSUM<REAL>::Write(FILE* f, const char* name)
 
 	WriteReal(f, ho); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, he); fprintf(f, "%c", g_delimiter_val);
+	WriteReal(f, pi); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, pic); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, ae); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, I); fprintf(f, "%c", g_delimiter_val);
@@ -157,9 +160,11 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 
 		how = NAN;
 		hew = NAN;
+		piw = NAN;
 
 		ho = NAN;
 		he = NAN;
+		pi = NAN;
 		pic = NAN;
 		ae = NAN;
 		I = NAN;
@@ -257,9 +262,11 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 	{
 		how = NAN;
 		hew = NAN;
+		piw = NAN;
 
 		ho = NAN;
 		he = NAN;
+		pi = NAN;
 		pic = NAN;
 		ae = NAN;
 		I = NAN;
@@ -277,6 +284,7 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 	ho = ho / how;
 	bmaf = 1;
 	he = 1;
+	pi = 1;
 	pic = 0;
 	ae = 0;
 	I = 0;
@@ -306,7 +314,9 @@ TARGET void DIVERSITY<REAL>::CalcDiversity(int64 _l)
 	if (bmaf > 0.5) bmaf = 1 - bmaf;
 
 	hew = nhaplo * nhaplo;
-	he = he - a2;
+	piw = nhaplo * (nhaplo - 1);
+	he = 1 - a2;
+	pi = nhaplo * he / (nhaplo - 1);
 
 	ae = 1 / a2;
 	NE1P = 1 - (1 - 4 * a2 + 2 * a2 * a2 + 4 * a3 - 3 * a4);
@@ -498,6 +508,7 @@ TARGET void DIVERSITY<REAL>::WriteHeader(FILE* f)
 	fprintf(f, "%c#Hap", g_delimiter_val);
 	fprintf(f, "%cHo", g_delimiter_val);
 	fprintf(f, "%cHe", g_delimiter_val);
+	fprintf(f, "%cpi", g_delimiter_val);
 	fprintf(f, "%cPIC", g_delimiter_val);
 	fprintf(f, "%cAe", g_delimiter_val);
 	fprintf(f, "%cI", g_delimiter_val);
@@ -526,6 +537,7 @@ TARGET void DIVERSITY<REAL>::WriteLocus(FILE* f, const char* name)
 
 	WriteReal(f, ho); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, he); fprintf(f, "%c", g_delimiter_val);
+	WriteReal(f, pi); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, pic); fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, ae);  fprintf(f, "%c", g_delimiter_val);
 	WriteReal(f, I);   fprintf(f, "%c", g_delimiter_val);

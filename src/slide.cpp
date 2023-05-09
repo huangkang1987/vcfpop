@@ -53,12 +53,12 @@ template<typename REAL>
 TARGET void WINDOW<REAL>::InitWindow()
 {
 	// assign cpop
-	if (slide_pop_b && "total" == slide_pop_val || !slide_pop_b)
+	if (slide_pop_b && ("total" == slide_pop_val || "Total" == slide_pop_val) || !slide_pop_b)
 		cpop = total_pop;
 	else if (slide_pop_b)
 	{
 		bool find = false;
-		for (int i = 0; !find && i < npop; ++i)
+		for (int i = 0; !find && i < pop<REAL>.size; ++i)
 			if (pop<REAL>[i].name == slide_pop_val)
 			{
 				find = true;
@@ -76,10 +76,11 @@ TARGET void WINDOW<REAL>::InitWindow()
 					}
 		}
 
-		if (!find) Exit("\nError: Cannot find target population %d, check parameter -slide_pop.\n", slide_pop_val.c_str());
+		if (!find) Exit("\nError: Cannot find target population %s, check parameter -slide_pop.\n", slide_pop_val.c_str());
 	}
 
 	// assign grps
+	int64 nind2 = 0;
 	{
 		ngrps = 0;
 		for (int i = 0; i < npop; ++i)
@@ -90,13 +91,17 @@ TARGET void WINDOW<REAL>::InitWindow()
 		int nc = 0;
 		for (int i = 0; i < npop; ++i)
 			if (apops[i]->nind > 0 && cpop->IsSubpop(apops[i]))
+			{
 				grps[nc++] = apops[i];
+				nind2 += apops[i]->nind;
+			}
 	}
 
 	//////////////////////////////////////////////////////////////////////
 
 	//Calculate freq for cpop and diversity estimation
-	RunThreads(&SlideFreqThread<REAL>, NULL, NULL, nloc * (int64)nind * (ngrps ? 2 : 1), nloc * (int64)nind * (ngrps ? 2 : 1),
+
+	RunThreads(&SlideFreqThread<REAL>, NULL, NULL, nloc * nind2 * (ngrps ? 2 : 1), nloc * nind2 * (ngrps ? 2 : 1),
 		"\nPreparing allele frequency:\n", 1, true);
 
 	RunThreads(&SlidePrepare<REAL>, NULL, NULL, nloc, nloc,
@@ -2559,6 +2564,15 @@ THREAD2(SlidePrepare)
 		tnhaplo += nhaplo;
 	}
 	spop->nhaplotypes = tnhaplo;
+
+	if (ngrps == 0)
+	{
+		int nhaplo = 0;
+		IND<REAL>** inds2 = spop->inds;
+		for (int i = 0; i < spop->nind; ++i)
+			nhaplo += inds2[i]->vmax;
+		spop->nhaplotypes = nhaplo;
+	}
 }
 
 /* Calculate allele frequencies for each population and region */

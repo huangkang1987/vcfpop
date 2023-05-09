@@ -3251,15 +3251,35 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 		{
 			if (f_qual_b && (_mask & 0x4))				//fail in qual filter
 				flag_pass = false;
-			if (f_type_b)
+			if (flag_pass && f_type_b)
 			{
 				if (f_type_val == 1 && flag_indel)		//snp
 					flag_pass = false;
 				else if (f_type_val == 2 && !flag_indel) //indel
 					flag_pass = false;
 			}
-			if (f_original_b && f_original_val == 1 && (_mask & 0x2)) //fail in original filter
+			if (flag_pass && f_original_b && f_original_val == 1 && (_mask & 0x2)) //fail in original filter
 				flag_pass = false;
+			if (flag_pass && f_chrprefix_b)
+			{
+				flag_pass = false;
+				for (string prefix : f_chrprefix_val)
+					if (LineCmp(prefix.c_str(), _chrom) == 0)
+					{
+						flag_pass = true;
+						break;
+					}
+			}
+			if (flag_pass && f_chrname_b)
+			{
+				flag_pass = false;
+				for (string cname : f_chrname_val)
+					if (strcmp(cname.c_str(), _chrom) == 0)
+					{
+						flag_pass = true;
+						break;
+					}
+			}
 		}
 
 		//FILTER to INFO
@@ -4225,7 +4245,6 @@ TARGET void Initialize()
 			path tpath(tf.path);
 			tf.name = canonical(tpath).string();
 			tf.compressed_len = GetFileLen((char*)FILE_INFO[i][j].path.c_str());
-			TOTLEN_COMPRESS += tf.compressed_len;
 
 			uint magic = FGetUshort(tf.handle);
 			fclose(tf.handle);
@@ -4248,6 +4267,18 @@ TARGET void Initialize()
 				tf.compressed_len = GetFileLen((char*)tf.path.c_str());
 				TOTLEN_DECOMPRESS += tf.compressed_len;
 			}
+
+			if (abs(g_format_val) <= BCF && g_maxlen_b)
+			{
+				FILE* f1 = FOpen(FILE_INFO[i][j].path.c_str(), "rb");
+				FSeek(f1, g_maxlen_val - 1, SEEK_SET);
+				byte tbuf[1];
+				FRead(tbuf, 1, 1, f1);
+				tf.compressed_len = FOffset(f1);
+				TOTLEN_COMPRESS += FOffset(f1);
+				FClose(f1);
+			}
+			else TOTLEN_COMPRESS += tf.compressed_len;
 
 			if (tf.handle == NULL)
 				Exit("\nError: cannot open input file %s.\n", tf.path.c_str());
@@ -4464,14 +4495,13 @@ TARGET void Initialize()
 	for (int i = 0; i < 256; ++i)
 		InitLock(GLOCK3[i]);
 
-
 	// check f_pop and slide_pop existence
 	if (diversity_filter && f_pop_b)
 	{
-		if ("total" != f_pop_val)
+		if ("total" != f_pop_val && "Total" != f_pop_val)
 		{
 			bool find = false;
-			for (int i = 0; i < npop; ++i)
+			for (int i = 0; i < pop<REAL>.size; ++i)
 				if (pop<REAL>[i].name == f_pop_val)
 					find = true;
 
@@ -4481,17 +4511,17 @@ TARGET void Initialize()
 					for (uint i = 0; i < reg<REAL>[rl].size; ++i)
 						if (reg<REAL>[rl][i].name == f_pop_val)
 							find = true;
-				if (!find) Exit("\nError: Cannot find target population %d, check parameter -f_pop.\n", f_pop_val.c_str());
+				if (!find) Exit("\nError: Cannot find target population %s, check parameter -f_pop.\n", f_pop_val.c_str());
 			}
 		}
 	}
 
 	if (slide && slide_pop_b)
 	{
-		if ("total" != slide_pop_val)
+		if ("total" != slide_pop_val && "Total" != slide_pop_val)
 		{
 			bool find = false;
-			for (int i = 0; i < npop; ++i)
+			for (int i = 0; i < pop<REAL>.size; ++i)
 				if (pop<REAL>[i].name == slide_pop_val)
 					find = true;
 
@@ -4501,7 +4531,7 @@ TARGET void Initialize()
 					for (uint i = 0; i < reg<REAL>[rl].size; ++i)
 						if (reg<REAL>[rl][i].name == slide_pop_val)
 							find = true;
-				if (!find) Exit("\nError: Cannot find target population %d, check parameter -f_pop.\n", slide_pop_val.c_str());
+				if (!find) Exit("\nError: Cannot find target population %s, check parameter -slide_pop.\n", slide_pop_val.c_str());
 			}
 		}
 	}

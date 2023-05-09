@@ -20,12 +20,14 @@ struct DIVERSITY
 
 	REAL ho;								//Total number of non-IBS of allele pairs (without replacement) within genotypes
 	REAL he;								//Total number of non-IBS of allele pairs (with replacement) within populations
+	REAL pi;								//Total number of non-IBS of allele pairs (without replacement) within populations
 	REAL pic;								//Polymorphic information contents
 	REAL ae;								//Effective number of alleles
 	REAL I;									//Shannon¡¯s Information Index
 
 	REAL how;								//Total number of allele pairs (without replacement) within genotypes
 	REAL hew;								//Total number of allele pairs (with replacement) within populations
+	REAL piw;								//Total number of allele pairs (without replacement) within populations
 	REAL picw;								//Total number of allele pairs (with replacement) within populations
 	REAL aew;								//Total number of allele pairs (with replacement) within populations
 	REAL Iw;								//Total number of allele pairs (with replacement) within populations
@@ -76,6 +78,7 @@ struct DIVSUM
 
 	REAL ho;								//Expected heterozygosity
 	REAL he;								//Observed heterozygosity
+	REAL pi;								//Nucleotide diversity
 	REAL pic;								//Polymorphic information contents
 	REAL ae;								//Effective number of alleles
 	REAL I;									//Shannon¡¯s Information Index
@@ -90,18 +93,19 @@ struct DIVSUM
 	int bmafc;								//Minor allele freq of biallelic locus
 	int ptypec;								//Genotype rate
 	int pvalc;								//P-val of genotype distribution test
-	REAL how;								//Expected heterozygosity
+	REAL how;								//Observed heterozygosity
 	REAL hew;								//Expected heterozygosity
+	REAL piw;								//Nucleotide diversity
 	REAL picw;								//Polymorphic information contents
 	REAL aew;								//Effective number of alleles
-	REAL Iw;									//Shannon¡¯s Information Index
+	REAL Iw;								//Shannon¡¯s Information Index
 
 	/* Multiply */
-	REAL NE1P;							//Exclusion rate without known parent
-	REAL NE2P;							//Exclusion rate with known parent
-	REAL NEPP;							//Exclusion rate for parent pair
-	REAL NEID;							//Exclusion nonrelatives in identity test
-	REAL NESI;							//Exclusion full-sibs in identity test
+	REAL NE1P;								//Exclusion rate without known parent
+	REAL NE2P;								//Exclusion rate with known parent
+	REAL NEPP;								//Exclusion rate for parent pair
+	REAL NEID;								//Exclusion nonrelatives in identity test
+	REAL NESI;								//Exclusion full-sibs in identity test
 
 	LOCK lock;
     

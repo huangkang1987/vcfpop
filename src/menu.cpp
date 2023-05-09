@@ -171,6 +171,8 @@ TARGET bool PrintHelp()
 		printi("Evaluates the time expense for each function.\n");
 		printf("-g_missingploidy=1|2|3|4|5|6|7|8|9|10, string, multiple selections, optional\n");
 		printi("If the VCF/BCF file is combined from various VCF/BCF files for mixed-ploidy populations, the missing data may be extended from the called genotypes at this variant and the ploidy levels are misassigned. This option assigns the ploidy levels of the missing genotypes to the minimum ploidy level of the individual and is applicable for VCF/BCF input files. The value of this option should be all possible ploidy levels in the samples, e.g., -g_missingploidy=2,4,6.\n");
+		printf("-g_maxlen=0~99999999999999999, integer, default:99999999999999999\n");
+		printi("Max length of uncompressed data loaded from each VCF/BCF file. This option is used to load a part of data form big input files.\n");
 		printf("\n");
 	}
 
@@ -189,6 +191,10 @@ TARGET bool PrintHelp()
 		printi("Type of variants used in calculations. Only applicable to VCF/BCF input files.\n");
 		printf("-f_original=yes|no, string, optional\n");
 		printi("Use original filter of VCF/BCF file. If multiple VCF/BCF files are used, the variant is filtered when at least one original filter is not a 'PASS'. Only applicable to VCF/BCF input files.\n");
+		printf("-f_chrprefix=chromosome_prefix, string array, optional\n");
+		printi("Include the variants with certain chromosome prefixes. Multiple prefixes are separated by commas. Only applicable to VCF/BCF input files.\n");
+		printf("-f_chrname=chromosome_identifier, string array, optional\n");
+		printi("Include the variants with certain chromosome names. Multiple chromosomes are separated by commas. Only applicable to VCF/BCF input files.\n");
 
 		printf("Genotype filters (applied during file load):\n");
 		printf("-f_dp=[min_val,max_val], integer range, optional\n");
@@ -204,7 +210,7 @@ TARGET bool PrintHelp()
 		printi("Range of ploidy level for individuals.\n");
 
 		printf("Locus diversity filters (applied after individual filter):\n");
-		printf("-f_pop=pop_identifier|total, string, default:total\n");
+		printf("-f_pop=pop_identifier, string, default:total\n");
 		printi("Target population used to calculate diversity and apply diversity filters.\n");
 		printf("-f_region=region_identifier, string, optional\n");
 		printi("Target region used to calculate diversity and apply diversity filters.\n");
@@ -257,7 +263,7 @@ TARGET bool PrintHelp()
 		printi("Minimum number of variants a sliding window should consist to perform further calculations. \n");
 		printf("-slide_estimator=Nei1973|Weir1984|Hudson1992|Hedrick2005|Jost2008|Huang2021_aneu|dxy|pi|thetaw|TajimaD|fis|ho|he|pic|ae|I, string, multiple selections, default:Nei1973|dxy|pi|TajimaD|fis\n");
 		printi("Estimates fst (differentiation among populations), dxy (absolute divergence), pi (nucleotide diversity), thetaw (Watterson's thetaW),  TajimaD (Tajima's D), fis (inbreeding coefficient), and ho (mean observed heterozygosity), he (mean expected heterozygosity), pic (mean polymorphic information content), ae (mean effective number of alleles), and I (mean Shannon's information index) for each sliding window. \n");
-		printf("-slide_pop=pop_identifier|reg_identifier|tot, string, default:tot\n");
+		printf("-slide_pop=pop_identifier, string, default:total\n");
 		printi("Estimates fst, dxy, pi, thetaw, tajimaD, r2, D', r2D, Delta', fis, ho, he, pic, ae, I for a population, a region or in the total population. Note that fst and dxy are not calculated for a population. \n");	
 		printf("\n");
 	}

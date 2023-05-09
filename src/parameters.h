@@ -37,12 +37,15 @@ extern bool g_benchmark_b;						extern int g_benchmark_val;
 extern bool g_replot_b;							extern int g_replot_val;
 extern bool g_eval_b;							extern int g_eval_val;
 extern bool g_missingploidy_b;					extern byte g_missingploidy_val[N_MAX_OPTION];
+extern bool g_maxlen_b;							extern int64 g_maxlen_val;
 
 /* Filters */
 extern bool f_filter;
 extern bool f_qual_b;							extern double f_qual_min, f_qual_max;
 extern bool f_type_b;							extern int f_type_val;
 extern bool f_original_b;						extern int f_original_val;
+extern bool f_chrprefix_b;						extern vector<string> f_chrprefix_val;
+extern bool f_chrname_b;						extern vector<string> f_chrname_val;
 extern bool f_pop_b;							extern string f_pop_val;
 extern bool f_bmaf_b;							extern double f_bmaf_min, f_bmaf_max;
 extern bool f_k_b;								extern int f_k_min, f_k_max;

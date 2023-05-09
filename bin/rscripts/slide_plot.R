@@ -20,7 +20,6 @@ suppressWarnings(suppressMessages(UseLibrary("hash")))
 
 # set path here
 file <- paste(commandArgs(trailingOnly = TRUE), '.slide.txt', sep = '')
-file <- "C:\\MyDocuments\\Visual Studio 2019\\Projects\\vcfpop1\\vcfpop\\human1G\\out.slide.txt"
 
 if (file.exists(file) == FALSE)
   stop(paste('Error: file ', file, ' does not exists.\n'))
@@ -143,7 +142,8 @@ obj <- BioCircos(tracklist,
                  genomeBorderSize = 0.5,
                  displayGenomeBorder = TRUE, 
                  genomeLabelTextSize = 14, 
-                 genomeFillColor = "Spectral")
+                 genomeFillColor = "Spectral",
+                 height = "1000px", width = "1000px")
 
 figfile <- paste(substr(file, 0, nchar(file) - 4), ".html", sep = '')
 saveWidget(obj, figfile, selfcontained = FALSE, libdir = "lib")

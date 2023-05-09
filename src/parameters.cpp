@@ -65,12 +65,15 @@ extern bool g_benchmark_b;						extern int g_benchmark_val;
 extern bool g_replot_b;							extern int g_replot_val;
 extern bool g_eval_b;							extern int g_eval_val;
 extern bool g_missingploidy_b;					extern byte g_missingploidy_val[N_MAX_OPTION];
+extern bool g_maxlen_b;							extern int64 g_maxlen_val;
 
 /* Filters */
 extern bool f_filter;
 extern bool f_qual_b;							extern double f_qual_min, f_qual_max;
 extern bool f_type_b;							extern int f_type_val;
 extern bool f_original_b;						extern int f_original_val;
+extern bool f_chrprefix_b;						extern vector<string> f_chrprefix_val;
+extern bool f_chrname_b;						extern vector<string> f_chrname_val;
 extern bool f_pop_b;							extern string f_pop_val;
 extern bool f_bmaf_b;							extern double f_bmaf_min, f_bmaf_max;
 extern bool f_k_b;								extern int f_k_min, f_k_max;
@@ -312,6 +315,8 @@ TARGET void SetDefaultParameters()
 	f_qual_b = false;				f_qual_min = 0;					f_qual_max = 0;
 	f_type_b = false;				f_type_val = 0;
 	f_original_b = false;			f_original_val = 0;
+	f_chrprefix_b = false;			
+	f_chrname_b = false;			
 	f_pop_b = false;				f_pop_val = "total";
 	f_bmaf_b = false;				f_bmaf_min = 0;					f_bmaf_max = 0;
 	f_k_b = false;					f_k_min = 0;					f_k_max = 0;
@@ -364,6 +369,7 @@ TARGET void SetDefaultParameters()
 	g_replot_b = false;				g_replot_val = 2;
 	g_eval_b = false;				g_eval_val = 2;
 	g_missingploidy_b = false;		SetZero(g_missingploidy_val, N_MAX_OPTION);
+	g_maxlen_b = false;				g_maxlen_val = 99999999999999999;
 
 	haplotype = false;
 	haplotype_ptype_b = false;		haplotype_ptype_min = 0.8;						haplotype_ptype_max = 1;
@@ -557,6 +563,18 @@ TARGET void SetParameters(bool isparfile)
 				GetParString(argv[i], "snp|indel|both", f_type_b, f_type_val);
 			else if (!LwrLineCmp("-f_original=", argv[i]))
 				GetParString(argv[i], "yes|no", f_original_b, f_original_val);
+			else if (!LwrLineCmp("-f_chrprefix=", argv[i]))
+			{
+				if (f_chrprefix_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
+				f_chrprefix_b = true;
+				f_chrprefix_val = SplitStr(TrimParQuote(argv[i]), ",");
+			}
+			else if (!LwrLineCmp("-f_chrname=", argv[i]))
+			{
+				if (f_chrname_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
+				f_chrname_b = true;
+				f_chrname_val = SplitStr(TrimParQuote(argv[i]), ",");
+			}
 			else if (!LwrLineCmp("-f_pop=", argv[i]))
 			{
 				if (f_pop_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
@@ -749,6 +767,8 @@ TARGET void SetParameters(bool isparfile)
 				GetParString(argv[i], "yes|no", g_eval_b, g_eval_val);
 			else if (!LwrLineCmp("-g_missingploidy=", argv[i]))
 				GetParStringMultiSel(argv[i], "1|2|3|4|5|6|7|8|9|10", g_missingploidy_b, g_missingploidy_val);
+			else if (!LwrLineCmp("-g_maxlen=", argv[i]))
+				GetParLong(argv[i], g_maxlen_b, g_maxlen_val, 0, 99999999999999999);
 			else
 				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
 		}
@@ -1083,7 +1103,7 @@ TARGET void SetParameters(bool isparfile)
 		genotype_filter = true;
 	if (f_filter && (f_itype_b || f_iploidy_b))
 		individual_filter = true;
-	if (f_filter && (f_qual_b || f_type_b || f_original_b))
+	if (f_filter && (f_qual_b || f_type_b || f_original_b || f_chrprefix_b || f_chrname_b))
 		info_filter = true;
 
 	if (!isparfile && p_b)
