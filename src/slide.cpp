@@ -141,12 +141,20 @@ TARGET void WINDOW<REAL>::InitWindow()
 
 	slide_a1 = new double[nhaplo + 1];
 	slide_a2 = new double[nhaplo + 1];
+	slide_c1 = new double[nhaplo + 1];
+	slide_c2 = new double[nhaplo + 1];
+
 	slide_a1[0] = slide_a1[1] = slide_a2[0] = slide_a2[1] = 0;
 
 	for (int i = 2; i <= nhaplo; ++i)
 	{
-		slide_a1[i] = slide_a1[i - 1] + 1.0 / i;
-		slide_a2[i] = slide_a2[i - 1] + 1.0 / (i * i);
+		int i1 = i - 1, n = i;
+		double a1 = slide_a1[i] = slide_a1[i - 1] + 1.0 / (i1);
+		double a2 = slide_a2[i] = slide_a2[i - 1] + 1.0 / (i1 * i1);
+		double b1 = (n + 1.0) / (3.0 * (n - 1.0));
+		double b2 = 2.0 * (n * n + n + 3.0) / (9.0 * n * (n - 1.0));
+		double c1 = slide_c1[i] = b1 - 1.0 / a1;
+		double c2 = slide_c2[i] = b2 - (n + 2.0) / (a1 * n) + a2 / (a1 * a1);
 	}
 
 	CHROM_PROP def_prop { 0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
@@ -370,6 +378,8 @@ TARGET void WINDOW<REAL>::UnInitWindow()
 
 	delete[] slide_a1;
 	delete[] slide_a2;
+	delete[] slide_c1;
+	delete[] slide_c2;
 	delete[] grps;
 	ngrps = 0;
 
@@ -1223,6 +1233,8 @@ TARGET void SWINDOW<REAL>::InitSWindow()
 
 	slide_a1 = window<REAL>.slide_a1;
 	slide_a2 = window<REAL>.slide_a2;
+	slide_c1 = window<REAL>.slide_c1;
+	slide_c2 = window<REAL>.slide_c2;
 	cpop_ = window<REAL>.cpop_;
 	grps = window<REAL>.grps;
 	ngrps = window<REAL>.ngrps;
@@ -1993,11 +2005,9 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int
 		HASH nhaplo1 = entry1.key;
 		int  count1  = entry1.val;
 		double a1A = slide_a1[nhaplo1];
-		double b1A = (nhaplo1 + 1.0) / (3.0 * (nhaplo1 - 1.0));
-		double c1A = b1A - 1.0 / a1A;
 		double a2A = slide_a2[nhaplo1];
-		double b2A = (2.0 * (nhaplo1 * nhaplo1 + nhaplo1 + 3.0)) / (9.0 * nhaplo1 * (nhaplo1 - 1.0));
-		double c2A = b2A - (nhaplo1 + 2.0) / (a1A * nhaplo1) + a2A / (a1A * a1A);
+		double c1A = slide_c1[nhaplo1];
+		double c2A = slide_c2[nhaplo1];
 
 		for (int j = i; j < freq1.size; ++j)
 		{
@@ -2014,8 +2024,7 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int
 				int count2 = entry2.val;
 				double a1B = slide_a1[nhaplo2];
 				double a2B = slide_a2[nhaplo2];
-				double b2B = (2 * (nhaplo2 * nhaplo2 + nhaplo2 + 3)) / (9 * nhaplo2 * (nhaplo2 - 1));
-				double c2B = b2B - (nhaplo2 + 2) / (a1B * nhaplo2) + a2B / (a1B * a1B);
+				double c2B = slide_c2[nhaplo2];
 
 				re += 2 * count1 * (double)count2 * sqrt(c2A * c2B) / (sqrt(a2A * a2B) + a1A * a1B);
 			}
@@ -2028,11 +2037,9 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int
 		int nhaplo1 = entry1->first;
 		int count1  = entry1->second;
 		double a1A = slide_a1[nhaplo1];
-		double b1A = (nhaplo1 + 1.0) / (3.0 * (nhaplo1 - 1.0));
-		double c1A = b1A - 1.0 / a1A;
 		double a2A = slide_a2[nhaplo1];
-		double b2A = (2.0 * (nhaplo1 * nhaplo1 + nhaplo1 + 3.0)) / (9.0 * nhaplo1 * (nhaplo1 - 1.0));
-		double c2A = b2A - (nhaplo1 + 2.0) / (a1A * nhaplo1) + a2A / (a1A * a1A);
+		double c1A = slide_c1[nhaplo1];
+		double c2A = slide_c2[nhaplo1];
 
 		for (auto entry2 = entry1; entry2 != freq2.end(); ++entry2)
 		{
@@ -2047,8 +2054,7 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int
 				int count2  = entry2->second;
 				double a1B = slide_a1[nhaplo2];
 				double a2B = slide_a2[nhaplo2];
-				double b2B = (2 * (nhaplo2 * nhaplo2 + nhaplo2 + 3)) / (9 * nhaplo2 * (nhaplo2 - 1));
-				double c2B = b2B - (nhaplo2 + 2) / (a1B * nhaplo2) + a2B / (a1B * a1B);
+				double c2B = slide_c2[nhaplo2];
 
 				re += 2 * count1 * (double)count2 * sqrt(c2A * c2B) / (sqrt(a2A * a2B) + a1A * a1B);
 			}

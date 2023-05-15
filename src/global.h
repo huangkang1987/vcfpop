@@ -13,8 +13,8 @@ struct FILEINFO;
 #define _thread __thread
 #endif
 
-#define VERSION						("1.07")
-#define DATE						("2023-5-9")
+#define VERSION						("1.07b")
+#define DATE						("2023-5-15")
 
 #define N_FUNC						(18)						//Number of main options
 #define N_MAX_OPTION				(35)						//Maximum options

@@ -806,7 +806,7 @@ TARGET void SetParameters(bool isparfile)
 			else if (!LwrLineCmp("-slide_windowstep=", argv[i]))
 				GetParInteger(argv[i], slide_windowstep_b, slide_windowstep_val, 1000, 1000000000);
 			else if (!LwrLineCmp("-slide_minvariants=", argv[i]))
-				GetParInteger(argv[i], slide_minvariants_b, slide_minvariants_val, 10, 1000000000);
+				GetParInteger(argv[i], slide_minvariants_b, slide_minvariants_val, 1, 1000000000);
 			else if (!LwrLineCmp("-slide_estimator=", argv[i]))
 				GetParStringMultiSel(argv[i], "Nei1973|Weir1984|Hudson1992|Hedrick2005|Jost2008|Huang2021_aneu|dxy|pi|thetaw|TajimaD|r2|D'|r2D|Delta'|fis|ho|he|pic|ae|I", slide_estimator_b, slide_estimator_val);
 			else if (!LwrLineCmp("-slide_pop=", argv[i]))
