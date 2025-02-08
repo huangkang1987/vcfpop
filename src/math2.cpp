@@ -2,36 +2,754 @@
 
 #include "vcfpop.h"
 
-/* Get 1D lower triangular index */
-TARGET int GetLowerTriangularId(int id1, int id2, int n)
+template struct RNGSIMD<double>;
+template struct RNGSIMD<float >;
+template TARGETSIMD void RNGSIMD<double>::Integer<uint  >(uint  * re, int64 n, uint   minv, uint   maxv);
+template TARGETSIMD void RNGSIMD<double>::Integer<uint64>(uint64* re, int64 n, uint64 minv, uint64 maxv);
+template TARGETSIMD void RNGSIMD<float >::Integer<uint  >(uint  * re, int64 n, uint   minv, uint   maxv);
+template TARGETSIMD void RNGSIMD<float >::Integer<uint64>(uint64* re, int64 n, uint64 minv, uint64 maxv);
+
+#ifndef _RNGSIMD
+
+/* Initialize rng */
+template<typename REAL>
+TARGETSIMD RNGSIMD<REAL>::RNGSIMD()
 {
-	int minid = Min(id1, id2);
-	return Max(id1, id2) - ((minid * (1 + minid - n - n)) >> 1);
+
 }
 
-/* Is an erroneous real number */
-TARGET bool IsError(double x)
+/* Initialize rng */
+template<typename REAL>
+TARGETSIMD RNGSIMD<REAL>::RNGSIMD(uint64 seed, uint64 salt)
 {
-	return isnan(x) || isinf(x);
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: new (this) RNGNEO<REAL>(seed, salt); return;
+#else
+	case 4: new (this) RNG512<REAL>(seed, salt); return;
+	case 3: new (this) RNGAVX<REAL>(seed, salt); return;
+	case 2: new (this) RNGSSE<REAL>(seed, salt); return;
+#endif
+	}
+	if constexpr (std::is_same_v<REAL, double>)
+	{
+		uint64* x = (uint64*)(data + 0);
+		uint64* y = (uint64*)(data + 512);
+		uint64 a[64]; uint* aa = (uint*)a;
+
+		//REP(32) { a[kk] = vld1q_u64(((uint64[]) { seed, seed + 1 })); seed += 2; }
+		REP(64) a[kk] = seed + kk;
+
+		//s = vdupq_n_u64(salt);
+		uint64 s = salt;
+		uint* ss = (uint*)&s;
+
+		//m = vdupq_n_u32(0x5bd1e995);
+		uint m = 0x5bd1e995;
+
+		//REP(32) a[kk] = veorq_u64(a[kk], vshlq_n_u64(vmvnq_u32(a[kk]), 32));
+		REP(64) a[kk] = (a[kk] ^ ((~a[kk]) << 32));
+
+		//s = veorq_u64(s, vshlq_n_u64(vmvnq_u32(s), 32));
+		s = (s ^ ((~s) << 32));
+
+		// uint s = s ^ 4;
+		//s = veorq_u32(s, vdupq_n_u32(4));
+		s = s ^ 0x0000010000000100ULL;
+
+		// a *= m;
+		//REP(32) a[kk] = vmulq_u32(a[kk], m);
+		REP(128) aa[kk] = aa[kk] * m;
+
+		// a ^= a >> 24;
+		//REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u32(a[kk], 24));
+		REP(64) a[kk] = a[kk] ^ ((a[kk] & 0xFFFFF000FFFFF000ULL) >> 24);
+
+		// a *= m;
+		//REP(32) a[kk] = vmulq_u32(a[kk], m);
+		REP(128) aa[kk] = aa[kk] * m;
+
+		// s *= m;
+		//s = vmulq_u32(s, m);
+		REP(2) ss[kk] = ss[kk] * m;
+
+		// a ^= s;
+		//REP(32) a[kk] = veorq_u64(a[kk], s);
+		REP(64) a[kk] = a[kk] ^ s;
+
+		// a ^= a >> 13;
+		//REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u32(a[kk], 13));
+		REP(64) a[kk] = a[kk] ^ (a[kk] & 0xFFFFE000FFFFE000ULL) >> 13;
+
+		// a *= m;
+		//REP(32) a[kk] = vmulq_u32(a[kk], m);
+		REP(128) aa[kk] = aa[kk] * m;
+
+		// a ^= a >> 15;
+		//REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u32(a[kk], 15));
+		REP(64) a[kk] = a[kk] ^ (a[kk] & 0xFFFF8000FFFF8000ULL) >> 15;
+
+
+		// original
+		//REP(32) x[kk] = veorq_u64(vdupq_n_u64(0x159A55E5075BCD15), a[kk]);
+		REP(64) x[kk] = 0x159A55E5075BCD15ULL ^ a[kk];
+
+		//REP(32) a[kk] = vshlq_n_u64(a[kk], 6);
+		REP(64) a[kk] = a[kk] << 6;
+
+		//REP(32) y[kk] = veorq_u64(vdupq_n_u64(0x054913331F123BB5), a[kk]);
+		REP(64) y[kk] = 0x054913331F123BB5 ^ a[kk];
+	}
+	else
+	{
+		uint* x = (uint*)(data + 0);
+		uint* y = (uint*)(data + 256);
+		uint* z = (uint*)(data + 512);
+
+		uint a[16], s = Mix(salt), m = 0x5bd1e995;
+
+		// REP(16) { a[kk] = vld1q_u32(((uint[]) { Mix(seed + 0), Mix(seed + 1), Mix(seed + 2), Mix(seed + 3) })); seed += 4; }
+		REP(64) a[kk] = Mix(seed + kk);
+
+		// uint s = s ^ 4;
+		//s = veorq_u32(s, vdupq_n_u32(4));
+		s = s ^ 4;
+
+		// a *= m;
+		//REP(16) a[kk] = vmulq_u32(a[kk], m);
+		REP(64) a[kk] = a[kk] * m;
+
+		// a ^= a >> 24;
+		//REP(16) a[kk] = veorq_u32(a[kk], vshrq_n_u32(a[kk], 24));
+		REP(64) a[kk] = a[kk] ^ (a[kk] >> 24);
+
+		// a *= m;
+		//REP(16) a[kk] = vmulq_u32(a[kk], m);
+		REP(64) a[kk] = a[kk] * m;
+
+		// s *= m;
+		//s = vmulq_u32(s, m);
+		s = s * m;
+
+		// a ^= s;
+		//REP(16) a[kk] = veorq_u32(a[kk], s);
+		REP(64) a[kk] = a[kk] ^ s;
+
+		// a ^= a >> 13;
+		//REP(16) a[kk] = veorq_u32(a[kk], vshrq_n_u32(a[kk], 13));
+		REP(64) a[kk] = a[kk] ^ (a[kk] >> 13);
+
+		// a *= m;
+		//REP(16) a[kk] = vmulq_u32(a[kk], m);
+		REP(64) a[kk] = a[kk] * m;
+
+		// a ^= a >> 15;
+		//REP(16) a[kk] = veorq_u32(a[kk], vshrq_n_u32(a[kk], 15));
+		REP(64) a[kk] = a[kk] ^ (a[kk] >> 15);
+
+		// original
+		//REP(16) x[kk] = veorq_u32(vdupq_n_u32(0x075BCD15), a[kk]);
+		REP(64) x[kk] = 0x075BCD15 ^ a[kk];
+
+		//REP(16) a[kk] = vshlq_n_u32(a[kk], 3);
+		REP(64) a[kk] = a[kk] << 3;
+
+		//REP(16) y[kk] = veorq_u32(vdupq_n_u32(0x159A55E5), a[kk]);
+		REP(64) y[kk] = 0x159A55E5 ^ a[kk];
+
+		//REP(16) a[kk] = vshlq_n_u32(a[kk], 3);
+		REP(64) a[kk] = a[kk] << 3;
+
+		//REP(16) z[kk] = veorq_u32(vdupq_n_u32(0x1F123BB5), a[kk]);
+		REP(64) z[kk] = 0x1F123BB5 ^ a[kk];
+	}
 }
 
-/* Is an erroneous real number */
-TARGET bool IsError(float x)
+/* Draw 64 64-bit integers in [0,n), 64*n frequencies are in arr */
+template<typename REAL>
+TARGETSIMD void RNGSIMD<REAL>::Poly(REAL* arr, int n, int64* re)
 {
-	return isnan(x) || isinf(x);
+	if constexpr (std::is_same_v<REAL, double>)
+	{
+		switch (SIMD_TYPE)
+		{
+#ifdef __aarch64__
+		case 2: ((RNGNEO<double>*)this)->Poly((float64x2_t*)arr, n, re); return;
+#else
+		case 4: ((RNG512<double>*)this)->Poly((__m512d*)arr, n, (__m512i*)re); return;
+		case 3: ((RNGAVX<double>*)this)->Poly((__m256d*)arr, n, (__m256i*)re); return;
+		case 2: ((RNGSSE<double>*)this)->Poly((__m128d*)arr, n, (__m128i*)re); return;
+#endif
+		}
+	}
+	else
+	{
+		switch (SIMD_TYPE)
+		{
+#ifdef __aarch64__
+		case 2: ((RNGNEO<float>*)this)->Poly((float32x4_t*)arr, n, re); return;
+#else
+		case 4: ((RNG512<float>*)this)->Poly((__m512*)arr, n, (__m512i*)re); return;
+		case 3: ((RNGAVX<float>*)this)->Poly((__m256*)arr, n, (__m256i*)re); return;
+		case 2: ((RNGSSE<float>*)this)->Poly((__m128*)arr, n, (__m128i*)re); return;
+#endif
+		}
+	}
+
+	if constexpr (std::is_same_v<REAL, double>)
+	{
+		uint64* x = (uint64*)(data + 0);
+		uint64* y = (uint64*)(data + 512);
+
+		double t[64], s[64];
+		double one = 1.0;
+		uint64 mask1 = 0x000FFFFFFFFFFFFF;
+		uint64 mask2 = 0x3FF0000000000000;
+		uint64* r = (uint64*)t; uint64* re64 = (uint64*)re; 
+
+		REP(64) s[kk] = 0;
+
+		for (int i64 = 0; i64 < n * 64; i64 += 64)
+			REP(64) s[kk] = s[kk] + arr[kk + i64];
+
+		XorShift();
+
+		REP(64) r[kk] = x[kk] + y[kk];
+
+		REP(64) r[kk] = r[kk] & mask1;
+
+		REP(64) r[kk] = r[kk] | mask2;
+
+		REP(64) t[kk] = t[kk] - one;
+
+		REP(64) t[kk] = t[kk] * s[kk];
+
+		uint64 midx[64], nidx = 0, ninc = 1;
+		uint64 f[64], b[64];
+		REP(64) midx[kk] = n - 1;
+		REP(64) f[kk] = 0;
+
+		for (int i64 = 0; i64 < n * 64; i64 += 64)
+		{
+			REP(64) b[kk] = t[kk] < arr[kk + i64];
+
+			REP(64) t[kk] = t[kk] - arr[kk + i64];
+
+			REP(64) b[kk] = (~f[kk]) & b[kk];
+
+			REP(64) f[kk] = f[kk] | b[kk];
+
+			REP(64) midx[kk] = b[kk] ? nidx : midx[kk];
+
+			nidx = nidx + ninc;
+		}
+
+		REP(64) re64[kk] = midx[kk];
+	}
+	else
+	{
+		uint* z = (uint*)(data + 512);
+
+		float t[64], s[64]; 
+		float one = 1.0f;
+		uint mask1 = 0x007FFFFF;
+		uint mask2 = 0x3F800000;
+		uint* r = (uint*)t; uint64* re64 = (uint64*)re; 
+
+		REP(64) s[kk] = 0;
+
+		for (int i64 = 0; i64 < n * 64; i64 += 64)
+			REP(64) s[kk] = s[kk] + arr[kk + i64];
+
+		XorShift();
+
+		REP(64) r[kk] = z[kk] & mask1;
+
+		REP(64) r[kk] = r[kk] | mask2;
+
+		REP(64) t[kk] = t[kk] - one;
+
+		REP(64) t[kk] = t[kk] * s[kk];
+
+		uint midx[64], nidx = 0, ninc = 1;
+		uint f[64], b[64];
+		REP(64) midx[kk] = n - 1;
+		REP(64) f[kk] = 0;
+
+		for (int i64 = 0; i64 < n * 64; i64 += 64)
+		{
+			REP(64) b[kk] = t[kk] < arr[kk + i64];
+
+			REP(64) t[kk] = t[kk] - arr[kk + i64];
+
+			REP(64) b[kk] = (~f[kk]) & b[kk];
+
+			REP(64) f[kk] = f[kk] | b[kk];
+
+			REP(64) midx[kk] = b[kk] ? nidx : midx[kk];
+
+			nidx = nidx + ninc;
+		}
+
+		REP(64) re64[kk] = midx[kk];
+	}
 }
 
-/* Is a normal real number */
-TARGET bool IsNormal(double x)
+/* Draw uniform distriubted intergers */
+template<typename REAL>
+TARGETSIMD void RNGSIMD<REAL>::XorShift()
 {
-	return !IsError(x);
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: ((RNGNEO<REAL>*)this)->XorShift(); return;
+#else
+	case 4: ((RNG512<REAL>*)this)->XorShift(); return;
+	case 3: ((RNGAVX<REAL>*)this)->XorShift(); return;
+	case 2: ((RNGSSE<REAL>*)this)->XorShift(); return;
+#endif
+	}
+
+	if constexpr (std::is_same_v<REAL, double>)
+	{
+		uint64* x = (uint64*)(data + 0);
+		uint64* y = (uint64*)(data + 512);
+		uint64 a[64], b[64];
+
+		//REP(32) a[kk] = x[kk];
+		REP(64) a[kk] = x[kk];
+
+		//REP(32) b[kk] = y[kk];
+		REP(64) b[kk] = y[kk];
+
+		//REP(32) x[kk] = b[kk];
+		REP(64) x[kk] = b[kk];
+
+		//REP(32) a[kk] = veorq_u64(a[kk], vshlq_n_u64(a[kk], 23));
+		REP(64) a[kk] = a[kk] ^ (a[kk] << 23);
+
+		//REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u64(a[kk], 18));
+		REP(64) a[kk] = a[kk] ^ (a[kk] >> 18);
+
+		//REP(32) a[kk] = veorq_u64(a[kk], b[kk]);
+		REP(64) a[kk] = a[kk] ^ b[kk];
+
+		//REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u64(b[kk], 5));
+		REP(64) a[kk] = a[kk] ^ (b[kk] >> 5);
+
+		//REP(32) y[kk] = a[kk];
+		REP(64) y[kk] = a[kk];
+
+		// use x + y
+	}
+	else
+	{
+		uint* x = (uint*)(data + 0);
+		uint* y = (uint*)(data + 256);
+		uint* z = (uint*)(data + 512);
+		uint u[64];
+
+		//REP(16) u[kk] = vshlq_n_u32(x[kk], 16);
+		REP(64) u[kk] = x[kk] << 16;
+
+		//REP(16) x[kk] = veorq_u32(x[kk], u[kk]);
+		REP(64) x[kk] = x[kk] ^ u[kk];
+
+		//REP(16) u[kk] = vshrq_n_u32(x[kk], 5);
+		REP(64) u[kk] = x[kk] >> 5;
+
+		//REP(16) x[kk] = veorq_u32(x[kk], u[kk]);
+		REP(64) x[kk] = x[kk] ^ u[kk];
+
+		//REP(16) u[kk] = vshlq_n_u32(x[kk], 1);
+		REP(64) u[kk] = x[kk] << 1;
+
+		//REP(16) x[kk] = veorq_u32(x[kk], u[kk]);
+		REP(64) x[kk] = x[kk] ^ u[kk];
+
+		//REP(16) u[kk] = x[kk];
+		REP(64) u[kk] = x[kk];
+
+		//REP(16) x[kk] = y[kk];
+		REP(64) x[kk] = y[kk];
+
+		//REP(16) y[kk] = z[kk];
+		REP(64) y[kk] = z[kk];
+
+		//REP(16) z[kk] = veorq_u32(u[kk], x[kk]);
+		REP(64) z[kk] = u[kk] ^ x[kk];
+
+		//REP(16) z[kk] = veorq_u32(z[kk], y[kk]);
+		REP(64) z[kk] = z[kk] ^ y[kk];
+
+		// use z
+	}
 }
 
-/* Is a normal real number */
-TARGET bool IsNormal(float x)
+/* Draw uniform distriubted integers */
+template<typename REAL>
+template<typename INT>
+TARGETSIMD void RNGSIMD<REAL>::Integer(INT* re, int64 n, INT minv, INT maxv)
 {
-	return !IsError(x);
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: ((RNGNEO<REAL>*)this)->Integer(re, n, minv, maxv); return;
+#else
+	case 4: ((RNG512<REAL>*)this)->Integer(re, n, minv, maxv); return;
+	case 3: ((RNGAVX<REAL>*)this)->Integer(re, n, minv, maxv); return;
+	case 2: ((RNGSSE<REAL>*)this)->Integer(re, n, minv, maxv); return;
+#endif
+	}
+
+	if constexpr (std::is_same_v<REAL, double>)
+	{
+		uint64* x = (uint64*)(data + 0);
+		uint64* y = (uint64*)(data + 512);
+		uint64* rei = (uint64*)re;
+		int64 i = 0;
+		INT modv = maxv - minv;
+
+		for (; i <= n - 512 / sizeof(INT); i += 512 / sizeof(INT))
+		{
+			XorShift();
+			REP(512 / sizeof(uint64)) rei[kk] = x[kk] + y[kk];
+			rei += 512 / sizeof(uint64);
+		}
+
+		if (i != n)
+		{
+			uint64_t re2[512 / sizeof(uint64)];
+			XorShift();
+			REP(512 / sizeof(uint64)) re2[kk] = x[kk] + y[kk];
+			SetVal((int*)rei, (int*)re2, n - i);
+		}
+
+		if (maxv != (INT)-1 || minv != 0)
+		{
+			for (i = 0; i < n; ++i)
+				re[i] = re[i] % modv + minv;
+		}
+	}
+	else
+	{
+		uint* z = (uint*)(data + 512);
+		uint* rei = (uint*)re;
+		int64 i = 0;
+		INT modv = maxv - minv;
+
+		for (; i <= n - 256 / sizeof(INT); i += 256 / sizeof(INT))
+		{
+			XorShift();
+			REP(256 / sizeof(uint)) rei[kk] = z[kk];
+			rei += 256 / sizeof(uint);
+		}
+
+		if (i != n)
+		{
+			XorShift();
+			SetVal((int*)rei, (int*)z, n - i);
+		}
+
+		if (maxv != (INT)-1 || minv != 0)
+		{
+			for (i = 0; i < n; ++i)
+				re[i] = re[i] % modv + minv;
+		}
+	}
 }
+
+/* Draw uniform distriubted real numbers */
+template<typename REAL>
+TARGETSIMD void RNGSIMD<REAL>::Uniform(REAL* re, int n, REAL minv, REAL maxv)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: ((RNGNEO<REAL>*)this)->Uniform(re, n, minv, maxv); return;
+#else
+	case 4: ((RNG512<REAL>*)this)->Uniform(re, n, minv, maxv); return;
+	case 3: ((RNGAVX<REAL>*)this)->Uniform(re, n, minv, maxv); return;
+	case 2: ((RNGSSE<REAL>*)this)->Uniform(re, n, minv, maxv); return;
+#endif
+	}
+
+	if constexpr (std::is_same_v<REAL, double>)
+	{
+		uint64* x = (uint64*)(data + 0);
+		uint64* y = (uint64*)(data + 512);
+		uint64* rei = (uint64*)re;
+		REAL*& ref = *(REAL**)&rei;
+
+		int i = 0;
+		double range = maxv - minv;
+
+		uint64 mask1 = 0x000FFFFFFFFFFFFF;
+		uint64 mask2 = 0x3FF0000000000000;
+		double v1 = minv - range;
+		double v2 = range;
+
+		for (; i <= n - 64; i += 64)
+		{
+			XorShift();
+
+			REP(64) rei[kk] = x[kk] + y[kk];
+
+			REP(64) rei[kk] = rei[kk] & mask1;
+
+			REP(64) rei[kk] = rei[kk] | mask2;
+
+			REP(64) ref[kk] = ref[kk] * v2;
+
+			REP(64) ref[kk] = ref[kk] + v1;
+
+			rei += 64;
+			//ref += 64;
+		}
+
+		if (i != n)
+		{
+			uint64 rei2[64];
+			double* ref2 = (double*)rei2;
+
+			XorShift();
+
+			REP(64) rei2[kk] = x[kk] + y[kk];
+
+			REP(64) rei2[kk] = rei2[kk] & mask1;
+
+			REP(64) rei2[kk] = rei2[kk] | mask2;
+
+			REP(64) ref2[kk] = ref2[kk] * v2;
+
+			REP(64) ref2[kk] = ref2[kk] + v1;
+
+			SetVal((double*)rei, (double*)rei2, n - i);
+		}
+	}
+	else
+	{
+		uint* z = (uint*)(data + 512);
+		uint* rei = (uint*)re;
+		REAL*& ref = *(REAL**)&rei;
+
+		int i = 0;
+		float range = maxv - minv;
+
+		uint mask1 = 0x007FFFFF;
+		uint mask2 = 0x3F800000;
+		float v1 = minv - range;
+		float v2 = range;
+
+		for (; i <= n - 64; i += 64)
+		{
+			XorShift();
+
+			REP(64) rei[kk] = z[kk] & mask1;
+
+			REP(64) rei[kk] = rei[kk] | mask2;
+
+			REP(64) ref[kk] = ref[kk] * v2;
+
+			REP(64) ref[kk] = ref[kk] + v1;
+
+			rei += 64;
+			//ref += 64;
+		}
+
+		if (i != n)
+		{
+			uint rei2[64];
+			float* ref2 = (float*)rei2;
+
+			XorShift();
+
+			REP(64) rei2[kk] = z[kk] & mask1;
+
+			REP(64) rei2[kk] = rei2[kk] | mask2;
+
+			REP(64) ref2[kk] = ref2[kk] * v2;
+
+			REP(64) ref2[kk] = ref2[kk] + v1;
+
+			SetVal((float*)rei, (float*)rei2, n - i);
+		}
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+template<typename REAL>
+TARGETSIMD void RNGSIMD<REAL>::Normal(REAL* re, int n, REAL mean, REAL sd)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: ((RNGNEO<REAL>*)this)->Normal(re, n, mean, sd); return;
+#else
+	case 4: ((RNG512<REAL>*)this)->Normal(re, n, mean, sd); return;
+	case 3: ((RNGAVX<REAL>*)this)->Normal(re, n, mean, sd); return;
+	case 2: ((RNGSSE<REAL>*)this)->Normal(re, n, mean, sd); return;
+#endif
+	}
+	if constexpr (std::is_same_v<REAL, double>)
+	{
+		uint64* x = (uint64*)(data + 0);
+		uint64* y = (uint64*)(data + 512);
+		uint64* rei = (uint64*)re;
+		REAL*& ref = *(REAL**)&rei;
+
+		int i = 0;
+
+		uint64 mask1 = 0x000FFFFFFFFFFFFF;
+		uint64 mask2 = 0x3FF0000000000000;
+		double v1 = -1;
+
+		double min_freq = MIN_FREQ;
+		double pi2 = 2.0 * M_PI;
+		double mu = mean;
+		double s = sd;
+
+		for (; i <= n - 64; i += 64)
+		{
+			XorShift();
+
+			REP(64) rei[kk] = x[kk] + y[kk];
+			REP(64) rei[kk] = rei[kk] & mask1;
+			REP(64) rei[kk] = rei[kk] | mask2;
+			REP(64) ref[kk] = ref[kk] + v1;
+
+			double u1, u2, u3, u4;
+			for (int j = 0; j < 32; ++j)
+			{
+				u1 = std::max(ref[j], min_freq);
+				u2 = ref[j + 32] * pi2;
+
+				u1 = sqrt(-2.0 * log(u1));
+				u3 = cos(u2);
+				u4 = sin(u2);
+
+				ref[j     ] = u1 * u3;
+				ref[j + 32] = u1 * u4;
+			}
+
+			REP(64) ref[kk] = ref[kk] * s;
+			REP(64) ref[kk] = ref[kk] + mu;
+
+			rei += 64;
+			//ref += 64;
+		}
+
+		if (i != n)
+		{
+			uint64 rei2[64];
+			double* ref2 = (double*)rei2;
+
+			XorShift();
+
+			REP(64) rei2[kk] = x[kk] + y[kk];
+			REP(64) rei2[kk] = rei2[kk] & mask1;
+			REP(64) rei2[kk] = rei2[kk] | mask2;
+			REP(64) ref2[kk] = ref2[kk] + v1;
+
+			double u1, u2, u3, u4;
+			for (int j = 0; j < 32; ++j)
+			{
+				u1 = std::max(ref2[j], min_freq);
+				u2 = ref2[j + 32] * pi2;
+
+				u1 = sqrt(-2.0 * log(u1));
+				u3 = cos(u2);
+				u4 = sin(u2);
+
+				ref2[j] = u1 * u3;
+				ref2[j + 32] = u1 * u4;
+			}
+
+			REP(64) ref2[kk] = ref2[kk] * s;
+			REP(64) ref2[kk] = ref2[kk] + mu;
+
+			SetVal((double*)rei, (double*)rei2, n - i);
+		}
+	}
+	else
+	{
+		uint* z = (uint*)(data + 512);
+		uint* rei = (uint*)re;
+		REAL*& ref = *(REAL**)&rei;
+
+		int i = 0;
+
+		uint mask1 = 0x007FFFFF;
+		uint mask2 = 0x3F800000;
+		float v1 = -1;
+		float min_freq = (float)MIN_FREQ;
+		float pi2 = (float)(2.0 * M_PI);
+		float mu = mean;
+		float s = sd;
+
+		for (; i <= n - 64; i += 64)
+		{
+			XorShift();
+
+			REP(64) rei[kk] = z[kk] & mask1;
+			REP(64) rei[kk] = rei[kk] | mask2;
+			REP(64) ref[kk] = ref[kk] + v1;
+
+			float u1, u2, u3, u4;
+			for (int j = 0; j < 32; ++j)
+			{
+				u1 = std::max(ref[j], min_freq);
+				u2 = ref[j + 32] * pi2;
+
+				u1 = sqrt(-2.0 * log(u1));
+				u3 = cos(u2);
+				u4 = sin(u2);
+
+				ref[j     ] = u1 * u3;
+				ref[j + 32] = u1 * u4;
+			}
+
+			REP(64) ref[kk] = ref[kk] * s;
+			REP(64) ref[kk] = ref[kk] + mu;
+
+			rei += 64;
+			//ref += 64;
+		}
+
+		if (i != n)
+		{
+			uint rei2[64];
+			float* ref2 = (float*)rei2;
+			
+			XorShift();
+
+			REP(64) rei2[kk] = z[kk] & mask1;
+			REP(64) rei2[kk] = rei2[kk] | mask2;
+			REP(64) ref2[kk] = ref2[kk] + v1;
+
+			float u1, u2, u3, u4;
+			for (int j = 0; j < 32; ++j)
+			{
+				u1 = std::max(ref2[j], min_freq);
+				u2 = ref2[j + 32] * pi2;
+
+				u1 = sqrt(-2.0 * log(u1));
+				u3 = cos(u2);
+				u4 = sin(u2);
+
+				ref2[j     ] = u1 * u3;
+				ref2[j + 32] = u1 * u4;
+			}
+
+			REP(64) ref2[kk] = ref2[kk] * s;
+			REP(64) ref2[kk] = ref2[kk] + mu;
+
+			SetVal((float*)rei, (float*)rei2, n - i);
+		}
+	}
+}
+#endif
 
 /* Find the index of the mimumum element */
 TARGET int64 GetMinIdx(double* A, int64 n, double& val)
@@ -352,28 +1070,6 @@ TARGET double LogProd(float* A, int64 n)
 	return prod;
 }
 
-/* log(prod(A[i++])) */
-TARGET float LogProdx(float* A, int64 n)
-{
-	switch (SIMD_TYPE)
-	{
-#ifdef __aarch64__
-	case 2: return LogProdNEOx(A, n);
-#else
-	case 4: return LogProd512x(A, n);
-	case 3: return LogProdAVXx(A, n);
-	case 2: return LogProdSSEx(A, n);
-#endif
-	}
-
-	int64 slog = 0; double prod = 1;
-	for (int64 i = 0; i < n; ++i)
-		ChargeLog(slog, prod, A[i]);
-
-	CloseLog(slog, prod);
-	return prod;
-}
-
 /* log(prod(A[i += sep])) */
 TARGET double LogProd(double* A, int64 n, int64 sep)
 {
@@ -407,28 +1103,6 @@ TARGET double LogProd(float* A, int64 n, int64 sep)
 	case 4: return LogProd512(A, n, sep);
 	case 3: return LogProdAVX(A, n, sep);
 	case 2: return LogProdSSE(A, n, sep);
-#endif
-	}
-
-	int64 slog = 0; double prod = 1;
-	for (int64 i = 0; i < n; ++i, A += sep)
-		ChargeLog(slog, prod, *A);
-
-	CloseLog(slog, prod);
-	return prod;
-}
-
-/* log(prod(A[i += sep])) */
-TARGET float LogProdx(float* A, int64 n, int64 sep)
-{
-	switch (SIMD_TYPE)
-	{
-#ifdef __aarch64__
-	case 2: return LogProdNEOx(A, n, sep);
-#else
-	case 4: return LogProd512x(A, n, sep);
-	case 3: return LogProdAVXx(A, n, sep);
-	case 2: return LogProdSSEx(A, n, sep);
 #endif
 	}
 
@@ -481,37 +1155,8 @@ TARGET double LogProdDiv(float* A, float* B, int64 n, int64 sep)
 #endif
 	}
 
-	int64 slog1 = 0, slog2 = 0; 
-	double prod1 = 1, prod2 = 1;
-	for (int64 i = 0; i < n; ++i, A += sep, B += sep)
-	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-
-	return prod1 - prod2;
-}
-
-/* log(prod(A[i += sep] / B[i += sep])) */
-TARGET float LogProdDivx(float* A, float* B, int64 n, int64 sep)
-{
-	switch (SIMD_TYPE)
-	{
-#ifdef __aarch64__
-	case 2: return LogProdDivNEOx(A, B, n, sep);
-#else
-	case 4: return LogProdDiv512x(A, B, n, sep);
-	case 3: return LogProdDivAVXx(A, B, n, sep);
-	case 2: return LogProdDivSSEx(A, B, n, sep);
-#endif
-	}
-
 	int64 slog1 = 0; double prod1 = 1;
 	int64 slog2 = 0; double prod2 = 1;
-
 	for (int64 i = 0; i < n; ++i, A += sep, B += sep)
 	{
 		ChargeLog(slog1, prod1, *A);
@@ -522,209 +1167,6 @@ TARGET float LogProdDivx(float* A, float* B, int64 n, int64 sep)
 	CloseLog(slog2, prod2);
 
 	return prod1 - prod2;
-}
-
-/* Natural logarithm with bounds */
-TARGET double MyLog(double val)
-{
-	if (val < 1e-300)
-		return -6.90775527898214000E+02;
-	else if (val > 1e300)
-		return +6.90775527898214000E+02;
-	return log(val);
-}
-
-/* Charge a value to fast sum log */
-TARGET void OpenLog(int64& slog, double& prod)
-{
-	slog = 0;
-	prod = 1;
-}
-
-/* Charge a value to fast sum log */
-TARGET void OpenLog(int64* slog, double* prod, int64 n)
-{
-	SetZero(slog, n);
-	SetVal(prod, 1.0, n);
-}
-
-/* Add exponent to slog2 */
-TARGET void AddExponent(int64& slog2, double& val)
-{
-	int64& vv = *(int64*)&val;
-
-	// add the exponent to slog2
-	slog2 += ((vv & 0x7FF0000000000000) >> 52) - 1023;
-
-	// set the exponent of val to 0
-	vv = (vv & 0x800FFFFFFFFFFFFF) | 0x3FF0000000000000;
-}
-
-/* Add exponent to slog2 */
-TARGET void AddExponent(int64& slog2, float& val)
-{
-	int& vv = *(int*)&val;
-
-	// add the exponent to slog2
-	slog2 += ((vv & 0x7F800000) >> 23) - 127;
-
-	// set the exponent of val to 0
-	vv = (vv & 0x807FFFFF) | 0x3F800000;
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLog(int64& slog, double& prod, double val)
-{
-	if (val < DOUBLE_UNDERFLOW || val > DOUBLE_OVERFLOW) [[unlikely]]
-		AddExponent(slog, val);
-
-	prod *= val;
-
-	if (prod < DOUBLE_UNDERFLOW || prod > DOUBLE_OVERFLOW) [[unlikely]]
-		AddExponent(slog, prod);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLog(int64& slog, double& prod, float val)
-{
-	prod *= val;
-
-	if (prod < DOUBLE_UNDERFLOW || prod > DOUBLE_OVERFLOW) [[unlikely]]
-		AddExponent(slog, prod);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLog(int64* slog, double* prod, double* val, int64 n, int64 sep)
-{
-	for (int64 i = 0; i < n; ++i, val += sep)
-		ChargeLog(slog[i], prod[i], *val);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLog(int64* slog, double* prod, float* val, int64 n, int64 sep)
-{
-	for (int64 i = 0; i < n; ++i, val += sep)
-		ChargeLog(slog[i], prod[i], *val);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLog(int64* slog, double* prod, double* val, int64 n)
-{
-	for (int64 i = 0; i < n; ++i)
-		ChargeLog(slog[i], prod[i], val[i]);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLog(int64* slog, double* prod, float* val, int64 n)
-{
-	for (int64 i = 0; i < n; ++i)
-		ChargeLog(slog[i], prod[i], val[i]);
-}
-
-/////////////////////////////////////////////
-
-/* Add exponent to slog2 */
-TARGET void AddExponentAtomic(int64& slog2, double& val)
-{
-	uint64& vv = *(uint64*)&val;
-	atomic<int64>& slog_atomic = *(atomic<int64>*) & slog2;
-
-	uint64 ov, nv;
-	for (ov = vv, nv = (vv & 0x800FFFFFFFFFFFFF) | 0x3FF0000000000000;
-#if defined(__clang__) || defined(__GNUC__)
-		!__sync_bool_compare_and_swap(&vv, ov, nv);
-#else
-		ov != InterlockedCompareExchange(&vv, nv, ov);
-#endif
-		ov = vv, nv = (vv & 0x800FFFFFFFFFFFFF) | 0x3FF0000000000000);
-
-	// add the exponent to slog2
-	slog_atomic += ((ov & 0x7FF0000000000000) >> 52) - 1023;
-}
-
-/* Add exponent to slog2 */
-TARGET void AddExponentAtomic(int64& slog2, float& val)
-{
-	uint& vv = *(uint*)&val;
-	atomic<int64>& slog_atomic = *(atomic<int64>*) & slog2;
-
-	uint ov, nv;
-	for (ov = vv, nv = (ov & 0x807FFFFF) | 0x3F800000;
-#if defined(__clang__) || defined(__GNUC__)
-		!__sync_bool_compare_and_swap(&vv, ov, nv);
-#else
-		 ov != InterlockedCompareExchange(&vv, nv, ov);
-#endif
-		 ov = vv, nv = (ov & 0x807FFFFF) | 0x3F800000);
-
-
-	// add the exponent to slog2
-	slog_atomic += ((ov & 0x7F800000) >> 23) - 127;
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLogAtomic(int64& slog, double& prod, double val)
-{
-	if (val < DOUBLE_UNDERFLOW || val > DOUBLE_OVERFLOW) [[unlikely]]
-		AddExponentAtomic(slog, val);
-
-	AtomicMulFloat(prod, val);
-
-	if (prod < DOUBLE_UNDERFLOW || prod > DOUBLE_OVERFLOW) [[unlikely]]
-		AddExponentAtomic(slog, prod);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLogAtomic(int64& slog, double& prod, float val)
-{
-	AtomicMulFloat(prod, val);
-
-	if (prod < DOUBLE_UNDERFLOW || prod > DOUBLE_OVERFLOW) [[unlikely]]
-		AddExponentAtomic(slog, prod);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLogAtomic(int64* slog, double* prod, double* val, int64 n, int64 sep)
-{
-	for (int64 i = 0; i < n; ++i, val += sep)
-		ChargeLogAtomic(slog[i], prod[i], *val);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLogAtomic(int64* slog, double* prod, float* val, int64 n, int64 sep)
-{
-	for (int64 i = 0; i < n; ++i, val += sep)
-		ChargeLogAtomic(slog[i], prod[i], *val);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLogAtomic(int64* slog, double* prod, double* val, int64 n)
-{
-	for (int64 i = 0; i < n; ++i)
-		ChargeLogAtomic(slog[i], prod[i], val[i]);
-}
-
-/* Charge a value to fast sum log */
-TARGET void ChargeLogAtomic(int64* slog, double* prod, float* val, int64 n)
-{
-	for (int64 i = 0; i < n; ++i)
-		ChargeLogAtomic(slog[i], prod[i], val[i]);
-}
-
-/////////////////////////////////////////////
-
-/* Charge a value to fast sum log, convert slog to double */
-TARGET void CloseLog(int64& slog, double& prod)
-{
-	double& slog2 = *(double*)&slog;
-	prod = slog2 = (slog + log2(prod)) * 0.693147180559945;
-}
-
-/* Finalize fast sum log */
-TARGET void CloseLog(int64* slog, double* prod, int64 n)
-{
-	for (int64 i = 0; i < n; ++i)
-		CloseLog(slog[i], prod[i]);
 }
 
 /* Count non-zero elements */
@@ -885,52 +1327,6 @@ TARGET float Sumx(float* A, int64 n, int64 sep)
 	for (int64 i = 0; i < n; ++i, A += sep)
 		re += *A;
 	return re;
-}
-
-/* A[i] = B[0][i] + ... + B[k][i] */
-TARGET void Sum(double* A, double** B, int64 k, int64 n)
-{
-	switch (SIMD_TYPE)
-	{
-#ifdef __aarch64__
-	case 2: return SumNEO(A, B, k, n);
-#else
-	case 4: return Sum512(A, B, k, n);
-	case 3: return SumAVX(A, B, k, n);
-	case 2: return SumSSE(A, B, k, n);
-#endif
-	}
-
-	for (int64 i = 0; i < n; ++i)
-	{
-		double Ai = 0;
-		for (int64 j = 0; j < k; ++j)
-			Ai += B[j][i];
-		A[i] = Ai;
-	}
-}
-
-/* A[i] = B[0][i] + ... + B[k][i] */
-TARGET void Sum(float* A, float** B, int64 k, int64 n)
-{
-	switch (SIMD_TYPE)
-	{
-#ifdef __aarch64__
-	case 2: return SumNEO(A, B, k, n);
-#else
-	case 4: return Sum512(A, B, k, n);
-	case 3: return SumAVX(A, B, k, n);
-	case 2: return SumSSE(A, B, k, n);
-#endif
-	}
-
-	for (int64 i = 0; i < n; ++i)
-	{
-		double Ai = 0;
-		for (int64 j = 0; j < k; ++j)
-			Ai += B[j][i];
-		A[i] = Ai;
-	}
 }
 
 /* Product of A */
@@ -1094,26 +1490,6 @@ TARGET double SumSquare(float* A, int64 n)
 }
 
 /* Sum of squared A */
-TARGET float SumSquarex(float* A, int64 n)
-{
-	switch (SIMD_TYPE)
-	{
-#ifdef __aarch64__
-	case 2: return SumSquareNEOx(A, n);
-#else
-	case 4: return SumSquare512x(A, n);
-	case 3: return SumSquareAVXx(A, n);
-	case 2: return SumSquareSSEx(A, n);
-#endif
-	}
-	
-	float re = 0;
-	for (int64 i = 0; i < n; ++i)
-		re += A[i] * A[i];
-	return re;
-}
-
-/* Sum of squared A */
 TARGET int64 SumSquare(byte* A, int64 n)
 {
 	switch (SIMD_TYPE)
@@ -1269,8 +1645,8 @@ TARGET float SumProdDivx(float* A1, float* A2, float* B, int64 sep, int64 n)
 	float re1 = 0, re2 = 0;
 	for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
 	{
-		volatile float v1 = *A1 * *B;
-		volatile float v2 = *A2 * *B;
+		volatile float v1 = (float)*A1 * (float)*B;
+		volatile float v2 = (float)*A2 * (float)*B;
 		re1 += v1;
 		re2 += v2;
 	}
@@ -1293,7 +1669,10 @@ TARGET double SumProd(double* A, double* B, int64 sep, int64 n)
 
 	double re = 0;
 	for (int64 i = 0; i < n; ++i, A++, B += sep)
-		re += *A * *B;
+	{
+		volatile double v1 = *A * *B;
+		re += v1;
+	}
 	return re;
 }
 
@@ -1353,7 +1732,7 @@ TARGET double SumProd(double* A, double* B, int64 n)
 	case 2: return SumProdSSE(A, B, n);
 #endif
 	}
-	
+
 	double re = 0;
 	for (int64 i = 0; i < n; ++i)
 		re += A[i] * B[i];
@@ -1373,7 +1752,7 @@ TARGET double SumProd(float* A, float* B, int64 n)
 	case 2: return SumProdSSE(A, B, n);
 #endif
 	}
-	
+
 	double re = 0;
 	for (int64 i = 0; i < n; ++i)
 		re += (double)A[i] * (double)B[i];
@@ -1398,6 +1777,92 @@ TARGET float SumProdx(float* A, float* B, int64 n)
 	for (int64 i = 0; i < n; ++i)
 	{
 		volatile float v1 = A[i] * B[i];
+		re += v1;
+	}
+	return re;
+}
+
+/* re = sum(A[i] * B[i] * C[i]) */
+TARGET double SumProd(double* A, double* B, double* C, int64 n)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: return SumProdNEO(A, B, C, n);
+#else
+	case 4: return SumProd512(A, B, C, n);
+	case 3: return SumProdAVX(A, B, C, n);
+	case 2: return SumProdSSE(A, B, C, n);
+#endif
+	}
+
+	double re = 0;
+	for (int64 i = 0; i < n; ++i)
+		re += A[i] * B[i] * C[i];
+	return re;
+}
+
+/* re = sum(A[i] * B[i] * C[i]) */
+TARGET float SumProd(float* A, float* B, float* C, int64 n)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: return SumProdNEO(A, B, C, n);
+#else
+	case 4: return SumProd512(A, B, C, n);
+	case 3: return SumProdAVX(A, B, C, n);
+	case 2: return SumProdSSE(A, B, C, n);
+#endif
+	}
+
+	float re = 0;
+	for (int64 i = 0; i < n; ++i)
+	{
+		volatile float v1 = A[i] * B[i] * C[i];
+		re += v1;
+	}
+	return re;
+}
+
+/* re = sum(A[i] * A[i] * B[i]) */
+TARGET double SumSqProd(double* A, double* B, int64 n)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: return SumSqProdNEO(A, B, n);
+#else
+	case 4: return SumSqProd512(A, B, n);
+	case 3: return SumSqProdAVX(A, B, n);
+	case 2: return SumSqProdSSE(A, B, n);
+#endif
+	}
+
+	double re = 0;
+	for (int64 i = 0; i < n; ++i)
+		re += A[i] * A[i] * B[i];
+	return re;
+}
+
+/* re = sum(A[i] * A[i] * B[i]) */
+TARGET float SumSqProd(float* A, float* B, int64 n)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: return SumSqProdNEO(A, B, n);
+#else
+	case 4: return SumSqProd512(A, B, n);
+	case 3: return SumSqProdAVX(A, B, n);
+	case 2: return SumSqProdSSE(A, B, n);
+#endif
+	}
+
+	float re = 0;
+	for (int64 i = 0; i < n; ++i)
+	{
+		volatile float v1 = A[i] * A[i] * B[i];
 		re += v1;
 	}
 	return re;
@@ -1529,76 +1994,76 @@ TARGET void Add(float* A, float B, int64 n)
 		A[i] += B;
 }
 
-/* C[i] = A[i] * B[i] */
-TARGET void Mul(double* C, double* A, double* B, int64 n)
+/* A[i] = B[i] * C[i] */
+TARGET void Mul(double* A, double* B, double* C, int64 n)
 {
 	switch (SIMD_TYPE)
 	{
 #ifdef __aarch64__
-	case 2: return MulNEO(C, A, B, n);
+	case 2: return MulNEO(A, B, C, n);
 #else
-	case 4: return Mul512(C, A, B, n);
-	case 3: return MulAVX(C, A, B, n);
-	case 2: return MulSSE(C, A, B, n);
+	case 4: return Mul512(A, B, C, n);
+	case 3: return MulAVX(A, B, C, n);
+	case 2: return MulSSE(A, B, C, n);
 #endif
 	}
 
 	for (int64 i = 0; i < n; ++i)
-		C[i] = A[i] * B[i];
+		A[i] = B[i] * C[i];
 }
 
-/* C[i] = A[i] * B[i] */
-TARGET void Mul(float* C, float* A, float* B, int64 n)
+/* A[i] = B[i] * C[i] */
+TARGET void Mul(float* A, float* B, float* C, int64 n)
 {
 	switch (SIMD_TYPE)
 	{
 #ifdef __aarch64__
-	case 2: return MulNEO(C, A, B, n);
+	case 2: return MulNEO(A, B, C, n);
 #else
-	case 4: return Mul512(C, A, B, n);
-	case 3: return MulAVX(C, A, B, n);
-	case 2: return MulSSE(C, A, B, n);
+	case 4: return Mul512(A, B, C, n);
+	case 3: return MulAVX(A, B, C, n);
+	case 2: return MulSSE(A, B, C, n);
 #endif
 	}
 
 	for (int64 i = 0; i < n; ++i)
-		C[i] = A[i] * B[i];
+		A[i] = B[i] * C[i];
 }
 
-/* C[i] = A[i] * B */
-TARGET void Mul(double* C, double* A, double B, int64 n)
+/* A[i] = B[i] * C */
+TARGET void Mul(double* A, double* B, double C, int64 n)
 {
 	switch (SIMD_TYPE)
 	{
 #ifdef __aarch64__
-	case 2: return MulNEO(C, A, B, n);
+	case 2: return MulNEO(A, B, C, n);
 #else
-	case 4: return Mul512(C, A, B, n);
-	case 3: return MulAVX(C, A, B, n);
-	case 2: return MulSSE(C, A, B, n);
+	case 4: return Mul512(A, B, C, n);
+	case 3: return MulAVX(A, B, C, n);
+	case 2: return MulSSE(A, B, C, n);
 #endif
 	}
 
 	for (int64 i = 0; i < n; ++i)
-		C[i] = A[i] * B;
+		A[i] = B[i] * C;
 }
 
-/* C[i] = A[i] * B */
-TARGET void Mul(float* C, float* A, float B, int64 n)
+/* A[i] = B[i] * C */
+TARGET void Mul(float* A, float* B, float C, int64 n)
 {
 	switch (SIMD_TYPE)
 	{
 #ifdef __aarch64__
-	case 2: return MulNEO(C, A, B, n);
+	case 2: return MulNEO(A, B, C, n);
 #else
-	case 4: return Mul512(C, A, B, n);
-	case 3: return MulAVX(C, A, B, n);
-	case 2: return MulSSE(C, A, B, n);
+	case 4: return Mul512(A, B, C, n);
+	case 3: return MulAVX(A, B, C, n);
+	case 2: return MulSSE(A, B, C, n);
 #endif
 	}
 
 	for (int64 i = 0; i < n; ++i)
-		C[i] = A[i] * B;
+		A[i] = B[i] * C;
 }
 
 /* A[i] *= B */
@@ -1637,94 +2102,166 @@ TARGET void Mul(float* A, float B, int64 n)
 		A[i] *= B;
 }
 
-/* C[i] += A[i] * B[i] */
-TARGET void AddProd(double* C, double* A, double* B, int64 n)
+/* A[i] = B / C[i] */
+TARGET void Div(double* A, double B, double* C, int64 n)
 {
 	switch (SIMD_TYPE)
 	{
 #ifdef __aarch64__
-	case 2: return AddProdNEO(C, A, B, n);
+	case 2: return DivNEO(A, B, C, n);
 #else
-	case 4: return AddProd512(C, A, B, n);
-	case 3: return AddProdAVX(C, A, B, n);
-	case 2: return AddProdSSE(C, A, B, n);
+	case 4: return Div512(A, B, C, n);
+	case 3: return DivAVX(A, B, C, n);
+	case 2: return DivSSE(A, B, C, n);
 #endif
 	}
-
+	
 	for (int64 i = 0; i < n; ++i)
-		C[i] += A[i] * B[i];
+		A[i] = B / C[i];
 }
 
-/* C[i] += A[i] * B[i] */
-TARGET void AddProd(float* C, float* A, float* B, int64 n)
+/* A[i] = B / C[i] */
+TARGET void Div(float* A, float B, float* C, int64 n)
 {
 	switch (SIMD_TYPE)
 	{
 #ifdef __aarch64__
-	case 2: return AddProdNEO(C, A, B, n);
+	case 2: return DivNEO(A, B, C, n);
 #else
-	case 4: return AddProd512(C, A, B, n);
-	case 3: return AddProdAVX(C, A, B, n);
-	case 2: return AddProdSSE(C, A, B, n);
+	case 4: return Div512(A, B, C, n);
+	case 3: return DivAVX(A, B, C, n);
+	case 2: return DivSSE(A, B, C, n);
 #endif
 	}
 
 	for (int64 i = 0; i < n; ++i)
-		C[i] += A[i] * B[i];
+		A[i] = B / C[i];
 }
 
-/* C[i] += A[i] * B */
-TARGET void AddProd(double* C, double* A, double B, int64 n)
+/* A[i] = B[i] / C[i] */
+TARGET void Div(double* A, double* B, double* C, int64 n)
 {
 	switch (SIMD_TYPE)
 	{
 #ifdef __aarch64__
-	case 2: return AddProdNEO(C, A, B, n);
+	case 2: return DivNEO(A, B, C, n);
 #else
-	case 4: return AddProd512(C, A, B, n);
-	case 3: return AddProdAVX(C, A, B, n);
-	case 2: return AddProdSSE(C, A, B, n);
+	case 4: return Div512(A, B, C, n);
+	case 3: return DivAVX(A, B, C, n);
+	case 2: return DivSSE(A, B, C, n);
 #endif
 	}
 
 	for (int64 i = 0; i < n; ++i)
-		C[i] += A[i] * B;
+		A[i] = B[i] / C[i];
 }
 
-/* C[i] += A[i] * B */
-TARGET void AddProd(double* C, float* A, double B, int64 n)
+/* A[i] = B[i] / C[i] */
+TARGET void Div(float* A, float* B, float* C, int64 n)
 {
 	switch (SIMD_TYPE)
 	{
 #ifdef __aarch64__
-	case 2: return AddProdNEO(C, A, B, n);
+	case 2: return DivNEO(A, B, C, n);
 #else
-	case 4: return AddProd512(C, A, B, n);
-	case 3: return AddProdAVX(C, A, B, n);
-	case 2: return AddProdSSE(C, A, B, n);
+	case 4: return Div512(A, B, C, n);
+	case 3: return DivAVX(A, B, C, n);
+	case 2: return DivSSE(A, B, C, n);
 #endif
 	}
 
 	for (int64 i = 0; i < n; ++i)
-		C[i] += A[i] * B;
+		A[i] = B[i] / C[i];
 }
 
-/* C[i] += A[i] * B */
-TARGET void AddProd(float* C, float* A, float B, int64 n)
+/* A[i] += B[i] * C[i] */
+TARGET void AddProd(double* A, double* B, double* C, int64 n)
 {
 	switch (SIMD_TYPE)
 	{
 #ifdef __aarch64__
-	case 2: return AddProdNEO(C, A, B, n);
+	case 2: return AddProdNEO(A, B, C, n);
 #else
-	case 4: return AddProd512(C, A, B, n);
-	case 3: return AddProdAVX(C, A, B, n);
-	case 2: return AddProdSSE(C, A, B, n);
+	case 4: return AddProd512(A, B, C, n);
+	case 3: return AddProdAVX(A, B, C, n);
+	case 2: return AddProdSSE(A, B, C, n);
 #endif
 	}
 
 	for (int64 i = 0; i < n; ++i)
-		C[i] += A[i] * B;
+		A[i] += B[i] * C[i];
+}
+
+/* A[i] += B[i] * C[i] */
+TARGET void AddProd(float* A, float* B, float* C, int64 n)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: return AddProdNEO(A, B, C, n);
+#else
+	case 4: return AddProd512(A, B, C, n);
+	case 3: return AddProdAVX(A, B, C, n);
+	case 2: return AddProdSSE(A, B, C, n);
+#endif
+	}
+
+	for (int64 i = 0; i < n; ++i)
+		A[i] += B[i] * C[i];
+}
+
+/* A[i] += B[i] * C */
+TARGET void AddProd(double* A, double* B, double C, int64 n)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: return AddProdNEO(A, B, C, n);
+#else
+	case 4: return AddProd512(A, B, C, n);
+	case 3: return AddProdAVX(A, B, C, n);
+	case 2: return AddProdSSE(A, B, C, n);
+#endif
+	}
+
+	for (int64 i = 0; i < n; ++i)
+		A[i] += B[i] * C;
+}
+
+/* A[i] += B[i] * C */
+TARGET void AddProd(double* A, float* B, double C, int64 n)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: return AddProdNEO(A, B, C, n);
+#else
+	case 4: return AddProd512(A, B, C, n);
+	case 3: return AddProdAVX(A, B, C, n);
+	case 2: return AddProdSSE(A, B, C, n);
+#endif
+	}
+
+	for (int64 i = 0; i < n; ++i)
+		A[i] += B[i] * C;
+}
+
+/* A[i] += B[i] * C */
+TARGET void AddProd(float* A, float* B, float C, int64 n)
+{
+	switch (SIMD_TYPE)
+	{
+#ifdef __aarch64__
+	case 2: return AddProdNEO(A, B, C, n);
+#else
+	case 4: return AddProd512(A, B, C, n);
+	case 3: return AddProdAVX(A, B, C, n);
+	case 2: return AddProdSSE(A, B, C, n);
+#endif
+	}
+
+	for (int64 i = 0; i < n; ++i)
+		A[i] += B[i] * C;
 }
 
 /* Set the sum of A to one */
@@ -1810,322 +2347,172 @@ TARGET int64 CountChar(char* A, char val, int64 n)
 	return re;
 }
 
-/* A[i] = B */
-TARGET void SetVal(double* A, double B, int64 n, int64 sep)
+/* Quadratic form A' D A with D being a diagonal matrix, A is m*n, D is n*n, ColMajor */
+TARGET void DiagQuadForm(double* res, double* A, double* D, int64 m, int64 n)
 {
-	for (int64 i = 0; i < n; ++i)
-		A[i * sep] = B;
-}
-
-/* A[i] = B */
-TARGET void SetVal(float* A, float B, int64 n, int64 sep)
-{
-	for (int64 i = 0; i < n; ++i)
-		A[i * sep] = B;
-}
-
-/* A[i] = B */
-TARGET void SetVal(float* A, double* B, int64 n)
-{
-	for (int64 i = 0; i < n; ++i)
-		A[i] = B[i];
-}
-
-/* re = sum(A[i] * B[j] * alen[i * k + j]) */
-TARGET double SumProdSMM(ushort* alen, double* A, double* B, int k)
-{
-	double re = 0;
-	for (int i = 0; i < k; ++i)
-		for (int j = 0; j < k; ++j)
-			re += A[i] * B[j] * ((int)alen[i] - (int)alen[j]) * ((int)alen[i] - (int)alen[j]);
-	return re;
-}
-
-/* re = sum(A[i] * B[j] * alen[i * k + j]) */
-TARGET double SumProdSMM(ushort* alen, float* A, float* B, int k)
-{
-	double re = 0;
-	for (int i = 0; i < k; ++i)
-		for (int j = 0; j < k; ++j)
-			re += (double)A[i] * (double)B[j] * ((int)alen[i] - (int)alen[j]) * ((int)alen[i] - (int)alen[j]);
-	return re;
-}
-
-/* re += sum(A[i] * alen[i * k]) */
-TARGET double SumProdSMM(ushort* alen, double* A, ushort j, int k)
-{
-	double re = 0;
-	for (int i = 0, alenj = alen[j]; i < k; ++i)
-		re += A[i] * ((int)alen[i] - alenj) * ((int)alen[i] - alenj);
-	return re;
-}
-
-/* re += sum(A[i] * alen[i * k]) */
-TARGET double SumProdSMM(ushort* alen, float* A, ushort j, int k)
-{
-	float re = 0;
-	for (int i = 0, alenj = alen[j]; i < k; ++i)
-		re += (double)A[i] * ((int)alen[i] - alenj) * ((int)alen[i] - alenj);
-	return re;
-}
-
-/* Count number of non-zero elements */
-TARGET int64 CountNonZero(double* A, int64 n)
-{
-	//allele freq
-	int64 count = 0;
-	for (int64 i = 0; i < n; ++i)
-		if (A[i]) count++;
-	return count;
-}
-
-/* Set the sum of A to one */
-TARGET void Unify(double* A, int64 m, int64 n)
-{
-	for (int64 i = 0; i < m; ++i)
+	switch (SIMD_TYPE)
 	{
-		Unify(A, n);
-		A += n;
+#ifdef __aarch64__
+	case 2: return DiagQuadFormNEO(res, A, D, m, n);
+#else
+	case 4: return DiagQuadForm512(res, A, D, m, n);
+	case 3: return DiagQuadFormAVX(res, A, D, m, n);
+	case 2: return DiagQuadFormSSE(res, A, D, m, n);
+#endif
 	}
+	
+	Mat<double> a(A, n, m, false, true);
+	Col<double> d(D, n, false, true);
+	Mat<double> r(res, m, m, false, true);
+	
+	r = a.t() * diagmat(d) * a;
 }
 
-/* Set the sum of A to one */
-TARGET void Unify(float* A, int64 m, int64 n)
+/* Quadratic form A' D A with D being a diagonal matrix, A is m*n, D is n*n, ColMajor */
+TARGET void DiagQuadForm(float* res, float* A, float* D, int64 m, int64 n)
 {
-	for (int64 i = 0; i < m; ++i)
+	switch (SIMD_TYPE)
 	{
-		Unify(A, n);
-		A += n;
+#ifdef __aarch64__
+	case 2: return DiagQuadFormNEO(res, A, D, m, n);
+#else
+	case 4: return DiagQuadForm512(res, A, D, m, n);
+	case 3: return DiagQuadFormAVX(res, A, D, m, n);
+	case 2: return DiagQuadFormSSE(res, A, D, m, n);
+#endif
 	}
+	
+	Mat<float> a(A, n, m, false, true);
+	Col<float> d(D, n, false, true);
+	Mat<float> r(res, m, m, false, true);
+	
+	r = a.t() * diagmat(d) * a;
 }
 
-/* Set the sum of A to one, convert int64 to double */
-TARGET void UnifyInt64ToDouble(int64* A, int64 m, int64 n)
+/* Quadratic form A' D B with D being a diagonal matrix, A is m*n, D is n*n, B is n*1, ColMajor */
+TARGET void DiagQuadForm(double* res, double* A, double* D, double* B, int64 m, int64 n)
 {
-	double* Af = (double*)A;
-
-	for (int64 i = 0, end = m * n; i < end; ++i)
-		Af[i] = (double)A[i];
-
-	for (int64 i = 0; i < m; ++i)
+	switch (SIMD_TYPE)
 	{
-		Unify(Af, n);
-		Af += n;
+#ifdef __aarch64__
+	case 2: return DiagQuadFormNEO(res, A, D, B, m, n);
+#else
+	case 4: return DiagQuadForm512(res, A, D, B, m, n);
+	case 3: return DiagQuadFormAVX(res, A, D, B, m, n);
+	case 2: return DiagQuadFormSSE(res, A, D, B, m, n);
+#endif
 	}
+	
+	Mat<double> a(A, n, m, false, true);
+	Col<double> d(D, n, false, true);
+	Mat<double> b(B, n, 1, false, true);
+	Mat<double> r(res, m, 1, false, true);
+	
+	r = a.t() * diagmat(d) * b;
 }
 
-/* Calculate SSWP in AMOVA */
-TARGET double SSP(double* p, int64 k, int64 nhap, bool isiam, ushort* alen2)
+/* Quadratic form A D B with D being a diagonal matrix, A is m*n, D is n*n, B is n*1, ColMajor */
+TARGET void DiagQuadForm(float* res, float* A, float* D, float* B, int64 m, int64 n)
 {
-	//freq array, without missing alleles
-	if (!k || !nhap) return 0;
-	if (isiam)
+	switch (SIMD_TYPE)
 	{
-		double s1 = (double)nhap, s2 = SumSquare(p, k) * nhap * nhap;
-		if (!s1) return 0;
-		return (s1 * s1 - s2) / (double)(2 * s1);
+#ifdef __aarch64__
+	case 2: return DiagQuadFormNEO(res, A, D, B, m, n);
+#else
+	case 4: return DiagQuadForm512(res, A, D, B, m, n);
+	case 3: return DiagQuadFormAVX(res, A, D, B, m, n);
+	case 2: return DiagQuadFormSSE(res, A, D, B, m, n);
+#endif
 	}
-	else
+	
+	Mat<float> a(A, n, m, false, true);
+	Col<float> d(D, n, false, true);
+	Mat<float> b(B, n, 1, false, true);
+	Mat<float> r(res, m, 1, false, true);
+	
+	r = a.t() * diagmat(d) * b;
+}
+
+/* Quadratic form A D A' with D being a diagonal matrix, A is 1*n, D is n*n, ColMajor */
+TARGET void DiagQuadForm(double* res, double* A, double* D, int64 n)
+{
+	switch (SIMD_TYPE)
 	{
-		alen2 += k;
-		double re = 0;
-		for (int64 i = 0; i < k; ++i)
-			for (int64 j = 0; j < i; ++j)
-				re += p[i] * p[j] * alen2[i * k + j];
-		return re * nhap;
+#ifdef __aarch64__
+	case 2: return DiagQuadFormNEO(res, A, D, n);
+#else
+	case 4: return DiagQuadForm512(res, A, D, n);
+	case 3: return DiagQuadFormAVX(res, A, D, n);
+	case 2: return DiagQuadFormSSE(res, A, D, n);
+#endif
 	}
+	
+	Mat<double> a(A, n, 1, false, true);
+	Col<double> d(D, n, false, true);
+	Mat<double> r(res, 1, 1, false, true);
+	
+	r = a.t() * diagmat(d) * a;
 }
 
-/* Calculate SSWP in AMOVA */
-TARGET double SSP(float* p, int64 k, int64 nhap, bool isiam, ushort* alen2)
+/* Quadratic form A D A' with D being a diagonal matrix, A is 1*n, D is n*n, ColMajor */
+TARGET void DiagQuadForm(float* res, float* A, float* D, int64 n)
 {
-	//freq array, without missing alleles
-	if (!k || !nhap) return 0;
-	if (isiam)
+	switch (SIMD_TYPE)
 	{
-		double s1 = nhap, s2 = SumSquare(p, k) * nhap * nhap;
-		if (!s1) return 0;
-		return (s1 * s1 - s2) / (float)(2 * s1);
+#ifdef __aarch64__
+	case 2: return DiagQuadFormNEO(res, A, D, n);
+#else
+	case 4: return DiagQuadForm512(res, A, D, n);
+	case 3: return DiagQuadFormAVX(res, A, D, n);
+	case 2: return DiagQuadFormSSE(res, A, D, n);
+#endif
 	}
-	else
+	
+	Mat<float> a(A, n, 1, false, true);
+	Col<float> d(D, n, false, true);
+	Mat<float> r(res, 1, 1, false, true);
+	
+	r = a.t() * diagmat(d) * a;
+}
+
+/* Matrix Muplification, A is m*n, B is n*p, ColMajor */
+TARGET void MatrixMul(double* res, double* A, double* B, int64 m, int64 n, int64 p)
+{
+	switch (SIMD_TYPE)
 	{
-		alen2 += k;
-		double re = 0;
-		for (int64 i = 0; i < k; ++i)
-			for (int64 j = 0; j < i; ++j)
-				re += p[i] * p[j] * alen2[i * k + j];
-		return re * nhap;
+#ifdef __aarch64__
+	case 2: return MatrixMulNEO(res, A, B, m, n, p);
+#else
+	case 4: return MatrixMul512(res, A, B, m, n, p);
+	case 3: return MatrixMulAVX(res, A, B, m, n, p);
+	case 2: return MatrixMulSSE(res, A, B, m, n, p);
+#endif
 	}
+	
+	Mat<double> a(A, n, m, false, true);
+	Mat<double> b(B, n, p, false, true);
+	Mat<double> r(res, m, p, false, true);
+
+	r = a.t() * b;
 }
 
-/* Calculate SSTOT in AMOVA */
-TARGET double SSC(double* a, int64 k, bool isiam, ushort* alen2)
+/* Matrix Muplification, A is m*n, B is n*p, ColMajor */
+TARGET void MatrixMul(float* res, float* A, float* B, int64 m, int64 n, int64 p)
 {
-	//allele count array, without missing alleles
-	if (!k) return 0;
-	double s1 = 0, s2 = 0;
-	if (isiam)
+	switch (SIMD_TYPE)
 	{
-		SumSumSquare(a, k, s1, s2);
-		if (!s1) return 0;
-		return (s1 * s1 - s2) / (double)(2 * s1);
+#ifdef __aarch64__
+	case 2: return MatrixMulNEO(res, A, B, m, n, p);
+#else
+	case 4: return MatrixMul512(res, A, B, m, n, p);
+	case 3: return MatrixMulAVX(res, A, B, m, n, p);
+	case 2: return MatrixMulSSE(res, A, B, m, n, p);
+#endif
 	}
-	else
-	{
-		alen2 += k;
-		double re = 0, nt = 0;
-		for (int64 i = 0; i < k; ++i)
-		{
-			nt += a[i];
-			for (int64 j = 0; j < i; ++j)
-				re += a[i] * a[j] * alen2[i * k + j];
-		}
-		return nt > 0 ? re / nt : 0;
-	}
-}
+	
+	Mat<float> a(A, n, m, false, true);
+	Mat<float> b(B, n, p, false, true);
+	Mat<float> r(res, m, p, false, true);
 
-/* Calculate SSTOT in AMOVA */
-TARGET double SSC(float* a, int64 k, bool isiam, ushort* alen2)
-{
-	//allele count array, without missing alleles
-	if (!k) return 0;
-	double s1 = 0, s2 = 0;
-	if (isiam)
-	{
-		SumSumSquare(a, k, s1, s2);
-		if (!s1) return 0;
-		return (s1 * s1 - s2) / (2 * s1);
-	}
-	else
-	{
-		alen2 += k;
-		double re = 0, nt = 0;
-		for (int64 i = 0; i < k; ++i)
-		{
-			nt += a[i];
-			for (int64 j = 0; j < i; ++j)
-				re += a[i] * a[j] * alen2[i * k + j];
-		}
-		return nt > 0 ? re / nt : 0;
-	}
-}
-
-/* Add a value to sum and add weight */
-TARGET void ChargeWeight(double val, double weight, double& numerator, double& denominator)
-{
-	double v1 = val * weight;
-	if (IsNormal(v1))
-	{
-		numerator += v1;
-		denominator += weight;
-	}
-}
-
-/* Add a value to sum and add weight */
-TARGET void ChargeWeight(float val, float weight, float& numerator, float& denominator)
-{
-	float v1 = val * weight;
-	if (IsNormal(v1))
-	{
-		numerator += v1;
-		denominator += weight;
-	}
-}
-
-/* Add a value to sum and add count */
-TARGET void ChargeSum(double val, double& mean, int& count)
-{
-	if (IsNormal(val))
-	{
-		mean += val;
-		count++;
-	}
-}
-
-/* Add a value to sum and add count */
-TARGET void ChargeSum(float val, float& mean, int& count)
-{
-	if (IsNormal(val))
-	{
-		mean += val;
-		count++;
-	}
-}
-
-/* https://github.com/ygalanter/CyberGeeks/blob/master/src/math.c */
-TARGET double MyRInt(double x)
-{
-	double t = floor(fabs(x) + 0.5);
-	return (x < 0.0) ? -t : t;
-}
-
-/* Core function of cosine */
-TARGET double CosCore(double x)
-{
-	double x2 = x * x;
-	double x4 = x2 * x2;
-	double x8 = x4 * x4;
-	return (-2.7236370439787708e-7 * x2 + 2.4799852696610628e-5) * x8 +
-		   (-1.3888885054799695e-3 * x2 + 4.1666666636943683e-2) * x4 +
-		   (-4.9999999999963024e-1 * x2 + 1.0000000000000000e+0);
-}
-
-/* Core function of sine */
-TARGET double SinCore(double x)
-{
-	double x2 = x * x;
-	double x4 = x2 * x2;
-	return ((2.7181216275479732e-6 * x2 - 1.9839312269456257e-4) * x4 +
-		   (8.3333293048425631e-3 * x2 - 1.6666666640797048e-1)) * x2 * x + x;
-}
-
-/* Core function of arc sine */
-TARGET double ArcSinCore(double x)
-{
-	double x2 = x * x;
-	double x4 = x2 * x2;
-	double x8 = x4 * x4;
-	return (((4.5334220547132049e-2 * x2 - 1.1226216762576600e-2) * x4 +
-		   (2.6334281471361822e-2 * x2 + 2.0596336163223834e-2)) * x8 +
-		   (3.0582043602875735e-2 * x2 + 4.4630538556294605e-2) * x4 +
-		   (7.5000364034134126e-2 * x2 + 1.6666666300567365e-1)) * x2 * x + x;
-}
-
-/* Sine function */
-TARGET double MySin(double x)
-{
-	double q = MyRInt(x * 6.3661977236758138e-1); 
-	int quadrant = (int)q;
-	double t = x - q * 1.5707963267923333e+00;
-	t = t - q * 2.5633441515945189e-12;
-	t = quadrant & 1 ? CosCore(t) : SinCore(t);
-	return (quadrant & 2) ? -t : t;
-}
-
-/* Cosine function */
-TARGET double MyCos(double x)
-{
-	return MySin(x + (M_PI / 2));
-}
-
-/* ArcCosine function */
-TARGET double MyArcCos(double x)
-{
-	double xa = abs(x);
-	double t = xa > 0.5625 ? 
-		2.0 * ArcSinCore(sqrt(0.5 * (1.0 - xa))) : 
-		1.5707963267948966 - ArcSinCore(xa);
-	return (x < 0.0) ? (3.1415926535897932 - t) : t;
-}
-
-/* ArcSine function */
-TARGET double MyArcSin(double x)
-{
-	return (M_PI / 2) - MyArcCos(x);
-}
-
-/* Tangent function */
-TARGET double MyTan(double x)
-{
-	return MySin(x) / MyCos(x);
+	r = a.t() * b;
 }

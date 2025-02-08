@@ -1,6 +1,5 @@
 /* Haplotype Extraction Functions */
 
-#pragma once
 #include "vcfpop.h"
 
 template TARGET void CalcHaplotype<double>();
@@ -37,8 +36,8 @@ TARGET void HAPLO_DUMMY_HAPLOTYPE::ExtractHaplotype(int vi, IND<REAL>* ti, int64
 	}
 }
 
-/* Print information for an extracted locus */
-TARGET void HAPLO_DUMMY_HAPLOTYPE::PrintHaplotype(FILE* f1, int64 st, int64 ed)
+/* Write information for an extracted locus */
+TARGET void HAPLO_DUMMY_HAPLOTYPE::WriteHaplotype(FILE* f1, int64 st, int64 ed)
 {
 fprintf(f1, "%s%d", g_linebreak_val, alleleid);
 for (int64 l = st, sc = 0; l <= ed; ++l)
@@ -65,7 +64,7 @@ THREAD2(CheckAneuploid)
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 	for (int i = 0; i < nind; ++i)
 	{
-		if (ainds[i]->vmin == ainds[i]->vmax)
+		if (ainds<REAL>[i]->vmin == ainds<REAL>[i]->vmax)
 		{
 			nfilterind++;
 			PROGRESS_VALUE++;
@@ -83,19 +82,19 @@ THREAD2(CheckAneuploid)
 				continue;
 			}
 
-			GENOTYPE& gt = ainds[i]->GetGenotype(GetLocId(ed), GetLoc(ed).GetGtab());//fine
+			GENOTYPE& gt = ainds<REAL>[i]->GetGenotype(GetLocId(ed), GetLoc(ed).GetGtab());//fine
 			if (gt.Nalleles() == 0) continue;
 
 			byte ved = (byte)gt.Ploidy();
 			if (vst == 0) vst = ved;
 			if (vst != ved)
 			{
-				ainds[i] = NULL;
+				ainds<REAL>[i] = NULL;
 				break;
 			}
 		}
 
-		if (ainds[i]) nfilterind++;
+		if (ainds<REAL>[i]) nfilterind++;
 		PROGRESS_VALUE++;
 	}
 }
@@ -178,13 +177,9 @@ TARGET void CalcHaplotype()
 	//Finish, release memory
 	nloc = nfilter = nl;
 
-	delete[] slocus;
-	slocus = haplotype_nslocus;
-
-	delete[] locus_id;
-	locus_id = NULL;
-
-	delete[] omemory;
+	DEL(slocus);	slocus = haplotype_nslocus;
+	DEL(locus_id);
+	DEL(omemory);
 
 	haplotype_locus.~LIST();//ok
 	new (&haplotype_locus) LIST<HAPLO_DUMMY_LOCUS>();
@@ -198,8 +193,8 @@ TARGET void CalcHaplotype()
 	haplotype = false;
 
 	//Calculate total number of alleles and genotypes
-	delete[] allele_freq_offset;      allele_freq_offset = new uint64[nloc];
-	delete[] genotype_count_offset;   genotype_count_offset = new uint64[nloc];
+	DEL(allele_freq_offset);      allele_freq_offset = new uint64[nloc];
+	DEL(genotype_count_offset);   genotype_count_offset = new uint64[nloc];
 	KT = GT = maxK = maxG = 0;
 	for (int64 l = 0; l < nloc; ++l)
 	{
@@ -207,8 +202,8 @@ TARGET void CalcHaplotype()
 		genotype_count_offset[l] = GT;
 		KT += GetLoc(l).k;
 		GT += GetLoc(l).ngeno;
-		maxK = Max((int)GetLoc(l).k, maxK);
-		maxG = Max((int)GetLoc(l).ngeno, maxG);
+		maxK = std::max((int)GetLoc(l).k, maxK);
+		maxG = std::max((int)GetLoc(l).ngeno, maxG);
 	}
 	EvaluationEnd("Haplotype extraction");
 }
@@ -377,7 +372,7 @@ TARGET double GetDummyK(int64 st, int64 ed, TABLE<HASH, ushort>& hfidx, TABLE<HA
 	for (int i = 0; i < nind; ++i)
 	{
 		int v = 0;
-		HashHaplotype(ainds[i], st, ed, hash, v);
+		HashHaplotype(ainds<REAL>[i], st, ed, hash, v);
 
 		if (!usedploidy[v])
 		{
@@ -510,7 +505,7 @@ THREAD2(WriteHaplotypeLocus)
 			int ploidy = 0;
 
 			//get haplotype hash
-			HashHaplotype(ainds[i], st, ed, haplohash, ploidy);
+			HashHaplotype(ainds<REAL>[i], st, ed, haplohash, ploidy);
 
 			//missing data
 			if (haplohash[0] == (HASH)-1)
@@ -526,7 +521,7 @@ THREAD2(WriteHaplotypeLocus)
 				{
 					haplo_memory.Alloc(ht, 1);
 					hftab[ha] = ht;
-					ht->ExtractHaplotype(ai, ainds[i], st, ed, nvar, (ushort)hftab.size - 1, haplo_memory);
+					ht->ExtractHaplotype(ai, ainds<REAL>[i], st, ed, nvar, (ushort)hftab.size - 1, haplo_memory);
 				}
 				alleles[ai] = ht->alleleid;
 			}
@@ -592,7 +587,7 @@ THREAD2(WriteHaplotypeLocus)
 			fprintf(fout, "%c%s", g_delimiter_val, GetLoc(l2).GetNameStr(name_buf));
 
 		for (int hi = 0; hi < hsize; ++hi)
-			hftab(hi)->PrintHaplotype(fout, st, ed);
+			hftab(hi)->WriteHaplotype(fout, st, ed);
 		haplo_memory.ClearMemory();
 
 		PROGRESS_VALUE++;

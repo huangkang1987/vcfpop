@@ -7,8 +7,8 @@ template TARGET void CalcAssignment<double>();
 template TARGET void CalcAssignment<float >();
 template TARGET void IND<double>::AssignmentHeader(FILE* fout);
 template TARGET void IND<float >::AssignmentHeader(FILE* fout);
-template TARGET void IND<double>::PrintAssignment(FILE* fout);
-template TARGET void IND<float >::PrintAssignment(FILE* fout);
+template TARGET void IND<double>::WriteAssignment(FILE* fout);
+template TARGET void IND<float >::WriteAssignment(FILE* fout);
 
 #define extern 
 
@@ -46,7 +46,7 @@ THREAD2(PopulationAssignmentThread)
 	int st = (int)(threadid * nsec), ed = (int)((threadid + 1) * nsec);
 	for (int i = st; i < ed; ++i)
 	{
-		ainds[i]->PrintAssignment(TEMP_FILES[threadid]);
+		ainds<REAL>[i]->WriteAssignment(TEMP_FILES[threadid]);
 
 		PROGRESS_VALUE++;
 	}
@@ -64,7 +64,7 @@ TARGET void IND<REAL>::AssignmentHeader(FILE* fout)
 	for (int rl = -1; rl <= lreg; ++rl)
 	{
 		if (popas_level_val[rl == -1 ? 1 : 2] == 0) continue;
-		POP<REAL>** grps = rl == -1 ? apops : aregs[rl];
+		POP<REAL>** grps = rl == -1 ? apops<REAL> : aregs<REAL>[rl];
 		int ngrp = rl == -1 ? npop : nreg[rl];
 
 		//level: pop reg
@@ -82,7 +82,7 @@ TARGET void IND<REAL>::AssignmentHeader(FILE* fout)
 
 /* Write result row for population assignment */
 template<typename REAL>
-TARGET void IND<REAL>::PrintAssignment(FILE* fout)
+TARGET void IND<REAL>::WriteAssignment(FILE* fout)
 {
 	int64 ntype = 0, nhaplo = 0, nmiss = 0;
 	int ms = npop;
@@ -110,13 +110,13 @@ TARGET void IND<REAL>::PrintAssignment(FILE* fout)
 
 	fprintf(fout, "%s%s%c%s",
 		g_linebreak_val, name,
-		g_delimiter_val, apops[popid]->name);
+		g_delimiter_val, apops<REAL>[popid]->name);
 
-	POP<REAL>* tr = lreg >= 0 ? aregs[0][apops[popid]->rid] : NULL;
+	POP<REAL>* tr = lreg >= 0 ? aregs<REAL>[0][apops<REAL>[popid]->rid] : NULL;
 	for (int rl = 0; rl < lreg; ++rl)
 	{
 		fprintf(fout, "%c%s", g_delimiter_val, tr->name);
-		tr = aregs[rl + 1][tr->rid];
+		tr = aregs<REAL>[rl + 1][tr->rid];
 	}
 
 	fprintf(fout, "%c%lld%c%lld%c%d - %d%c%lld",
@@ -128,7 +128,7 @@ TARGET void IND<REAL>::PrintAssignment(FILE* fout)
 	for (int rl = -1; rl <= lreg; ++rl)
 	{
 		if (popas_level_val[rl == -1 ? 1 : 2] == 0) continue;
-		POP<REAL>** grps = rl == -1 ? apops : aregs[rl];
+		POP<REAL>** grps = rl == -1 ? apops<REAL> : aregs<REAL>[rl];
 		int ngrp = rl == -1 ? npop : nreg[rl];
 
 		for (int m2 = 1; m2 <= N_DRE_MODEL; ++m2)

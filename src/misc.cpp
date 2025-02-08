@@ -6,6 +6,10 @@ template TARGET void BUCKET::FilterIndividualGT<double>(BUCKET* obucket, int nfi
 template TARGET void BUCKET::FilterIndividualGT<float >(BUCKET* obucket, int nfilter, bool progress, int nthread);
 template TARGET void BUCKET::FilterIndividualAD<double>(BUCKET* obucket, int nfilter, bool progress, int nthread);
 template TARGET void BUCKET::FilterIndividualAD<float >(BUCKET* obucket, int nfilter, bool progress, int nthread);
+template TARGET CPOINT CPOINT::GradientDescent<double>(void* Param, double (*func)(void* Param, CPOINT&, Mat<double>&, Mat<double>&), int dim, bool IsMinimize, double* Init);
+template TARGET CPOINT CPOINT::GradientDescent<float >(void* Param, double (*func)(void* Param, CPOINT&, Mat<float >&, Mat<float >&), int dim, bool IsMinimize, double* Init);
+template TARGET CPOINT CPOINT::DownHillSimplex<double>(void* Param, double (*func)(void* Param, CPOINT&, Mat<double>&, Mat<double>&), int dim, double sep, int nrep, bool IsMinimize);
+template TARGET CPOINT CPOINT::DownHillSimplex<float >(void* Param, double (*func)(void* Param, CPOINT&, Mat<float >&, Mat<float >&), int dim, double sep, int nrep, bool IsMinimize);
 
 #pragma pack(push, 1)
 
@@ -53,31 +57,45 @@ TARGET string GetCurDir()
 	return re;
 }
 
-/* Clear temp files */
-TARGET void ClearTempFiles(string& path)
+/* Set current directory */
+TARGET void SetCurDir(string dir)
 {
-#ifdef _WIN64
-	_finddata_t file;
-	string pattern = path + "vcfpop_*.tmp";
-	int64 handle = _findfirst(pattern.c_str(), &file);
-	if (handle != -1) do
-	{
-		remove((path + file.name).c_str());
-	} while (_findnext(handle, &file) != -1);
-	_findclose(handle);
-#else
-	DIR* dir = opendir(path.c_str());
-	if (!dir)
-		Exit("\nError: cannot open temp dir %s. \n", path.c_str());
-	while (true)
-	{
-		dirent* p = readdir(dir);
-		if (!p) break;
-		if (strstr(p->d_name, "vcfpop_*.tmp"))
-			remove(p->d_name);
-	}
-	closedir(dir);
-#endif
+	current_path(dir);
+}
+
+/* Get absoulte path */
+TARGET string GetAbsPath(string file)
+{
+	string re = weakly_canonical(path(file)).string();
+	return re;
+}
+
+/* Get parent path */
+TARGET string GetParentPath(string file)
+{
+	string re = weakly_canonical(path(file)).parent_path().string();
+	re.push_back(PATH_DELIM);
+	return re;
+}
+
+/* Clear temp files */
+TARGET void ClearTempFiles(string& dir)
+{
+    for (const auto& entry : fs::directory_iterator(dir))
+    {
+        if (entry.is_regular_file() && entry.path().filename().string().find("vcfpop_") == 0 && entry.path().extension() == ".tmp")
+        {
+			try
+			{
+                fs::remove(entry.path());
+                std::cout << "Deleted: " << entry.path() << std::endl;
+            }
+			catch (const fs::filesystem_error& e)
+			{
+				//std::cerr << "Error: " << e.what() << std::endl;
+			}
+        }
+    }
 }
 
 /* Pause console */
@@ -89,6 +107,19 @@ TARGET void Pause(void)
 	printf("Press ENTER to continue...\n");
 	getchar();
 #endif
+}
+
+/* Start a timer */
+thread_local timepoint tic_toc_now;
+TARGET void tic()
+{
+	tic_toc_now = std::chrono::steady_clock::now();
+}
+
+/* Show elapse time */
+TARGET void toc()
+{
+	printf("Elapsed time is %0.6lf seconds.\n", GetElapse(tic_toc_now));
 }
 
 /* Get time */
@@ -117,7 +148,7 @@ TARGET void EvaluationEnd(const char* text)
 	if (g_eval_val != 1) return;
 	double duration = GetElapse(EVAL_BEGIN);
 	FILE* f1 = fopen((g_output_val + ".eval.txt").c_str(), "ab");
-	fprintf(f1, "%s\t%0.3lf s\n", text, duration);
+	fprintf(f1, "%s%c%0.3lf s\n", text, g_delimiter_val, duration);
 	fclose(f1);
 }
 
@@ -185,16 +216,16 @@ TARGET void EvaluationStat()
 	GetUsageString(memstr, GetMemoryUsage());
 	GetUsageString(sizestr, TOTLEN_DECOMPRESS);
 
-	fprintf(f1, "nind\t%d\n", nind);
-	fprintf(f1, "npop\t%d\n", npop);
-	fprintf(f1, "nloc\t%d\n", nloc);
-	fprintf(f1, "raw\t%s\n", sizestr);
-	fprintf(f1, "memory\t%s\n", memstr);
+	fprintf(f1, "nind%c%d\n", g_delimiter_val, nind);
+	fprintf(f1, "npop%c%d\n", g_delimiter_val, npop);
+	fprintf(f1, "nloc%c%d\n", g_delimiter_val, nloc);
+	fprintf(f1, "raw%c%s\n",  g_delimiter_val, sizestr);
+	fprintf(f1, "memory%c%s\n", g_delimiter_val, memstr);
 
 	fclose(f1);
 }
 
-/* Pause console */
+/* Call an R script */
 TARGET void RunRscript(string script)
 {
 	if (!FileExists(g_rscript_val.c_str()))
@@ -215,7 +246,9 @@ TARGET void RunRscript(string script)
 		OUTFILE + "\"";
 #endif
 
-	std::system(cmd.c_str());
+	PLOT_THREAD.emplace_back(thread([cmd]() {
+		std::system(cmd.c_str());
+	}));
 }
 
 /* Exit program with a message */
@@ -237,117 +270,41 @@ TARGET void Exit(const char* fmt, ...)
 	}
 }
 
-/* Atomic multiply val to ref */
-TARGET void AtomicMulFloat(volatile double& ref, double val)
-{
-	for (double ov = ref, nv = ov * val;
-#if defined(__clang__) || defined(__GNUC__)
-		!__sync_bool_compare_and_swap((uint64*)&ref, *(uint64*)&ov, *(uint64*)&nv);
-#else
-		* (uint64*)&ov != InterlockedCompareExchange((uint64*)&ref, *(uint64*)&nv, *(uint64*)&ov);
-#endif
-		ov = ref, nv = ov * val);
-}
-
-/* Atomic multiply val to ref */
-TARGET void AtomicMulFloat(volatile float& ref, float val)
-{
-	for (float ov = ref, nv = ov * val;
-#if defined(__clang__) || defined(__GNUC__)
-		!__sync_bool_compare_and_swap((uint*)&ref, *(uint*)&ov, *(uint*)&nv);
-#else
-		* (uint*)&ov != InterlockedCompareExchange((uint*)&ref, *(uint*)&nv, *(uint*)&ov);
-#endif
-		ov = ref, nv = ov * val);
-}
-
-/* Atomic add val to ref */
-TARGET void AtomicAddFloat(volatile double& ref, double val)
-{
-	for (double ov = ref, nv = ov + val;
-#if defined(__clang__) || defined(__GNUC__)
-		!__sync_bool_compare_and_swap((uint64*)&ref, *(uint64*)&ov, *(uint64*)&nv);
-#else
-		* (uint64*)&ov != InterlockedCompareExchange((uint64*)&ref, *(uint64*)&nv, *(uint64*)&ov);
-#endif
-		ov = ref, nv = ov + val);
-}
-
-/* Atomic add val to ref */
-TARGET void AtomicAddFloat(volatile float& ref, float val)
-{
-	for (float ov = ref, nv = ov + val;
-#if defined(__clang__) || defined(__GNUC__)
-		!__sync_bool_compare_and_swap((uint*)&ref, *(uint*)&ov, *(uint*)&nv);
-#else
-		* (uint*)&ov != InterlockedCompareExchange((uint*)&ref, *(uint*)&nv, *(uint*)&ov);
-#endif
-		ov = ref, nv = ov + val);
-}
-
-/* Atomic add val to ref */
-TARGET void AtomicAddFloat(volatile double* ref, double* val, int len)
-{
-	for (int i = 0; i < len; ++i)
-		for (double ov = ref[i], nv = ov + val[i];
-#if defined(__clang__) || defined(__GNUC__)
-			!__sync_bool_compare_and_swap((uint64*)&ref[i], *(uint64*)&ov, *(uint64*)&nv);
-#else
-			* (uint64*)&ov != InterlockedCompareExchange((uint64*)&ref[i], *(uint64*)&nv, *(uint64*)&ov);
-#endif
-			ov = ref[i], nv = ov + val[i]);
-}
-
-/* Atomic add val to ref */
-TARGET void AtomicAddFloat(volatile float* ref, float* val, int len)
-{
-	for (int i = 0; i < len; ++i)
-		for (float ov = ref[i], nv = ov + val[i];
-#if defined(__clang__) || defined(__GNUC__)
-			!__sync_bool_compare_and_swap((uint*)&ref[i], *(uint*)&ov, *(uint*)&nv);
-#else
-			* (uint*)&ov != InterlockedCompareExchange((uint*)&ref[i], *(uint*)&nv, *(uint*)&ov);
-#endif
-			ov = ref[i], nv = ov + val[i]);
-}
-
-
 #ifndef _CPOINT
-TARGET CPOINT::CPOINT(int de)
+TARGET CPOINT::CPOINT(int _dim)
 {
-	diff = 0;
-	dim = de;
-	SetVal(image, 0.0, 19);
+	SetZero(this, 1);
+	dim = _dim;
 }
 
 TARGET bool CPOINT::operator >(CPOINT& a)
 {
-	return li > a.li;
+	return lnL > a.lnL;
 }
 
 TARGET bool CPOINT::operator >=(CPOINT& a)
 {
-	return li >= a.li;
+	return lnL >= a.lnL;
 }
 
 TARGET bool CPOINT::operator <(CPOINT& a)
 {
-	return li < a.li;
+	return lnL < a.lnL;
 }
 
 TARGET bool CPOINT::operator <=(CPOINT& a)
 {
-	return li <= a.li;
+	return lnL <= a.lnL;
 }
 
 TARGET bool CPOINT::operator ==(CPOINT& a)
 {
-	return li == a.li;
+	return lnL == a.lnL;
 }
 
 TARGET bool CPOINT::operator !=(CPOINT& a)
 {
-	return li != a.li;
+	return lnL != a.lnL;
 }
 
 TARGET CPOINT CPOINT::operator =(const CPOINT& a)
@@ -360,7 +317,7 @@ TARGET CPOINT CPOINT::operator +(const CPOINT& b)
 {
 	CPOINT re(*this);
 	for (int i = 0; i < dim; ++i)
-		re.image[i] += b.image[i];
+		re.unc_space[i] += b.unc_space[i];
 	return re;
 }
 
@@ -368,7 +325,7 @@ TARGET CPOINT CPOINT::operator -(const CPOINT& b)
 {
 	CPOINT re(*this);
 	for (int i = 0; i < dim; ++i)
-		re.image[i] -= b.image[i];
+		re.unc_space[i] -= b.unc_space[i];
 	return re;
 }
 
@@ -376,7 +333,7 @@ TARGET CPOINT CPOINT::operator *(const double b)
 {
 	CPOINT re(*this);
 	for (int i = 0; i < dim; ++i)
-		re.image[i] *= b;
+		re.unc_space[i] *= b;
 	return re;
 }
 
@@ -384,35 +341,35 @@ TARGET CPOINT CPOINT::operator /(const double b)
 {
 	CPOINT re(*this);
 	for (int i = 0; i < dim; ++i)
-		re.image[i] /= b;
+		re.unc_space[i] /= b;
 	return re;
 }
 
 TARGET CPOINT& CPOINT::operator +=(CPOINT& a)
 {
 	for (int i = 0; i < dim; ++i)
-		image[i] += a.image[i];
+		unc_space[i] += a.unc_space[i];
 	return *this;
 }
 
 TARGET CPOINT& CPOINT::operator -=(CPOINT& a)
 {
 	for (int i = 0; i < dim; ++i)
-		image[i] -= a.image[i];
+		unc_space[i] -= a.unc_space[i];
 	return *this;
 }
 
 TARGET CPOINT& CPOINT::operator *=(double a)
 {
 	for (int i = 0; i < dim; ++i)
-		image[i] *= a;
+		unc_space[i] *= a;
 	return *this;
 }
 
 TARGET CPOINT& CPOINT::operator /=(double a)
 {
 	for (int i = 0; i < dim; ++i)
-		image[i] /= a;
+		unc_space[i] /= a;
 	return *this;
 }
 
@@ -421,141 +378,116 @@ TARGET double CPOINT::DistanceReal(CPOINT& a)
 {
 	double s = 0;
 	for (int i = 0; i < dim; ++i)
-		s += (real[i] - a.real[i]) * (real[i] - a.real[i]);
+		s += (real_space[i] - a.real_space[i]) * (real_space[i] - a.real_space[i]);
 	return MySqrt(s);
 }
 
-/* Distance in image space */
-TARGET double CPOINT::DistanceImage(CPOINT& a)
+/* Distance in unc_space space */
+TARGET double CPOINT::DistanceUnc(CPOINT& a)
 {
 	double s = 0;
 	for (int i = 0; i < dim; ++i)
-		s += (image[i] - a.image[i]) * (image[i] - a.image[i]);
+		s += (unc_space[i] - a.unc_space[i]) * (unc_space[i] - a.unc_space[i]);
 	return MySqrt(s);
 }
 
-/* Calculate real points */
-TARGET void CPOINT::Image2Real()
-{
-	if (confine && !diff && dim % 2 == 0)
-	{
-		if (dim == 1)
-		{
-			real[0] = 1 / (1 + exp(-image[0]));
-			real[1] = 1 - real[0];
-		}
-		else if (dim == 2)
-		{
-			double p1 = 1 / (1 + exp(-image[0]));
-			double q1 = 1 / (1 + exp(-image[1]));
-			double p0 = 1 - p1;
-			double q0 = 1 - q1;
-			real[0] = p1 * q1;
-			real[1] = p0 * q1 + p1 * q0;
-			real[2] = p0 * q0;
-		}
-		else if (dim == 4)
-		{
-			double p2 = 1 / (1 + exp(-image[0]));
-			double p1 = (1 - p2) / (1 + exp(-image[1]));
-			double q2 = 1 / (1 + exp(-image[2]));
-			double q1 = (1 - q2) / (1 + exp(-image[3]));
-			double p0 = 1 - p2 - p1;
-			double q0 = 1 - q2 - q1;
-			real[0] = p2 * q2;
-			real[1] = p2 * q1 + p1 * q2;
-			real[2] = p2 * q0 + p0 * q2 + p1 * q1;
-			real[3] = p0 * q1 + p1 * q0;
-			real[4] = p0 * q0;
-		}
-		else if (dim == 6)
-		{
-			double p3 = 1 / (1 + exp(-image[0]));
-			double p2 = (1 - p3) / (1 + exp(-image[1]));
-			double p1 = (1 - p3 - p2) / (1 + exp(-image[2]));
-			double q3 = 1 / (1 + exp(-image[3]));
-			double q2 = (1 - q3) / (1 + exp(-image[4]));
-			double q1 = (1 - q3 - q2) / (1 + exp(-image[5]));
-			double p0 = 1 - p3 - p2 - p1;
-			double q0 = 1 - q3 - q2 - q1;
-			real[0] = p3 * q3;
-			real[1] = p3 * q2 + p2 * q3;
-			real[2] = p3 * q1 + p2 * q2 * p1 * q3;
-			real[3] = p3 * q0 + p2 * q1 + p1 * q2 + p0 * q3;
-			real[4] = p2 * q0 + p1 * q1 + p0 * q2;
-			real[5] = p1 * q0 + p0 * q1;
-			real[6] = p0 * q0;
-		}
-		else if (dim == 8)
-		{
-			double p4 = 1 / (1 + exp(-image[0]));
-			double p3 = (1 - p4) / (1 + exp(-image[1]));
-			double p2 = (1 - p4 - p3) / (1 + exp(-image[2]));
-			double p1 = (1 - p4 - p3 - p2) / (1 + exp(-image[3]));
-			double q4 = 1 / (1 + exp(-image[4]));
-			double q3 = (1 - q4) / (1 + exp(-image[5]));
-			double q2 = (1 - q4 - q3) / (1 + exp(-image[6]));
-			double q1 = (1 - q4 - q3 - q2) / (1 + exp(-image[7]));
-			double p0 = 1 - p4 - p3 - p2 - p1;
-			double q0 = 1 - q4 - q3 - q2 - q1;
-			real[0] = p4 * q4;
-			real[1] = p4 * q3 + p3 * q4;
-			real[2] = p4 * q2 + p3 * q3 * p2 * q4;
-			real[3] = p4 * q1 + p3 * q2 + p2 * q3 + p1 * q4;
-			real[4] = p4 * q0 + p3 * q1 + p2 * q2 + p1 * q3 + p0 * q4;
-			real[5] = p3 * q0 + p2 * q1 + p1 * q2 + p0 * q3;
-			real[6] = p2 * q0 + p1 * q1 + p0 * q2;
-			real[7] = p1 * q0 + p0 * q1;
-			real[8] = p0 * q0;
-		}
-	}
-	else
-	{
-		real[dim] = 1;
-		for (int i = 0; i < dim; ++i)
-		{
-			real[i] = real[dim] / (1 + exp(-image[i]));
-			real[dim] -= real[i];
-		}
-	}
-}
-
-/* Calculate real points */
-TARGET void CPOINT::Image2RealSelfing()
-{
-	real[0] = 1.0 / (1 + exp(image[0]));
-	if (real[0] <     MIN_FREQ) real[0] =     MIN_FREQ;
-	if (real[0] > 1 - MIN_FREQ) real[0] = 1 - MIN_FREQ;
-}
-
 /* Break iteration if distance between points are smaller than eps */
-TARGET bool CPOINT::IsBreak(CPOINT xx[9], double eps)
+TARGET bool CPOINT::IsBreak(CPOINT* xx, int dim, double eps)
 {
-	return xx[0].DistanceReal(xx[xx[0].dim]) < eps;
+	return xx[0].DistanceReal(xx[dim]) < eps;
 }
 
 /* Sort points */
-TARGET void CPOINT::Order(CPOINT xx[9])
+TARGET void CPOINT::Order(CPOINT* xx, int dim)
 {
-	int dim = xx[0].dim;
 	for (int i = 0; i <= dim; ++i)
 		for (int j = i + 1; j <= dim; ++j)
 			if (xx[i] < xx[j])
 				Swap(xx[i], xx[j]);
 }
 
+// Gradient descent algorithm, need Gradient matrix but not Hessian matrix
+template<typename REAL>
+TARGET CPOINT CPOINT::GradientDescent(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), int dim, bool IsMinimize, double *Init)
+{
+	CPOINT re0 = { 0 }, re1 = { 0 };
+	SetZero(&re0, 1); SetZero(&re1, 1);
+	re0.dim = re1.dim = dim;
+	 
+	int niter = 0, iter_max = 100 * dim;
+	constexpr REAL grad_err_tol = 1E-08;
+	constexpr REAL rel_sol_change_tol = 1E-08;
+	constexpr REAL small_number = std::is_same_v<REAL, float> ? 1e-5 : 1e-8;
+
+	double sign = IsMinimize ? -1 : 1;
+
+	Mat<double> x0(re0.unc_space, dim, 1, false, true);
+	Mat<double> x1(re1.unc_space, dim, 1, false, true);
+	SetVal(re0.unc_space, 1.0, dim);
+	SetVal(re1.unc_space, 1.0, dim);
+	rmat G0, &H0 = *(rmat*)NULL;
+	rmat G1, &H1 = *(rmat*)NULL;
+
+	if (Init) SetVal(re0.unc_space, Init, dim);
+	
+	double f0 = 0, f1 = 0;
+	REAL grad_err0 = 0, grad_err1 = 0, rel_sol_change0 = 0, rel_sol_change1 = 0;
+
+	f0 = sign * func(Param, re0, G0, H0);
+	re1.neval++;
+
+	if (norm(G0) < small_number) G0 = G0 + small_number;
+	grad_err0 = norm(G0);
+	rel_sol_change0 = norm(x0 / (abs(x0) + small_number), 1);
+	x1 = x0 + sign * 0.1 * G0 / norm(G0);
+
+	f1 = sign * func(Param, re1, G1, H1);
+	re1.neval++;
+	grad_err1 = norm(G1);
+	rel_sol_change1 = norm((x1 - x0) / (abs(x0) + small_number), 1);
+
+	while (niter < iter_max)
+	{
+		niter++;
+
+		rmat dG = G1 - G0;
+		double dG_norm = norm(dG);
+		double r1 = abs(trace((x1 - x0).t() * dG)) / (dG_norm * dG_norm);
+
+		x0 = x1; f0 = f1; G0 = G1; grad_err0 = grad_err1; rel_sol_change0 = rel_sol_change1;
+
+		x1 = x1 + sign * r1 * G1;
+
+		f1 = sign * func(Param, re1, G1, H1);
+		re1.neval++;
+
+		grad_err1 = norm(G1);
+		rel_sol_change1 = norm((x1 - x0) / (abs(x0) + small_number), 1);
+
+		if (grad_err1 < grad_err_tol && rel_sol_change1 < rel_sol_change_tol)
+			break;
+	}
+
+	re1.lnL = f1;
+	return re1;
+}
+
 /* Down-Hill Simplex algorithm */
-TARGET CPOINT CPOINT::DownHillSimplex(int dim, int diff, bool confine, double sep, int nrep, double (*Likelihood)(CPOINT&, void**), void* *Param)
+template<typename REAL>
+TARGET CPOINT CPOINT::DownHillSimplex(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), int dim, double sep, int nrep, bool IsMinimize)
 {
 	CPOINT xx[20] = { 0 };
+	rmat &G = *(rmat*)NULL, &H = *(rmat*)NULL;
 
+	int neval = 0;
+	double sign = IsMinimize ? -1 : 1;
 	for (int i = 0; i <= dim; ++i)
 	{
 		xx[i].dim = dim;
-		xx[i].diff = diff;
-		xx[i].confine = confine;
-		if (i > 0) xx[i].image[i - 1] = 0.1;
-		xx[i].li = Likelihood(xx[i], Param);
+		SetVal(xx[i].unc_space, 0.01, dim);
+		if (i > 0) xx[i].unc_space[i - 1] = 0.1;
+		xx[i].lnL = sign * func(Param, xx[i], G, H);
+		neval++;
 	}
 
 	for (int kk = 0; kk < nrep; ++kk)
@@ -563,9 +495,9 @@ TARGET CPOINT CPOINT::DownHillSimplex(int dim, int diff, bool confine, double se
 		//Order
 		for (int searchcount = 0; ; ++searchcount)
 		{
-			CPOINT::Order(xx);
+			CPOINT::Order(xx, dim);
 			if (searchcount >= MAX_ITER_DOWNHILL || 
-				(CPOINT::IsBreak(xx, LIKELIHOOD_TERM) && abs(xx[0].real[0] - xx[1].real[0]) < LIKELIHOOD_TERM * 1e-3))
+				(CPOINT::IsBreak(xx, dim, LIKELIHOOD_TERM) && abs(xx[0].real_space[0] - xx[1].real_space[0]) < LIKELIHOOD_TERM * 1e-3))
 				break;
 
 			//Reflect
@@ -575,14 +507,16 @@ TARGET CPOINT CPOINT::DownHillSimplex(int dim, int diff, bool confine, double se
 			x0 /= dim;
 			
 			CPOINT xr = x0 + (x0 - xx[dim]);
-			xr.li = Likelihood(xr, Param); 
+			xr.lnL = sign * func(Param, xr, G, H);
+			neval++;
 
 			//Expansion
 			//best
 			if (xr > xx[0])
 			{
 				CPOINT xe = x0 + (xr - x0) * 2; 
-				xe.li = Likelihood(xe, Param); 
+				xe.lnL = sign * func(Param, xe, G, H);
+				neval++;
 				SetVal(xx + 1, xx, dim);
 				xx[0] = xe > xr ? xe : xr;
 				continue;
@@ -598,7 +532,8 @@ TARGET CPOINT CPOINT::DownHillSimplex(int dim, int diff, bool confine, double se
 			//worse than second worst
 			//Contraction
 			CPOINT xc = x0 + (xx[dim] - x0) * 0.5;
-			xc.li = Likelihood(xc, Param); 
+			xc.lnL = sign * func(Param, xc, G, H);
+			neval++;
 			if (xc > xx[1])
 			{
 				xx[dim] = xc;
@@ -609,7 +544,8 @@ TARGET CPOINT CPOINT::DownHillSimplex(int dim, int diff, bool confine, double se
 			for (int i = 1; i <= dim; ++i)
 			{
 				xx[i] = (xx[0] + xx[i]) * 0.5;
-				xx[i].li = Likelihood(xx[i], Param);
+				xx[i].lnL = sign * func(Param, xx[i], G, H);
+				neval++;
 			}
 			continue;
 		}
@@ -618,17 +554,20 @@ TARGET CPOINT CPOINT::DownHillSimplex(int dim, int diff, bool confine, double se
 		for (int i = 1; i <= dim; ++i)
 		{
 			xx[i] = xx[0];
-			xx[i].image[i - 1] *= (1 - sep);
-			xx[i].li = Likelihood(xx[i], Param);
+			xx[i].unc_space[i - 1] += xx[i].unc_space[i - 1] * sep;
+			xx[i].lnL = sign * func(Param, xx[i], G, H);
+			neval++;
 		}
 
 		//Order
 		sep /= 2;
 	}
 
-	CPOINT::Order(xx);
+	CPOINT::Order(xx, dim);
+	xx[0].neval = neval;
 	return xx[0];
 }
+
 #endif
 
 #ifndef _MEMORY
@@ -649,9 +588,8 @@ TARGET MEMORY::~MEMORY()
 {
 	if (cblock != 0xFFFFFFFF)
 		for (int i = 0; i <= cblock; ++i)
-			delete[] blocks[i].bucket;
-	if (blocks) delete[] blocks;
-	blocks = NULL;
+			DEL(blocks[i].bucket);
+	DEL(blocks);
 	cblock = 0xFFFFFFFF;
     if (nblocks) UnInitLock(lock);
 	nblocks = 0;
@@ -671,7 +609,7 @@ TARGET void MEMORY::Expand()
 	MEMBLOCK* nblock = new MEMBLOCK[(uint64)nblocks << 1];
 	SetVal(nblock, blocks, cblock);
 	SetZero(nblock + cblock, (nblocks << 1) - cblock);
-	delete[] blocks; blocks = nblock;
+	DEL(blocks); blocks = nblock;
 	nblocks <<= 1;
 }
 
@@ -685,7 +623,7 @@ TARGET byte* MEMORY::Alloc(int size)
 		if (++cblock == nblocks) Expand();
 		if (!blocks[cblock].bucket)
 		{
-			blocks[cblock].size = Max(Min(blocks[cblock - 1].size << 1, BIG_FILE ? 256 * 1024 * 1024 : 8 * 1024 * 1024), size);
+			blocks[cblock].size = std::max(std::min(blocks[cblock - 1].size << 1, BIG_FILE ? 256 * 1024 * 1024 : 8 * 1024 * 1024), size);
 			blocks[cblock].bucket = new bool[blocks[cblock].size];
 		}
 	}
@@ -1031,7 +969,7 @@ TARGET byte* MEMORY::Alloc(int size)
 				for (int i = 0; i < nind; ++i)
 				{
 					uint gid = rg.Read();
-					if (ainds[i]) wg.Write(gid);
+					if (ainds<REAL>[i]) wg.Write(gid);
 				}
 				wg.FinishWrite();
 
@@ -1043,7 +981,7 @@ TARGET byte* MEMORY::Alloc(int size)
 
 			//remove the temp file
 			remove(tmpname);
-			delete[] tmpname;
+			DEL(tmpname);
 		}
 		else
 		{
@@ -1078,7 +1016,7 @@ TARGET byte* MEMORY::Alloc(int size)
 				for (int i = 0; i < nind; ++i)
 				{
 					uint gid = rg.Read();
-					if (ainds[i]) wg.Write(gid);
+					if (ainds<REAL>[i]) wg.Write(gid);
 				}
 				wg.FinishWrite();
 
@@ -1103,7 +1041,7 @@ TARGET byte* MEMORY::Alloc(int size)
 				if (nbytes[j] > 0)
 					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
 
-			delete[] nbytes;
+			DEL(nbytes);
 		}
 	}
 
@@ -1163,7 +1101,7 @@ TARGET byte* MEMORY::Alloc(int size)
 					for (int k = 0; k < k2; ++k)
 					{
 						uint depth = rd.Read();
-						if (ainds[i]) wd.Write(depth);
+						if (ainds<REAL>[i]) wd.Write(depth);
 					}
 				}
 				wd.FinishWrite();
@@ -1176,7 +1114,7 @@ TARGET byte* MEMORY::Alloc(int size)
 
 			//remove the temp file
 			remove(tmpname);
-			delete[] tmpname;
+			DEL(tmpname);
 		}
 		else
 		{
@@ -1214,7 +1152,7 @@ TARGET byte* MEMORY::Alloc(int size)
 					for (int k = 0; k < k2; ++k)
 					{
 						uint depth = rd.Read();
-						if (ainds[i]) wd.Write(depth);
+						if (ainds<REAL>[i]) wd.Write(depth);
 					}
 				}
 				wd.FinishWrite();
@@ -1240,7 +1178,7 @@ TARGET byte* MEMORY::Alloc(int size)
 				if (nbytes[j] > 0)
 					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
 
-			delete[] nbytes;
+			DEL(nbytes);
 		}
 	}
 
@@ -1253,7 +1191,7 @@ TARGET byte* MEMORY::Alloc(int size)
 
 		uint* newid = new uint[nloc];
 		memset(newid, 0xFF, nloc * sizeof(uint));
-
+		
 		//calculate new offsets
 		for (int64 l = 0, nl = 0; l < nloc; ++l)
 		{
@@ -1265,7 +1203,7 @@ TARGET byte* MEMORY::Alloc(int size)
 			offset.Push(OFFSET{ coffset, gtsize });
 			coffset += gtlinesize;
 		}
-
+		
 		if (true)
 		{
 			//move genotype id and allele depth table
@@ -1294,29 +1232,29 @@ TARGET byte* MEMORY::Alloc(int size)
 				byte* readpos = obase_addr + ooffset[l].offset;
 				uint64 gtsize = ooffset[l].size;
 				uint64 gtlinesize = (gtsize * nind + 7) >> 3; //xoffset
-
+				
 				if (GetLoc(l).flag_pass)
 				{
 					int64 nl = newid[l];
 					byte* write_pos = base_addr + offset[nl].offset, * write_end = write_pos + gtlinesize;
-
+					
 					AllocRange(write_pos, write_end);
 					memcpy(base_addr + offset[nl].offset, readpos, gtlinesize);
-
+					
 					//deep copy locus
 					new(&nslocus[nl]) SLOCUS(mem[threadid], slocus[l]);
 					if (uselocpos) nlocus_pos[nl] = GetLocPos(l);
 				}
-
+				
 				if (progress) PROGRESS_VALUE++;
 			}
-
+			
 			//unmap the temp file
 			fmap.UnMapingReadOnlyFile();
-
+			
 			//remove the temp file
 			remove(tmpname);
-			delete[] tmpname;
+			DEL(tmpname);
 		}
 		else 
 		{
@@ -1376,10 +1314,10 @@ TARGET byte* MEMORY::Alloc(int size)
 				if (nbytes[j] > 0)
 					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
 
-			delete[] nbytes;
+			DEL(nbytes);
 		}
-
-		delete[] newid;
+		
+		DEL(newid);
 	}
 
 	/* Filter locus for allele depth bucket */
@@ -1451,7 +1389,7 @@ TARGET byte* MEMORY::Alloc(int size)
 
 			//remove the temp file
 			remove(tmpname);
-			delete[] tmpname;
+			DEL(tmpname);
 		}
 		else 
 		{
@@ -1507,10 +1445,10 @@ TARGET byte* MEMORY::Alloc(int size)
 				if (nbytes[j] > 0)
 					obucket->SubUnAlloc(nbytes[j], nbytes[j].load(), j);
 
-			delete[] nbytes;
+			DEL(nbytes);
 		}
 
-		delete[] newid;
+		DEL(newid);
 	}
 
 	/* Allocate offset for genotype bucket */

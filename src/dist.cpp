@@ -1,6 +1,5 @@
 /* Genetic Distance Functions */
 
-#pragma once
 #include "vcfpop.h"
 
 template struct INDGD<double>;
@@ -11,10 +10,15 @@ template struct GDIST<float >;
 template TARGET void CalcDist<double>();
 template TARGET void CalcDist<float >();
 
+template<> GDIST<double>* gdist_buf<double>;
+template<> GDIST<float >* gdist_buf<float >;
+template<> INDGD<double>** gd_tab<double>;
+template<> INDGD<float >** gd_tab<float >;
+
 #ifndef _GDDIST
 /* Write column format header row for genetic distance estimation */
 template<typename REAL>
-TARGET void GDIST<REAL>::ColumnPrintHeader()
+TARGET void GDIST<REAL>::ColumnFormatHeader()
 {
 	fprintf(FRES, "%s%sA", g_linebreak_val, g_linebreak_val);
 	for (int rl = gdist_type - 2; rl < lreg; ++rl)
@@ -38,53 +42,53 @@ TARGET void GDIST<REAL>::ColumnPrintHeader()
 
 /* Write column format result row for genetic distance estimation */
 template<typename REAL>
-TARGET void GDIST<REAL>::ColumnPrintLine(int i, int j)
+TARGET void GDIST<REAL>::ColumnFormatLine(int i, int j)
 {
 	POP<REAL>* tp = NULL;
 	switch (gdist_type)
 	{
 	case 1:
-		fprintf(FRES, "%s%s", g_linebreak_val, ainds[i]->name);
-		tp = apops[ainds[i]->popid];
+		fprintf(FRES, "%s%s", g_linebreak_val, ainds<REAL>[i]->name);
+		tp = apops<REAL>[ainds<REAL>[i]->popid];
 		break;
 	case 2:
-		fprintf(FRES, "%s%s", g_linebreak_val, apops[i]->name);
-		tp = lreg >= 0 ? aregs[0][apops[i]->rid] : NULL;
+		fprintf(FRES, "%s%s", g_linebreak_val, apops<REAL>[i]->name);
+		tp = lreg >= 0 ? aregs<REAL>[0][apops<REAL>[i]->rid] : NULL;
 		break;
 	case 3:
 	default:
-		fprintf(FRES, "%s%s", g_linebreak_val, aregs[gdist_type - 3][i]->name);
-		tp = aregs[gdist_type - 2][aregs[gdist_type - 3][i]->rid];
+		fprintf(FRES, "%s%s", g_linebreak_val, aregs<REAL>[gdist_type - 3][i]->name);
+		tp = aregs<REAL>[gdist_type - 2][aregs<REAL>[gdist_type - 3][i]->rid];
 		break;
 	}
 
 	for (int rl = gdist_type - 2; rl < lreg; ++rl)
 	{
 		fprintf(FRES, "%c%s", g_delimiter_val, tp->name);
-		tp = aregs[rl + 1][tp->rid];
+		tp = aregs<REAL>[rl + 1][tp->rid];
 	}
 
 	switch (gdist_type)
 	{
 	case 1:
-		fprintf(FRES, "%c%s", g_delimiter_val, ainds[j]->name);
-		tp = apops[ainds[j]->popid];
+		fprintf(FRES, "%c%s", g_delimiter_val, ainds<REAL>[j]->name);
+		tp = apops<REAL>[ainds<REAL>[j]->popid];
 		break;
 	case 2:
-		fprintf(FRES, "%c%s", g_delimiter_val, apops[j]->name);
-		tp = lreg >= 0 ? aregs[0][apops[j]->rid] : NULL;
+		fprintf(FRES, "%c%s", g_delimiter_val, apops<REAL>[j]->name);
+		tp = lreg >= 0 ? aregs<REAL>[0][apops<REAL>[j]->rid] : NULL;
 		break;
 	case 3:
 	default:
-		fprintf(FRES, "%c%s", g_delimiter_val, aregs[gdist_type - 3][j]->name);
-		tp = aregs[gdist_type - 2][aregs[gdist_type - 3][j]->rid];
+		fprintf(FRES, "%c%s", g_delimiter_val, aregs<REAL>[gdist_type - 3][j]->name);
+		tp = aregs<REAL>[gdist_type - 2][aregs<REAL>[gdist_type - 3][j]->rid];
 		break;
 	}
 
 	for (int rl = gdist_type - 2; rl < lreg; ++rl)
 	{
 		fprintf(FRES, "%c%s", g_delimiter_val, tp->name);
-		tp = aregs[rl + 1][tp->rid];
+		tp = aregs<REAL>[rl + 1][tp->rid];
 	}
 
 	for (int k = 1; k <= (gdist_type == 1 ? N_GD_ESTIMATOR - 2 * N_FST_ESTIMATOR : N_GD_ESTIMATOR); ++k)
@@ -97,7 +101,7 @@ TARGET void GDIST<REAL>::ColumnPrintLine(int i, int j)
 
 /* Write matrix format header for genetic distance estimation */
 template<typename REAL>
-TARGET void GDIST<REAL>::MatrixPrintMatrixHeader(int k, int n)
+TARGET void GDIST<REAL>::MatrixFormatHeader(int k, int n)
 {
 	if (gdist_estimator_val[k] == 0) return;
 	fprintf(TEMP_FILES[k], "%s%s%s", g_linebreak_val, g_linebreak_val, GD_ESTIMATOR[k]);
@@ -105,33 +109,33 @@ TARGET void GDIST<REAL>::MatrixPrintMatrixHeader(int k, int n)
 	{
 		switch (gdist_type)
 		{
-		case 1: fprintf(TEMP_FILES[k], "%c%s", g_delimiter_val, ainds[i]->name); break;
-		case 2: fprintf(TEMP_FILES[k], "%c%s", g_delimiter_val, apops[i]->name);  break;
+		case 1: fprintf(TEMP_FILES[k], "%c%s", g_delimiter_val, ainds<REAL>[i]->name); break;
+		case 2: fprintf(TEMP_FILES[k], "%c%s", g_delimiter_val, apops<REAL>[i]->name);  break;
 		case 3:
 		default:
-			fprintf(TEMP_FILES[k], "%c%s", g_delimiter_val, aregs[gdist_type - 3][i]->name);  break;
+			fprintf(TEMP_FILES[k], "%c%s", g_delimiter_val, aregs<REAL>[gdist_type - 3][i]->name);  break;
 		}
 	}
 }
 
 /* Write matrix format row header for genetic distance estimation */
 template<typename REAL>
-TARGET void GDIST<REAL>::MatrixPrintRowHeader(int k, int i)
+TARGET void GDIST<REAL>::MatrixFormatRowHeader(int k, int i)
 {
 	if (gdist_estimator_val[k] == 0) return;
 	switch (gdist_type)
 	{
-	case 1: fprintf(TEMP_FILES[k], "%s%s", g_linebreak_val, ainds[i]->name); break;
-	case 2: fprintf(TEMP_FILES[k], "%s%s", g_linebreak_val, apops[i]->name);  break;
+	case 1: fprintf(TEMP_FILES[k], "%s%s", g_linebreak_val, ainds<REAL>[i]->name); break;
+	case 2: fprintf(TEMP_FILES[k], "%s%s", g_linebreak_val, apops<REAL>[i]->name);  break;
 	case 3:
 	default:
-		fprintf(TEMP_FILES[k], "%s%s", g_linebreak_val, aregs[gdist_type - 3][i]->name);  break;
+		fprintf(TEMP_FILES[k], "%s%s", g_linebreak_val, aregs<REAL>[gdist_type - 3][i]->name);  break;
 	}
 }
 
 /* Write matrix format grid for genetic distance estimation */
 template<typename REAL>
-TARGET void GDIST<REAL>::MatrixPrintCell(int k)
+TARGET void GDIST<REAL>::MatrixFormatCell(int k)
 {
 	if (gdist_estimator_val[k] == 0) return;
 	fprintf(TEMP_FILES[k], "%c", g_delimiter_val);
@@ -148,8 +152,8 @@ TARGET void GDIST<REAL>::GetMissingFreq(GENOTYPE& gt, int64 l, REAL* p, int k)
 		return;
 	}
 
-	if (total_pop->loc_stat1[l].nhaplo)
-		SetVal(p, total_pop->GetFreq(l), k);
+	if (total_pop<REAL>->loc_stat1[l].nhaplo)
+		SetVal(p, total_pop<REAL>->GetFreq(l), k);
 }
 
 /* Calculate genetic distance between genotypes and save in gdtab */
@@ -174,23 +178,23 @@ TARGET void GDIST<REAL>::CacheIndGD()
 
 	REAL* P1 = new REAL[maxK * g_nthread_val], * P2 = new REAL[maxK * g_nthread_val];
 
-	gd_tab = new INDGD<REAL> *[nloc];
+	gd_tab<REAL> = new INDGD<REAL> *[nloc];
 
 	int64 tabsize = 0;
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		int ngeno = GetLoc(l).ngeno;
-		if (total_pop->loc_stat1[l].nhaplo == 0 || ngeno >= N_MAX_GDTAB) continue;
+		if (total_pop<REAL>->loc_stat1[l].nhaplo == 0 || ngeno >= N_MAX_GDTAB) continue;
 		tabsize += ((ngeno * (ngeno + 1)) >> 1);
 	}
 
-	INDGD<REAL>* tabp = gd_tab[0] = new INDGD<REAL>[tabsize];
+	INDGD<REAL>* tabp = gd_tab<REAL>[0] = new INDGD<REAL>[tabsize];
 	SetZero(tabp, tabsize);
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		int ngeno = GetLoc(l).ngeno;
-		if (total_pop->loc_stat1[l].nhaplo == 0 || ngeno >= N_MAX_GDTAB) continue;
-		gd_tab[l] = tabp;
+		if (total_pop<REAL>->loc_stat1[l].nhaplo == 0 || ngeno >= N_MAX_GDTAB) continue;
+		gd_tab<REAL>[l] = tabp;
 		tabp += ((ngeno * (ngeno + 1)) >> 1);
 	}
 
@@ -198,14 +202,14 @@ TARGET void GDIST<REAL>::CacheIndGD()
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		int ngeno = GetLoc(l).ngeno;
-		if (total_pop->loc_stat1[l].nhaplo == 0 || ngeno >= N_MAX_GDTAB) continue;
+		if (total_pop<REAL>->loc_stat1[l].nhaplo == 0 || ngeno >= N_MAX_GDTAB) continue;
 
 		threadid = omp_get_thread_num();
 		REAL* p1 = P1 + threadid * maxK, * p2 = P2 + threadid * maxK;
 
 		int k = GetLoc(l).k;
 		GENOTYPE* gtab = GetLoc(l).GetGtab();
-		INDGD<REAL>* tab = gd_tab[l];
+		INDGD<REAL>* tab = gd_tab<REAL>[l];
 		for (int gid1 = 0, idx = 0; gid1 < ngeno; ++gid1)
 		{
 			GENOTYPE& gt1 = gtab[gid1];
@@ -235,7 +239,7 @@ TARGET void GDIST<REAL>::CacheIndGD()
 						}
 
 						if (estimator[2])
-							tgd.Cavalli1967 += MySqrt(Max(DOUBLE_UNDERFLOW, p1[i] * p2[i]));
+							tgd.Cavalli1967 += MySqrt(std::max((REAL)DOUBLE_UNDERFLOW, p1[i] * p2[i]));
 
 						if (estimator[3])
 						{
@@ -244,7 +248,7 @@ TARGET void GDIST<REAL>::CacheIndGD()
 						}
 
 						if (estimator[4])
-							tgd.Nei1983 += MySqrt(Max(DOUBLE_UNDERFLOW, p1[i] * p2[i]));
+							tgd.Nei1983 += MySqrt(std::max((REAL)DOUBLE_UNDERFLOW, p1[i] * p2[i]));
 
 						if (estimator[5])
 							tgd.Euclidean += (p1[i] - p2[i]) * (p1[i] - p2[i]);
@@ -260,20 +264,20 @@ TARGET void GDIST<REAL>::CacheIndGD()
 					}
 
 					if (estimator[5])
-						tgd.Euclidean = Max(DOUBLE_UNDERFLOW, tgd.Euclidean);
+						tgd.Euclidean = std::max((REAL)DOUBLE_UNDERFLOW, tgd.Euclidean);
 
 					if (estimator[6])
 						tgd.Goldstein1995 = (Sx1 - Sx2) * (Sx1 - Sx2);
 
 					if (estimator[8])
-						tgd.Roger1972 = MySqrt(Max(DOUBLE_UNDERFLOW, tgd.Roger1972));
+						tgd.Roger1972 = MySqrt(std::max((REAL)DOUBLE_UNDERFLOW, tgd.Roger1972));
 				}
 			}
 		}
 	}
 
-	delete[] P1;
-	delete[] P2;
+	DEL(P1);
+	DEL(P2);
 }
 
 /* Calculate genetic distance between two individuals */
@@ -307,13 +311,13 @@ TARGET void GDIST<REAL>::CalcGD(IND<REAL>* a, IND<REAL>* b, REAL* p1, REAL* p2)
 
 	for (int64 l = 0; l < nloc; ++l)
 	{
-		if (total_pop->loc_stat1[l].nhaplo == 0) continue;
+		if (total_pop<REAL>->loc_stat1[l].nhaplo == 0) continue;
 
 		int k = GetLoc(l).k;
 		int gid1 = aid, gid2 = bid, ngeno = GetLoc(l).ngeno;
 		IND<REAL>::GetDyadGenotypeIdx(gid1, gid2, l);
 		bool cis = gid1 <= gid2;
-		INDGD<REAL>* tab2 = gd_tab[l];
+		INDGD<REAL>* tab2 = gd_tab<REAL>[l];
 
 		if (ngeno < N_MAX_GDTAB)
 		{
@@ -357,7 +361,7 @@ TARGET void GDIST<REAL>::CalcGD(IND<REAL>* a, IND<REAL>* b, REAL* p1, REAL* p2)
 				}
 
 				if (estimator[2])
-					tgd.Cavalli1967 += MySqrt(Max(DOUBLE_UNDERFLOW, p1[i] * p2[i]));
+					tgd.Cavalli1967 += MySqrt(std::max((REAL)DOUBLE_UNDERFLOW, p1[i] * p2[i]));
 
 				if (estimator[3])
 				{
@@ -366,7 +370,7 @@ TARGET void GDIST<REAL>::CalcGD(IND<REAL>* a, IND<REAL>* b, REAL* p1, REAL* p2)
 				}
 
 				if (estimator[4])
-					tgd.Nei1983 += MySqrt(Max(DOUBLE_UNDERFLOW, p1[i] * p2[i]));
+					tgd.Nei1983 += MySqrt(std::max((REAL)DOUBLE_UNDERFLOW, p1[i] * p2[i]));
 
 				if (estimator[5])
 					tgd.Euclidean += (p1[i] - p2[i]) * (p1[i] - p2[i]);
@@ -381,13 +385,13 @@ TARGET void GDIST<REAL>::CalcGD(IND<REAL>* a, IND<REAL>* b, REAL* p1, REAL* p2)
 					tgd.Roger1972 += (p1[i] - p2[i]) * (p1[i] - p2[i]) * 0.5;
 			}
 			if (estimator[5])
-				tgd.Euclidean = Max(DOUBLE_UNDERFLOW, tgd.Euclidean);
+				tgd.Euclidean = std::max((REAL)DOUBLE_UNDERFLOW, tgd.Euclidean);
 
 			if (estimator[6])
 				tgd.Goldstein1995 = (Sx1 - Sx2) * (Sx1 - Sx2);
 
 			if (estimator[8])
-				tgd.Roger1972 = MySqrt(Max(DOUBLE_UNDERFLOW, tgd.Roger1972));
+				tgd.Roger1972 = MySqrt(std::max((REAL)DOUBLE_UNDERFLOW, tgd.Roger1972));
 
 			Add((REAL*)&sumgd, (REAL*)&tgd, N_INDGD);
 		}
@@ -477,7 +481,7 @@ TARGET void GDIST<REAL>::CalcGD(POP<REAL>* a, POP<REAL>* b, double* buf)
 			}
 
 			if (estimator[2])
-				Cavalli1967 += MySqrt(Max(DOUBLE_UNDERFLOW, p1[i] * p2[i]));
+				Cavalli1967 += MySqrt(std::max((REAL)DOUBLE_UNDERFLOW, p1[i] * p2[i]));
 
 			if (estimator[3])
 			{
@@ -486,7 +490,7 @@ TARGET void GDIST<REAL>::CalcGD(POP<REAL>* a, POP<REAL>* b, double* buf)
 			}
 
 			if (estimator[4])
-				Nei1983 += MySqrt(Max(DOUBLE_UNDERFLOW, p1[i] * p2[i]));
+				Nei1983 += MySqrt(std::max((REAL)DOUBLE_UNDERFLOW, p1[i] * p2[i]));
 
 			if (estimator[5])
 				Euclideant += (p1[i] - p2[i]) * (p1[i] - p2[i]);
@@ -500,8 +504,8 @@ TARGET void GDIST<REAL>::CalcGD(POP<REAL>* a, POP<REAL>* b, double* buf)
 			if (estimator[8])
 				Roger1972t += (p1[i] - p2[i]) * (p1[i] - p2[i]) * 0.5;
 		}
-		Roger1972 += MySqrt(Max(DOUBLE_UNDERFLOW, Roger1972t));
-		Euclidean += Max(DOUBLE_UNDERFLOW, Euclideant);
+		Roger1972 += MySqrt(std::max((REAL)DOUBLE_UNDERFLOW, Roger1972t));
+		Euclidean += std::max((REAL)DOUBLE_UNDERFLOW, Euclideant);
 
 		if (estimator[6])
 			Goldstein1995 += (Sx1 - Sx2) * (Sx1 - Sx2);
@@ -561,10 +565,10 @@ TARGET void GDIST<REAL>::CalcGD(POP<REAL>* a, POP<REAL>* b, double* buf)
 #define extern 
 extern int gdist_type;												//1 between inds, 2 between pops, 3 + between regions
 extern int gdindex[N_GD_ESTIMATOR + 1];								//Index of ith used estimator
-#define gdist_buf (*(GDIST<REAL>**)&gdist_buf_)
-extern void* gdist_buf_;
-#define gd_tab_fp (*(INDGD<REAL>***)&gd_tab_)
-extern void* gd_tab_;
+template<typename REAL>
+extern GDIST<REAL>* gdist_buf;
+template<typename REAL>
+extern INDGD<REAL>** gd_tab;
 #undef extern
 
 /* Calculate genetic distance */
@@ -578,7 +582,7 @@ TARGET void CalcDist()
 	OpenResFile("-gdist", "Genetic distance");
 
 	bool isfirst = true;
-	gdist_buf = new GDIST<REAL>[NBUF];
+	gdist_buf<REAL> = new GDIST<REAL>[NBUF];
 
 	int64 ntot = 0;
 	int64 n[] = { 0, nind * nind * 2, npop * npop * 2 * 100 };
@@ -607,7 +611,7 @@ TARGET void CalcDist()
 			OpenTempFiles(N_GD_ESTIMATOR + 1, ".gdist", gdist_estimator_val);
 			gdist_type = m + rl;
 
-			SetZero(gdist_buf, NBUF);
+			SetZero(gdist_buf<REAL>, NBUF);
 
 			RunThreads(&GeneticDistanceThread<REAL>, &GeneticDistanceGuard2<REAL>, &GeneticDistanceGuard1<REAL>, ntot, nthis,
 				"\nCalculating genetic distance:\n", g_nthread_val, isfirst);
@@ -619,12 +623,12 @@ TARGET void CalcDist()
 
 		if (m == 1)
 		{
-			delete[] gd_tab[0];
-			delete[] gd_tab;
+			DEL(gd_tab<REAL>[0]);
+			DEL(gd_tab<REAL>);
 		}
 	}
 
-	delete[] gdist_buf;
+	DEL(gdist_buf<REAL>);
 
 	GDIST_METHOD = 0;
 	CloseResFile();
@@ -643,7 +647,7 @@ THREAD2(GeneticDistanceGuard1)
 	int64 nadd2 = gdist_type == 1 ? 1 : 100;
 
 	if (gdist_fmt_val[2])
-		GDIST<REAL>::ColumnPrintHeader();
+		GDIST<REAL>::ColumnFormatHeader();
 
 	for (int i = 0; i < n; ++i)
 	{
@@ -652,7 +656,7 @@ THREAD2(GeneticDistanceGuard1)
 			GUARD_BEGIN2
 
 			if (j >= i && gdist_fmt_val[2])
-				gdist_buf[ii % NBUF].ColumnPrintLine(i, j);
+				gdist_buf<REAL>[ii % NBUF].ColumnFormatLine(i, j);
 
 			PROGRESS_VALUE += nadd2;
 
@@ -671,23 +675,23 @@ THREAD2(GeneticDistanceGuard2)
 
 	if (gdist_fmt_val[1])
 		for (uint k = 1; k <= nk; ++k)
-			GDIST<REAL>::MatrixPrintMatrixHeader(k, n);
+			GDIST<REAL>::MatrixFormatHeader(k, n);
 
 	for (uint i = 0; i < n; ++i)
 	{
 		if (gdist_fmt_val[1])
 			for (uint k = 1; k <= nk; ++k)
-				GDIST<REAL>::MatrixPrintRowHeader(k, i);
+				GDIST<REAL>::MatrixFormatRowHeader(k, i);
 
 		for (uint j = 0; j < n; ++j, ++ii)
 		{
 			GUARD_BEGIN2
 
-			GDIST<REAL>& gd = gdist_buf[ii % NBUF];
+			GDIST<REAL>& gd = gdist_buf<REAL>[ii % NBUF];
 
 			if (gdist_fmt_val[1])
 				for (uint k = 1; k <= nk; ++k)
-					gd.MatrixPrintCell(k);
+					gd.MatrixFormatCell(k);
 
 			PROGRESS_VALUE += nadd2;
 
@@ -711,7 +715,7 @@ THREAD2(GeneticDistanceThread)
 			{
 				THREAD_BEGIN2
 
-				gdist_buf[ii % NBUF].CalcGD(ainds[i], ainds[j], p1, p2);
+				gdist_buf<REAL>[ii % NBUF].CalcGD(ainds<REAL>[i], ainds<REAL>[j], p1, p2);
 
 				THREAD_END2
 			}
@@ -723,7 +727,7 @@ THREAD2(GeneticDistanceThread)
 	{
 		int rl = gdist_type - 3;
 		int n = gdist_type == 2 ? npop : nreg[rl];
-		POP<REAL>** tpop = gdist_type == 2 ? apops : aregs[rl];
+		POP<REAL>** tpop = gdist_type == 2 ? apops<REAL> : aregs<REAL>[rl];
 		VLA_NEW(p1, double, maxK);
 		for (int i = 0; i < n; ++i)
 		{
@@ -731,7 +735,7 @@ THREAD2(GeneticDistanceThread)
 			{
 				THREAD_BEGIN2
 
-				gdist_buf[ii % NBUF].CalcGD(tpop[i], tpop[j], p1);
+				gdist_buf<REAL>[ii % NBUF].CalcGD(tpop[i], tpop[j], p1);
 
 				THREAD_END2
 			}

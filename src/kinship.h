@@ -13,27 +13,28 @@ struct KINSHIP
 	REAL Ritland1996;						//Estimates for various kinship estimators
 	REAL Loiselle1995;
 	REAL Weir1996;
+	REAL VanRaden2008;
 	int ABtype;								//Number of loci genotyped in both individuals
 	int Atype;								//Number of loci genotyped in individual A
 	int Btype;								//Number of loci genotyped in individual B
 
-	TARGET static void ColumnPrintHeader();
+	TARGET static void ColumnFormatHeader();
 
-	TARGET void ColumnPrintLine(int i, int j);
+	TARGET void ColumnFormatLine(int i, int j);
 
-	TARGET static void MatrixPrintMatrixHeader(int k, int n);
+	TARGET static void MatrixFormatHeader(int k, int n);
 
-	TARGET static void MatrixPrintRowHeader(int k, int i);
+	TARGET static void MatrixFormatRowHeader(int k, int i);
 
-	TARGET void MatrixPrintCell(int k);
+	TARGET void MatrixFormatCell(int k);
 
 	TARGET void CalcKinship(IND<REAL>* a, IND<REAL>* b);
 };
 
 #pragma pack(pop)
 
-extern void* kinship_buf_;						//Circle buffer for kinship estimation, NBUF
-#define kinship_buf (*(KINSHIP<REAL>**)&kinship_buf_)
+template<typename REAL>
+extern KINSHIP<REAL>* kinship_buf;			//Circle buffer for kinship estimation, NBUF
 
 /* Calculate kinship coefficient */
 template<typename REAL>

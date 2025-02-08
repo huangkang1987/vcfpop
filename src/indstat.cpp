@@ -1,6 +1,5 @@
 /* Individual Statistics Functions */
 
-#pragma once
 #include "vcfpop.h"
 
 template struct IND<double>;
@@ -8,8 +7,8 @@ template struct IND<float >;
 
 template TARGET void IND<double>::IndividualStatisticsHeader(FILE* fout);
 template TARGET void IND<float >::IndividualStatisticsHeader(FILE* fout);
-template TARGET void IND<double>::PrintIndividualStatistics(FILE* fout);
-template TARGET void IND<float >::PrintIndividualStatistics(FILE* fout);
+template TARGET void IND<double>::WriteIndividualStatistics(FILE* fout);
+template TARGET void IND<float >::WriteIndividualStatistics(FILE* fout);
 
 template TARGET void CalcIndstat<double>();
 template TARGET void CalcIndstat<float >();
@@ -48,7 +47,7 @@ THREAD2(IndividualStatisticsThread)
 
 	for (uint i = st; i < ed; ++i)
 	{
-		ainds[i]->PrintIndividualStatistics(TEMP_FILES[threadid]);
+		ainds<REAL>[i]->WriteIndividualStatistics(TEMP_FILES[threadid]);
 		PROGRESS_VALUE++;
 	}
 }
@@ -110,18 +109,21 @@ TARGET void IND<REAL>::IndividualStatisticsHeader(FILE* fout)
 				if (indstat_estimator_val[1]) fprintf(fout, "%cF_pop_RI", g_delimiter_val);
 				if (indstat_estimator_val[2]) fprintf(fout, "%cF_pop_LO", g_delimiter_val);
 				if (indstat_estimator_val[3]) fprintf(fout, "%cF_pop_WE", g_delimiter_val);
+				if (indstat_estimator_val[4]) fprintf(fout, "%cF_pop_VR", g_delimiter_val);
 			}
 			if (indstat_ref_val[2])
 			{
 				if (indstat_estimator_val[1]) fprintf(fout, "%cF_reg_RI", g_delimiter_val);
 				if (indstat_estimator_val[2]) fprintf(fout, "%cF_reg_LO", g_delimiter_val);
 				if (indstat_estimator_val[3]) fprintf(fout, "%cF_reg_WE", g_delimiter_val);
+				if (indstat_estimator_val[4]) fprintf(fout, "%cF_reg_VR", g_delimiter_val);
 			}
 			if (indstat_ref_val[3])
 			{
 				if (indstat_estimator_val[1]) fprintf(fout, "%cF_tot_RI", g_delimiter_val);
 				if (indstat_estimator_val[2]) fprintf(fout, "%cF_tot_LO", g_delimiter_val);
 				if (indstat_estimator_val[3]) fprintf(fout, "%cF_tot_WE", g_delimiter_val);
+				if (indstat_estimator_val[4]) fprintf(fout, "%cF_tot_VR", g_delimiter_val);
 			}
 		}
 
@@ -132,18 +134,21 @@ TARGET void IND<REAL>::IndividualStatisticsHeader(FILE* fout)
 				if (indstat_estimator_val[1]) fprintf(fout, "%cTheta_pop_RI", g_delimiter_val);
 				if (indstat_estimator_val[2]) fprintf(fout, "%cTheta_pop_LO", g_delimiter_val);
 				if (indstat_estimator_val[3]) fprintf(fout, "%cTheta_pop_WE", g_delimiter_val);
+				if (indstat_estimator_val[4]) fprintf(fout, "%cTheta_pop_VR", g_delimiter_val);
 			}
 			if (indstat_ref_val[2])
 			{
 				if (indstat_estimator_val[1]) fprintf(fout, "%cTheta_reg_RI", g_delimiter_val);
 				if (indstat_estimator_val[2]) fprintf(fout, "%cTheta_reg_LO", g_delimiter_val);
 				if (indstat_estimator_val[3]) fprintf(fout, "%cTheta_reg_WE", g_delimiter_val);
+				if (indstat_estimator_val[4]) fprintf(fout, "%cTheta_reg_VR", g_delimiter_val);
 			}
 			if (indstat_ref_val[3])
 			{
 				if (indstat_estimator_val[1]) fprintf(fout, "%cTheta_tot_RI", g_delimiter_val);
 				if (indstat_estimator_val[2]) fprintf(fout, "%cTheta_tot_LO", g_delimiter_val);
 				if (indstat_estimator_val[3]) fprintf(fout, "%cTheta_tot_WE", g_delimiter_val);
+				if (indstat_estimator_val[4]) fprintf(fout, "%cTheta_tot_VR", g_delimiter_val);
 			}
 		}
 	}
@@ -151,24 +156,26 @@ TARGET void IND<REAL>::IndividualStatisticsHeader(FILE* fout)
 
 /* Write result row for individual statistics */
 template<typename REAL>
-TARGET void IND<REAL>::PrintIndividualStatistics(FILE* fout)
+TARGET void IND<REAL>::WriteIndividualStatistics(FILE* fout)
 {
 	int ntype = 0, minv = 99999, maxv = 0, nhaplo = 0, nmiss = 0;
 	double hidx = 0;
-	double f_tot_Ritland = 0, f_pop_Ritland = 0, f_reg_Ritland[N_MAX_REG];
-	double f_tot_Loiselle = 0, f_pop_Loiselle = 0, f_reg_Loiselle[N_MAX_REG];
-	double f_tot_Weir = 0, f_pop_Weir = 0, f_reg_Weir[N_MAX_REG];
-	double t_tot_Ritland = 0, t_pop_Ritland = 0, t_reg_Ritland[N_MAX_REG];
-	double t_tot_Loiselle = 0, t_pop_Loiselle = 0, t_reg_Loiselle[N_MAX_REG];
-	double t_tot_Weir = 0, t_pop_Weir = 0, t_reg_Weir[N_MAX_REG];
+	double f_tot_Ritland = 0,	f_pop_Ritland = 0,		f_reg_Ritland[N_MAX_REG];
+	double f_tot_Loiselle = 0,	f_pop_Loiselle = 0,		f_reg_Loiselle[N_MAX_REG];
+	double f_tot_Weir = 0,		f_pop_Weir = 0,			f_reg_Weir[N_MAX_REG];
+	double f_tot_VanRaden = 0,	f_pop_VanRaden = 0,		f_reg_VanRaden[N_MAX_REG];
+	double t_tot_Ritland = 0,	t_pop_Ritland = 0,		t_reg_Ritland[N_MAX_REG];
+	double t_tot_Loiselle = 0,	t_pop_Loiselle = 0,		t_reg_Loiselle[N_MAX_REG];
+	double t_tot_Weir = 0,		t_pop_Weir = 0,			t_reg_Weir[N_MAX_REG];
+	double t_tot_VanRaden = 0,	t_pop_VanRaden = 0,		t_reg_VanRaden[N_MAX_REG];
 
-	POP<REAL>* ttot = total_pop;
-	POP<REAL>* tpop = apops[popid];
+	POP<REAL>* ttot = total_pop<REAL>;
+	POP<REAL>* tpop = apops<REAL>[popid];
 	POP<REAL>* treg[N_MAX_REG]; //20200505
-	if (lreg >= 1) treg[0] = aregs[0][tpop->rid]; //20200505
+	if (lreg >= 1) treg[0] = aregs<REAL>[0][tpop->rid]; //20200505
 
 	for (int rl = 1; rl < lreg; ++rl)
-		treg[rl] = aregs[rl][treg[rl - 1]->rid];
+		treg[rl] = aregs<REAL>[rl][treg[rl - 1]->rid];
 
 	for (int64 l = 0; l < nloc; ++l)
 	{
@@ -215,11 +222,11 @@ TARGET void IND<REAL>::PrintIndividualStatistics(FILE* fout)
 
 		if (indstat_type_val[3] || indstat_type_val[4]) {
 			if (indstat_ref_val[1])
-				Theta(tpop, f_pop_Ritland, f_pop_Loiselle, f_pop_Weir, t_pop_Ritland, t_pop_Loiselle, t_pop_Weir);
+				Theta(tpop, f_pop_Ritland, f_pop_Loiselle, f_pop_Weir, f_pop_VanRaden, t_pop_Ritland, t_pop_Loiselle, t_pop_Weir, t_pop_VanRaden);
 			if (indstat_ref_val[2]) for (int rl = 0; rl < lreg; ++rl)
-				Theta(treg[rl], f_reg_Ritland[rl], f_reg_Loiselle[rl], f_reg_Weir[rl], t_reg_Ritland[rl], t_reg_Loiselle[rl], t_reg_Weir[rl]);
+				Theta(treg[rl], f_reg_Ritland[rl], f_reg_Loiselle[rl], f_reg_Weir[rl], f_reg_VanRaden[rl], t_reg_Ritland[rl], t_reg_Loiselle[rl], t_reg_Weir[rl], t_reg_VanRaden[rl]);
 			if (indstat_ref_val[3])
-				Theta(ttot, f_tot_Ritland, f_tot_Loiselle, f_tot_Weir, t_tot_Ritland, t_tot_Loiselle, t_tot_Weir);
+				Theta(ttot, f_tot_Ritland, f_tot_Loiselle, f_tot_Weir, f_pop_VanRaden, t_tot_Ritland, t_tot_Loiselle, t_tot_Weir, t_tot_VanRaden);
 		}
 
 		if (indstat_type_val[3]) {
@@ -227,16 +234,19 @@ TARGET void IND<REAL>::PrintIndividualStatistics(FILE* fout)
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_pop_Ritland); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_pop_Loiselle); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_pop_Weir); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_pop_VanRaden); }
 			}
 			if (indstat_ref_val[2]) for (int rl = 0; rl < lreg; ++rl) {
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_reg_Ritland[rl]); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_reg_Loiselle[rl]); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_reg_Weir[rl]); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_reg_VanRaden[rl]); }
 			}
 			if (indstat_ref_val[3]) {
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_tot_Ritland); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_tot_Loiselle); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_tot_Weir); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_tot_VanRaden); }
 			}
 		}
 
@@ -245,16 +255,19 @@ TARGET void IND<REAL>::PrintIndividualStatistics(FILE* fout)
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_pop_Ritland); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_pop_Loiselle); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_pop_Weir); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_pop_VanRaden); }
 			}
 			if (indstat_ref_val[2]) for (int rl = 0; rl < lreg; ++rl) {
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_reg_Ritland[rl]); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_reg_Loiselle[rl]); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_reg_Weir[rl]); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_reg_VanRaden[rl]); }
 			}
 			if (indstat_ref_val[3]) {
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_tot_Ritland); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_tot_Loiselle); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_tot_Weir); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_tot_VanRaden); }
 			}
 		}
 	}
@@ -278,9 +291,9 @@ TARGET void IND<REAL>::PrintIndividualStatistics(FILE* fout)
 		}
 
 		if (indstat_type_val[3] || indstat_type_val[4]) {
-			if (indstat_ref_val[1]) Theta(tpop, f_pop_Ritland, f_pop_Loiselle, f_pop_Weir, t_pop_Ritland, t_pop_Loiselle, t_pop_Weir, l);
-			if (indstat_ref_val[2]) for (int rl = 0; rl < lreg; ++rl) Theta(treg[rl], f_reg_Ritland[rl], f_reg_Loiselle[rl], f_reg_Weir[rl], t_reg_Ritland[rl], t_reg_Loiselle[rl], t_reg_Weir[rl], l);
-			if (indstat_ref_val[3]) Theta(ttot, f_tot_Ritland, f_tot_Loiselle, f_tot_Weir, t_tot_Ritland, t_tot_Loiselle, t_tot_Weir, l);
+			if (indstat_ref_val[1]) Theta(tpop, f_pop_Ritland, f_pop_Loiselle, f_pop_Weir, f_pop_VanRaden, t_pop_Ritland, t_pop_Loiselle, t_pop_Weir, t_pop_VanRaden, l);
+			if (indstat_ref_val[2]) for (int rl = 0; rl < lreg; ++rl) Theta(treg[rl], f_reg_Ritland[rl], f_reg_Loiselle[rl], f_reg_Weir[rl], f_reg_VanRaden[rl], t_reg_Ritland[rl], t_reg_Loiselle[rl], t_reg_Weir[rl], t_reg_VanRaden[rl], l);
+			if (indstat_ref_val[3]) Theta(ttot, f_tot_Ritland, f_tot_Loiselle, f_tot_Weir, f_tot_VanRaden, t_tot_Ritland, t_tot_Loiselle, t_tot_Weir, t_tot_VanRaden, l);
 		}
 
 		if (indstat_type_val[3]) {
@@ -288,16 +301,19 @@ TARGET void IND<REAL>::PrintIndividualStatistics(FILE* fout)
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_pop_Ritland); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_pop_Loiselle); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_pop_Weir); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_pop_VanRaden); }
 			}
 			if (indstat_ref_val[2]) for (int rl = 0; rl < lreg; ++rl) {
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_reg_Ritland[rl]); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_reg_Loiselle[rl]); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_reg_Weir[rl]); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_reg_VanRaden[rl]); }
 			}
 			if (indstat_ref_val[3]) {
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_tot_Ritland); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_tot_Loiselle); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_tot_Weir); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, f_tot_VanRaden); }
 			}
 		}
 
@@ -306,16 +322,19 @@ TARGET void IND<REAL>::PrintIndividualStatistics(FILE* fout)
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_pop_Ritland); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_pop_Loiselle); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_pop_Weir); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_pop_VanRaden); }
 			}
 			if (indstat_ref_val[2]) for (int rl = 0; rl < lreg; ++rl) {
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_reg_Ritland[rl]); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_reg_Loiselle[rl]); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_reg_Weir[rl]); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_reg_VanRaden[rl]); }
 			}
 			if (indstat_ref_val[3]) {
 				if (indstat_estimator_val[1]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_tot_Ritland); }
 				if (indstat_estimator_val[2]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_tot_Loiselle); }
 				if (indstat_estimator_val[3]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_tot_Weir); }
+				if (indstat_estimator_val[4]) { fprintf(fout, "%c", g_delimiter_val);  WriteReal(fout, t_tot_VanRaden); }
 			}
 		}
 	}

@@ -1,28 +1,41 @@
-INCLUDE		= -I. -I/usr/local/cuda/include
+INCLUDE    = -I/usr/local/cuda/include -I/usr/include -I/usr/local/include
 
-CC		= g++-11
+CC         = g++
 
-NVCC		= /usr/local/cuda/bin/nvcc
+NVCC       = /usr/local/cuda/bin/nvcc
 
-LIB		= -L/usr/local/lib -L/usr/local/cuda/lib64
+LIB        = -L/usr/local/cuda/lib64 -L/usr/lib -L/usr/local/lib
 
-FLAGS		= -DNDEBUG -DCUDA -DCUDA_NDEBUG -DENABLE_RELATEDNESS -fpermissive -pthread -O3 -w -m64 -fopenmp -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mlzcnt -mpopcnt -std=c++20 -ffp-contract=off
+FLAGS      = -DNDEBUG -DCUDA -DCUDA_NDEBUG -DENABLE_RELATEDNESS -fpermissive -pthread -O3 -w -m64 -fopenmp -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mlzcnt -mpopcnt -mno-fma -mno-fma4 -std=c++20 -ffp-contract=off
 
-FLAGSCUDA	= -DNDEBUG -DCUDA -DCUDA_NDEBUG -DENABLE_RELATEDNESSx -O3 -w -m64 -std=c++17
+FLAGSCUDA  = -DNDEBUG -DCUDA -DCUDA_NDEBUG -DENABLE_RELATEDNESS -O3 -w -m64 -std=c++20 -gencode=arch=compute_60,code=sm_60 -gencode=arch=compute_70,code=sm_70 -gencode=arch=compute_75,code=sm_75 -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_89,code=sm_89 -gencode=arch=compute_90,code=sm_90 -Wno-deprecated-gpu-targets
 
-HEADER		= vcfpop.h
+HEADER     = vcfpop.h
 
-OBJ		= vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathSSE.o mathNEO.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o slide.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureSSE.o structureNEO.o structureAVX.o structure512.o ad.o menu.o structureCUDA.o
+OBJ        = vcfpop.o dre.o ml.o ml2.o mlbin.o mom.o mom2.o global.o hash.o math2.o mathSSE.o mathNEO.o mathAVX.o math512.o parameters.o misc.o file.o string2.o statistics.o matrix.o spa.o ploidyinfer.o function.o load.o filter.o diversity.o slide.o haplotype.o conversion.o indstat.o dist.o pcoa.o clustering.o diff.o kinship.o relatedness.o amova.o popas.o structure.o structureSSE.o structureNEO.o structureAVX.o structure512.o ad.o menu.o structureCUDA.o decay.o block.o gwas.o
 
-BIN_PATH	= ../bin/
+BIN_PATH   = ../bin/
 
-TARGET		= vcfpop
+TARGET     = vcfpop
+
+LIBZ       = $(shell find /usr/local/lib /usr/lib -name "libz.a" 2>/dev/null | head -n 1)
+
+LIBOBLAS   = $(shell find /usr/local/lib /usr/lib -name "libopenblas.a" 2>/dev/null | head -n 1)
 
 vcfpop: $(OBJ)
-	$(CC) $(INCLUDE) $(OBJ) $(LIB) -m64 -march=x86-64 -fopenmp -pthread -lm -ldl -lz -lcudart -o vcfpop.linux.gcc
+	$(CC) $(INCLUDE) $(OBJ) $(LIB) -m64 -march=x86-64 -fopenmp -pthread $(LIBZ) $(LIBOBLAS) -lm -ldl -lcudart_static -o vcfpop
 
-structureCUDA.o : structureCUDA.cu $(HEADER) 
-	$(NVCC) $(INCLUDE) $(FLAGSCUDA) --gpu-architecture=sm_60 -c structureCUDA.cu
+structureCUDA.o : structureCUDA.cpp $(HEADER) 
+	$(NVCC) $(INCLUDE) $(FLAGSCUDA) -c structureCUDA.cpp -x cu
+
+decay.o: decay.cpp $(HEADER) 
+	$(CC) $(INCLUDE) $(FLAGS) -c decay.cpp
+
+block.o: block.cpp $(HEADER) 
+	$(CC) $(INCLUDE) $(FLAGS) -c block.cpp
+
+gwas.o: gwas.cpp $(HEADER) 
+	$(CC) $(INCLUDE) $(FLAGS) -c gwas.cpp
 
 vcfpop.o: vcfpop.cpp $(HEADER) 
 	$(CC) $(INCLUDE) $(FLAGS) -c vcfpop.cpp
@@ -64,10 +77,10 @@ mathSSE.o: mathSSE.cpp $(HEADER)
 	$(CC) $(INCLUDE) $(FLAGS) -c mathSSE.cpp
 
 mathAVX.o: mathAVX.cpp $(HEADER) 
-	$(CC) $(INCLUDE) $(FLAGS) -c mathAVX.cpp -mavx -mavx2 -mno-fma -mno-fma4
+	$(CC) $(INCLUDE) $(FLAGS) -c mathAVX.cpp -mavx -mavx2
 
 math512.o: math512.cpp $(HEADER) 
-	$(CC) $(INCLUDE) $(FLAGS) -c math512.cpp -mavx -mavx2 -mno-fma -mno-fma4 -mavx512f -mavx512bw -mavx512dq -mavx512vl
+	$(CC) $(INCLUDE) $(FLAGS) -c math512.cpp -mavx -mavx2 -mavx512f -mavx512bw -mavx512dq -mavx512vl
 
 parameters.o: parameters.cpp $(HEADER) 
 	$(CC) $(INCLUDE) $(FLAGS) -c parameters.cpp
@@ -148,10 +161,10 @@ structureSSE.o: structureSSE.cpp $(HEADER)
 	$(CC) $(INCLUDE) $(FLAGS) -c structureSSE.cpp
 
 structureAVX.o: structureAVX.cpp $(HEADER) 
-	$(CC) $(INCLUDE) $(FLAGS) -c structureAVX.cpp -mavx -mavx2 -mno-fma -mno-fma4
+	$(CC) $(INCLUDE) $(FLAGS) -c structureAVX.cpp -mavx -mavx2
 
 structure512.o: structure512.cpp $(HEADER) 
-	$(CC) $(INCLUDE) $(FLAGS) -c structure512.cpp -mavx -mavx2 -mno-fma -mno-fma4 -mavx512f -mavx512bw -mavx512dq -mavx512vl
+	$(CC) $(INCLUDE) $(FLAGS) -c structure512.cpp -mavx -mavx2 -mavx512f -mavx512bw -mavx512dq -mavx512vl
 
 ad.o: ad.cpp $(HEADER) 
 	$(CC) $(INCLUDE) $(FLAGS) -c ad.cpp

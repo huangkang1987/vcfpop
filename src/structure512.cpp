@@ -39,7 +39,7 @@ struct GENO_READER512
 	__m512i vindex[4];						//Offset of 16 loci
 	__m512i data[4];						//Readed bits
 	__m512i msize;
-	byte* pos;							//Current read pointer
+	byte* pos;								//Current read pointer
 	byte size;								//Number of bits a genotype id used
 	byte nbits;								//Number of bits remaining in data
 
@@ -52,7 +52,7 @@ struct GENO_READER512
 	{
 		//set pos and size
 		SetZero(this, 1);
-		num = Min(num, 64);
+		num = std::min(num, 64LL);
 
 		//set bucket from default bucket or assigned bucket
 		if (bucket == NULL) bucket = &geno_bucket;
@@ -101,8 +101,7 @@ struct GENO_READER512
 		}
 	}
 
-	__forceinline
-	TARGET512 void Read(__m512i* gid)
+	forceinline TARGET512 void Read(__m512i* gid)
 	{
 		// if data is empty
 		if (nbits < size) [[unlikely]]
@@ -161,7 +160,7 @@ struct GENO_READERSSE
 	{
 		//set pos and size
 		SetZero(this, 1);
-		num = Min(num, 64);
+		num = std::min(num, 64LL);
 
 		//set bucket from default bucket or assigned bucket
 		if (bucket == NULL) bucket = &geno_bucket;
@@ -210,8 +209,7 @@ struct GENO_READERSSE
 		}
 	}
 
-	__forceinline
-		TARGETSSE void Read(__m512i* gid2)
+	forceinline TARGETSSE void Read(__m512i* gid2)
 	{
 		__m128i* gid = (__m128i*)gid2;
 		// if data is empty
@@ -251,36 +249,6 @@ struct GENO_READERSSE
 };
 #endif
 
-__forceinline TARGET512 double __mm512_reduce_add_pd(__m512d v0)
-{
-	__m256d v1 = _mm256_add_pd(_mm512_extractf64x4_pd(v0, 0), _mm512_extractf64x4_pd(v0, 1));
-	__m128d v2 = _mm_add_pd(_mm256_extractf128_pd(v1, 0), _mm256_extractf128_pd(v1, 1));
-	return simd_f64(v2, 0) + simd_f64(v2, 1);
-}
-
-__forceinline TARGET512 double __mm512_reduce_mul_pd(__m512d v0)
-{
-	__m256d v1 = _mm256_mul_pd(_mm512_extractf64x4_pd(v0, 0), _mm512_extractf64x4_pd(v0, 1));
-	__m128d v2 = _mm_mul_pd(_mm256_extractf128_pd(v1, 0), _mm256_extractf128_pd(v1, 1));
-	return simd_f64(v2, 0) * simd_f64(v2, 1);
-}
-
-__forceinline TARGET512 float __mm512_reduce_add_ps(__m512 v0)
-{
-	__m256 v1 = _mm256_mul_ps(_mm512_extractf32x8_ps(v0, 0), _mm512_extractf32x8_ps(v0, 1));
-	__m128 v2 = _mm_mul_ps(_mm256_extractf128_ps(v1, 0), _mm256_extractf128_ps(v1, 1));
-	__m128 v3 = _mm_mul_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
-	return simd_f64(v3, 0) + simd_f64(v3, 1);
-}
-
-__forceinline TARGET512 float __mm512_reduce_mul_ps(__m512 v0)
-{
-	__m256 v1 = _mm256_add_ps(_mm512_extractf32x8_ps(v0, 0), _mm512_extractf32x8_ps(v0, 1));
-	__m128 v2 = _mm_add_ps(_mm256_extractf128_ps(v1, 0), _mm256_extractf128_ps(v1, 1));
-	__m128 v3 = _mm_add_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
-	return simd_f64(v3, 0) * simd_f64(v3, 1);
-}
-
 /* Update a priori ancetral proportion for non-admix model */
 template<typename REAL>
 TARGET512 void BAYESIAN<REAL>::UpdateQNoAdmix512(int tid)
@@ -294,8 +262,8 @@ TARGET512 void BAYESIAN<REAL>::UpdateQNoAdmix512(int tid)
 		double* buf1 = bufNK1, * buf2 = bufNK2;
 		if (locpriori) for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
 		{
-			if (ainds[i]->vt == 0) continue;
-			ChargeLog((int64*)buf1, buf2, Gamma + ainds[i]->popid * K, K);
+			if (ainds<REAL>[i]->vt == 0) continue;
+			ChargeLog((int64*)buf1, buf2, Gamma + ainds<REAL>[i]->popid * K, K);
 		}
 
 		//////////////////////////////////////////////////////////
@@ -310,10 +278,10 @@ TARGET512 void BAYESIAN<REAL>::UpdateQNoAdmix512(int tid)
 
 		buf1 = bufNK1;
 		REAL* q = Q;
-		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//double
 		for (int i = 0; i < N; ++i, buf1 += K, q += K)
 		{
-			if (ainds[i]->vt == 0) continue;
+			if (ainds<REAL>[i]->vt == 0) continue;
 			ushort k2 = (ushort)rng.PolyLog(buf1, K);
 			q[k2] = 1;
 			Z[i] = k2;
@@ -420,7 +388,7 @@ TARGET512 void BAYESIAN<REAL>::UpdateQNoAdmix512(int tid)
 						REAL* p2 = p;
 						for (int k = 0; k < K; ++k, p2 += KT)
 						{
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 								REP(8) freq[kk] = _mm512_mask_i32gather_pd(maskoned, typed2[kk], allele2[kk], p2, sizeof(double));
 							else
 								REP(8) freq[kk] = _mm512_cvtps_pd(_mm256_mmask_i32gather_ps(maskones256, typed2[kk], allele2[kk], p2, sizeof(float)));
@@ -455,7 +423,7 @@ TARGET512 void BAYESIAN<REAL>::UpdateZNoAdmix512(int tid)
 		SetZero(Ni, K * KT);
 
 		for (int i = 0; i < N; ++i)
-			Mi[i * K + Z[i]] = ainds[i]->vt;
+			Mi[i * K + Z[i]] = ainds<REAL>[i]->vt;
 
 		//////////////////////////////////////////////////////////
 
@@ -572,14 +540,14 @@ TARGET512 void BAYESIAN<REAL>::UpdateQMetro512(int tid)
 {
 	if (tid == -1)
 	{
-		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//REAL
 		REAL* bufi = (REAL*)bufNK1;
 		REAL* q = NULL;
 
 		for (int i = 0; i < N; ++i, bufi += K)
 		{
-			if (ainds[i]->vt == 0) continue;
-			if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds[i]->popid * K, K);
+			if (ainds<REAL>[i]->vt == 0) continue;
+			if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds<REAL>[i]->popid * K, K);
 			else           rng.Dirichlet(bufi, Alpha, K);
 		}
 
@@ -598,7 +566,7 @@ TARGET512 void BAYESIAN<REAL>::UpdateQMetro512(int tid)
 		bufi = (REAL*)bufNK1; q = Q;
 		for (int i = 0; i < N; ++i, q += K, bufi += K)
 		{
-			if (ainds[i]->vt == 0) continue;
+			if (ainds<REAL>[i]->vt == 0) continue;
 			if (bufN1[i] >= NZERO || rng.Uniform() < exp(bufN1[i]))
 				SetVal(q, bufi, K);
 		}
@@ -705,7 +673,7 @@ TARGET512 void BAYESIAN<REAL>::UpdateQMetro512(int tid)
 							allele[kk] = _mm512_add_epi32(allele[kk], oindex[kk]);
 						}
 
-						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+						if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 						{
 							REP(8) f1[kk] = _mm512_setzero_pd();
 							REP(8) f2[kk] = _mm512_setzero_pd();
@@ -719,7 +687,7 @@ TARGET512 void BAYESIAN<REAL>::UpdateQMetro512(int tid)
 						REAL* p2 = p;
 						for (int k = 0; k < K; ++k, p2 += KT)
 						{
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 							{
 								__m512d pp[8], qq = _mm512_set1_pd(q[k]), ii = _mm512_set1_pd(bufi[k]);
 
@@ -747,7 +715,7 @@ TARGET512 void BAYESIAN<REAL>::UpdateQMetro512(int tid)
 							}
 						}
 
-						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						if constexpr (std::is_same_v<REAL, float> && fast_fp32)
 						{
 							__m256* f1t = (__m256*)f1s;
 							REP(4) f1s[kk] = _mm512_div_ps(f1s[kk], f2s[kk]);
@@ -805,7 +773,7 @@ TARGET512 void BAYESIAN<REAL>::UpdateZAdmix512(int tid)
 	static __m512i mask01 = _mm512_set1_epi32(1);
 	static __m512i mask02 = _mm512_set1_epi32(2);
 	static __m512d minfreqd = _mm512_set1_pd(MIN_FREQ);
-	static __m512 minfreqs = _mm512_set1_ps(MIN_FREQ);
+	static __m512 minfreqs = _mm512_set1_ps((float)MIN_FREQ);
 	static int PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
 	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -815,8 +783,8 @@ TARGET512 void BAYESIAN<REAL>::UpdateZAdmix512(int tid)
 		int tid2 = thread_counter.fetch_add(1);
 
 		//64 * K  * sizeof(double)
-		__m512d* bufkd = (__m512d*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid2);
-		__m512* bufks = (__m512*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid2);
+		__m512d* bufkd = (__m512d*)Align64((byte*)bufNK2 + (std::max(N, 64) * K * sizeof(double) + 63) * tid2);
+		__m512* bufks = (__m512*)Align64((byte*)bufNK2 + (std::max(N, 64) * K * sizeof(double) + 63) * tid2);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -864,7 +832,7 @@ TARGET512 void BAYESIAN<REAL>::UpdateZAdmix512(int tid)
 
 				RNG512<double> rngd; RNG512<float > rngs;
 
-				if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+				if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 					new (&rngd) RNG512<double>(seed + m * L + l, RNG_SALT_UPDATEZ);
 				else
 					new (&rngs) RNG512<float >(seed + m * L + l, RNG_SALT_UPDATEZ);
@@ -912,7 +880,7 @@ TARGET512 void BAYESIAN<REAL>::UpdateZAdmix512(int tid)
 						{
 							__m512d qd; __m512 qs;
 
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 							{
 								qd = _mm512_set1_pd(q[k]);
 
@@ -939,10 +907,10 @@ TARGET512 void BAYESIAN<REAL>::UpdateZAdmix512(int tid)
 						}
 
 						//draw cluster for each allele copy
-						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
-							rngd.Poly<64>(bufkd, K, k2);
+						if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
+							rngd.Poly(bufkd, K, k2);
 						else
-							rngs.Poly<64>(bufks, K, k2);
+							rngs.Poly(bufks, K, k2);
 
 						//Update Mi
 						uint64 typedx = typed0;
@@ -1080,7 +1048,7 @@ TARGET512 void BAYESIAN<REAL>::Record512(int tid)
 
 						REP(4) allele[kk] = _mm512_add_epi32(allele[kk], oindex[kk]);
 
-						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+						if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 							REP(8) f2[kk] = _mm512_setzero_pd();
 						else
 							REP(4) f2s[kk] = _mm512_setzero_ps();
@@ -1089,7 +1057,7 @@ TARGET512 void BAYESIAN<REAL>::Record512(int tid)
 						{
 							REAL* p2 = p + Z[i] * KT;
 
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 								REP(8) f2[kk] = _mm512_mask_i32gather_pd(maskoned, typed2[kk], allele2[kk], p2, sizeof(double));
 							else if constexpr (fast_fp32)
 								REP(4) f2s[kk] = _mm512_mask_i32gather_ps(maskones, typed[kk], allele[kk], p2, sizeof(float));
@@ -1101,7 +1069,7 @@ TARGET512 void BAYESIAN<REAL>::Record512(int tid)
 							REAL* p2 = p;
 							for (int k = 0; k < K; ++k, p2 += KT)
 							{
-								if constexpr (sizeof(REAL) == 8)
+								if constexpr (std::is_same_v<REAL, double>)
 								{
 									__m512d pp[8], qq = _mm512_set1_pd(q[k]);
 
@@ -1128,7 +1096,7 @@ TARGET512 void BAYESIAN<REAL>::Record512(int tid)
 							}
 						}
 
-						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						if constexpr (std::is_same_v<REAL, float> && fast_fp32)
 						{
 							__m256* f2t = (__m256*)f2s;
 							REP(8) f2[kk] = _mm512_cvtps_pd(f2t[kk]);

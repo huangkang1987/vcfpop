@@ -2,6 +2,15 @@
 
 #include "vcfpop.h"
 
+template<> IND<double>** ainds<double>;
+template<> IND<float >** ainds<float >;
+template<> POP<double>** apops<double>;
+template<> POP<float >** apops<float >;
+template<> POP<double>*** aregs<double>;
+template<> POP<float >*** aregs<float >;
+template<> POP<double>* total_pop<double>;
+template<> POP<float >* total_pop<float >;
+
 #define extern 
 
 /* Global Variables */
@@ -14,8 +23,10 @@ extern int GDIST_METHOD;										//Current GD method, 1 genetic distance, 2 pco
 
 extern string EXEDIR;											//Executable directory
 extern string CURDIR;											//Current directory
+extern string PARFILE;											//Parameter file absoulte path
 extern string OUTDIR;											//Output directory
 extern string OUTFILE;											//Output file
+extern vector<thread> PLOT_THREAD;								//Figure plotting threads
 
 extern double ALPHA[N_DRE_MODELT + 1][N_MAX_PLOIDY + 1][3];		//Double reduction rates
 extern double BINOMIAL[N_MAX_PLOIDY + 1][N_MAX_PLOIDY + 1];		//Binomial coefficients
@@ -27,6 +38,8 @@ extern int64 PROGRESS_CEND;										//End value of this batch
 extern int64 PROGRESS_NOUTPUTED;								//Number of outputed characters
 extern int64 PROGRESS_NOUTPUTED2;								//Number of previously outputed characters
 
+extern const char* GWAS_ESTIMATOR[] =							//GWAS estimator names
+{ "", "A", "B"};
 extern const char* GD_ESTIMATOR[] =								//Genetic distance estimator names
 { "", "Nei1972", "Cavalli-Sforza1967", "Reynolds1983", "Nei1983", "Euclidean", "Goldstein1995", "Nei1974", "Roger1972", "Slatkin_Nei1973", "Slatkin_Weir1984", "Slatkin_Hudson1992", "Slatkin_Slatkin1995", "Slatkin_Hedrick2005", "Slatkin_Jost2008", "Slatkin_Huang2021_homo", "Slatkin_Huang2021_aneu", "Reynolds_Nei1973", "Reynolds_Weir1984", "Reynolds_Hudson1992", "Reynolds_Slatkin1995", "Reynolds_Hedrick2005", "Reynolds_Jost2008", "Reynolds_Huang2021_homo", "Reynolds_Huang2021_aneu" };
 extern const char* CLUSTER_METHOD[] = 							//Hierarchical method names
@@ -34,11 +47,13 @@ extern const char* CLUSTER_METHOD[] = 							//Hierarchical method names
 extern const char* FST_ESTIMATOR[] = 							//Fst estimator names
 { "", "Nei1973", "Weir1984", "Hudson1992", "Slatkin1995", "Hedrick2005", "Jost2008", "Huang2021_homo", "Huang2021_aneu" };
 extern const char* RELATEDNESS_ESTIMATOR[] = 					//Relatedness estimator names
-{ "", "Lynch1999", "Wang2002", "Thomas2010", "Li1993", "Queller1989", "Huang2016A", "Huang2016B", "Milligan2003", "Anderson2007", "Huang2014", "Huang2015", "Ritland1996_modified", "Loiselle1995_modified", "Ritland1996", "Loiselle1995", "Weir1996" };
+{ "", "Lynch1999", "Wang2002", "Thomas2010", "Li1993", "Queller1989", "Huang2016A", "Huang2016B", "Milligan2003", "Anderson2007", "Huang2014", "Huang2015", "Ritland1996_modified", "Loiselle1995_modified", "Ritland1996", "Loiselle1995", "Weir1996", "VanRaden2008" };
 extern const char* KINSHIP_ESTIMATOR[] = 						//Kinship estimator names
-{ "", "Ritland1996", "Loiselle1995", "Weir1996" };
+{ "", "Ritland1996", "Loiselle1995", "Weir1996", "VanRaden2008" };
 extern const char* DRE_MODEL[] = 								//Double-reduction model names
 { "", "rcs", "prcs", "ces", "pes" };
+extern const char* PLOIDY_NAME[] = 
+{ "", "Haploid", "Diploid", "Triploid", "Tetraploid", "Pentaploid", "Hexaploid", "Heptaploid", "Octoploid", "Nonaploid", "Decaploid", "Undecaploid", "Dodecaploid" };
 
 
 /* Virtual Memory */
@@ -71,21 +86,18 @@ extern uint* cryptTable;										//crypt table for calculate hash for genotypes
 extern int64 progress1, progress2;								//Progress value for read / write in a circle buffer
 extern atomic<int64>* state_lock;								//State of circle buffer
 extern int NBUF;												//CALC_THREAD_BUFFER * g_nthread_val;
-extern _thread int threadid;									//Thread index
+extern thread_local int threadid;									//Thread index
 
 /* Population info */
 
-extern void* ainds_;											//Individuals
-#define ainds (*(IND<REAL>***)&ainds_)
-
-extern void* apops_;											//Rearranged populations
-#define apops (*(POP<REAL>***)&apops_)
-
-extern void* aregs_;											//Rearranged regions
-#define aregs (*(POP<REAL>****)&aregs_)
-
-extern void* total_pop_;										//Total population
-#define total_pop (*(POP<REAL>**)&total_pop_)
+template<typename REAL>
+extern IND<REAL>** ainds;										//Individuals
+template<typename REAL>
+extern POP<REAL>** apops;										//Rearranged populations
+template<typename REAL>
+extern POP<REAL>*** aregs;										//Rearranged regions
+template<typename REAL>
+extern POP<REAL>* total_pop;									//Total population
 
 extern int npop;												//Number of populations
 extern int lreg;												//Level of regions
@@ -103,5 +115,4 @@ extern int64 sumvt;												//Total number of allele copies in all indivdiaul
 /* GPU */
 
 extern int nGPU;												//Number of GPU devices
-
 #undef extern 

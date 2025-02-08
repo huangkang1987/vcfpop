@@ -1,23 +1,21 @@
 # Draw barplot for population assignment results of vcfpop
+
 options(warn = -1)
 options(echo = FALSE)
 
-UseLibrary <- function(lib) 
-{
-  res <- eval(parse(text = paste('require(', lib, ', quietly = TRUE)', sep = '')))
-  if (res == FALSE)
-  {
+UseLibrary <- function(lib) {
+  if (!require(lib, character.only = TRUE, quietly = TRUE)) {
     install.packages(lib)
-    res <- eval(parse(text = paste('require(', lib, ', quietly = TRUE)', sep = '')))
-    if (res == FALSE)
-      stop(paste('Error: library ', lib, ' cannot be installed\n',  sep = ''))
+    if (!require(lib, character.only = TRUE, quietly = TRUE)) {
+      stop(paste('Error: library', lib, 'cannot be installed\n'))
+    }
   }
 }
 
-UseLibrary("ggplot2")
-UseLibrary("ggh4x")
-UseLibrary("paletteer")
-UseLibrary("cowplot")
+suppressWarnings(suppressMessages(UseLibrary("ggplot2")))
+suppressWarnings(suppressMessages(UseLibrary("ggh4x")))
+suppressWarnings(suppressMessages(UseLibrary("paletteer")))
+suppressWarnings(suppressMessages(UseLibrary("cowplot")))
 
 # set path here
 file <- paste(commandArgs(trailingOnly = TRUE), '.popas.txt', sep = '')

@@ -1,21 +1,19 @@
 # Draw scatter plot for PCoA results of vcfpop
+
 options(warn = -1)
 options(echo = FALSE)
 
-UseLibrary <- function(lib) 
-{
-  res <- eval(parse(text = paste('require(', lib, ', quietly = TRUE)', sep = '')))
-  if (res == FALSE)
-  {
+UseLibrary <- function(lib) {
+  if (!require(lib, character.only = TRUE, quietly = TRUE)) {
     install.packages(lib)
-    res <- eval(parse(text = paste('require(', lib, ', quietly = TRUE)', sep = '')))
-    if (res == FALSE)
-      stop(paste('Error: library ', lib, ' cannot be installed\n',  sep = ''))
+    if (!require(lib, character.only = TRUE, quietly = TRUE)) {
+      stop(paste('Error: library', lib, 'cannot be installed\n'))
+    }
   }
 }
 
-UseLibrary("ggplot2")
-UseLibrary("cowplot")
+suppressWarnings(suppressMessages(UseLibrary("ggplot2")))
+suppressWarnings(suppressMessages(UseLibrary("cowplot")))
 
 # set path here
 file <- paste(commandArgs(trailingOnly = TRUE), '.pcoa.txt', sep = '')
@@ -84,4 +82,4 @@ for (id in 1 : length(start))
 # save figure
 figfile <- paste(substr(file, 0, nchar(file) - 4), ".pdf", sep = '')
 ggsave(figfile, plot = tfig, width = sfigw, height = nfig * sfigh, limitsize = FALSE)
-cat(paste('\n', basename(figfile), '\n', sep='')
+cat(paste('\n', basename(figfile), '\n', sep=''))

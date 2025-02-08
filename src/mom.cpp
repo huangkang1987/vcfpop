@@ -19,15 +19,6 @@ template TARGET void MOMRelatednessAssign6<float >(int refmode, double* e, float
 template TARGET void MOMRelatednessAssign7<double>(int refmode, double* e, double* f, int* xx);
 template TARGET void MOMRelatednessAssign7<float >(int refmode, double* e, float * f, int* xx);
 
-/* Power of a real number */
-TARGET double mp(double base, int index)
-{
-	double re = base;
-	for(int i = 1; i < index; ++i)
-		re *= base;
-	return re;
-}
-
 /* Assign allele and frequency of polyploid method-of-moment estimator */
 template<typename REAL>
 TARGET void MOMRelatednessAssign(int p, int refmode, double* e, REAL* f, int* xx)

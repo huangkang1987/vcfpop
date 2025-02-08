@@ -1,7 +1,9 @@
 /* Load File Functions */
 
-#pragma once
 #include "vcfpop.h"
+
+template struct IND<double>;
+template struct IND<float >;
 
 template TARGET void CheckGenotypeId<double>();
 template TARGET void CheckGenotypeId<float >();
@@ -11,8 +13,6 @@ template TARGET void AssignInds<double>();
 template TARGET void AssignInds<float >();
 template TARGET void LoadFile<double>();
 template TARGET void LoadFile<float >();
-template struct IND<double>;
-template struct IND<float >;
 
 template TARGET void IND<double>::genepop(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
 template TARGET void IND<float >::genepop(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt);
@@ -64,7 +64,7 @@ TARGET void CheckGenotypeId()
 		for (int i = 0; i < nind; ++i)
 		{
 			int gid1 = rt.Read();
-			int gid2 = ainds[i]->GetGenotypeId(l);
+			int gid2 = ainds<REAL>[i]->GetGenotypeId(l);
 			if (gid1 != gid2 || gid1 >= ngeno || gid1 < 0)
 				Exit("\nError, genotype id mismatch.");
 		}
@@ -75,11 +75,11 @@ TARGET void CheckGenotypeId()
 template<typename REAL>
 TARGET void AssignIndSub(int indid, int popid, int& namelen, int& nind2)
 {
-	if (ainds[indid]->popid != 0)
-		Exit("\nError: populations %s and %s have the same individual %s.", pop<REAL>[ainds[indid]->popid].name, pop<REAL>[popid].name, ainds[indid]->name);
+	if (ainds<REAL>[indid]->popid != 0)
+		Exit("\nError: populations %s and %s have the same individual %s.", pop<REAL>[ainds<REAL>[indid]->popid].name, pop<REAL>[popid].name, ainds<REAL>[indid]->name);
 
-	ainds[indid]->popid = (ushort)popid;
-	namelen += (int)strlen(ainds[indid]->name) + 1;
+	ainds<REAL>[indid]->popid = (ushort)popid;
+	namelen += (int)strlen(ainds<REAL>[indid]->name) + 1;
 	nind2++;
 }
 
@@ -91,10 +91,10 @@ TARGET void AssignInds()
 	TABLE<HASH, int> name2id(false, NULL);
 	for (int i = 0; i < nind; ++i)
 	{
-		ainds[i]->popid = 0;
-		HASH ha = HashString(ainds[i]->name);
+		ainds<REAL>[i]->popid = 0;
+		HASH ha = HashString(ainds<REAL>[i]->name);
 		if (name2id.ContainsKey(ha))
-			Exit("\nError: individiuals #%d and #%d have the same name %s.", name2id[ha], i, ainds[i]->name);
+			Exit("\nError: individiuals #%d and #%d have the same name %s.", name2id[ha], i, ainds<REAL>[i]->name);
 		name2id[ha] = i;
 	}
 
@@ -142,23 +142,22 @@ TARGET void AssignInds()
 				if (v2 <= 0 || v2 > nind)
 					Exit("\nError: the second number of indtext %s for population %s exceeds range.", pop<REAL>[pp].names[j2], pop<REAL>[pp].name);
 
-				int vmin = Min(v1, v2), vmax = Max(v1, v2);
+				int vmin = std::min(v1, v2), vmax = std::max(v1, v2);
 				for (int i = vmin - 1; i <= vmax - 1; ++i)
 					AssignIndSub<REAL>(i, pp, namelen, nind2);
 			}
 		}
 
 		if (pop<REAL>[pp].nind == 0) for (int i = 0; i < nind; ++i)
-			if (ainds[i]->popid == pp)
+			if (ainds<REAL>[i]->popid == pp)
 			{
-				ainds[i]->popid = (ushort)pp;
-				namelen += (int)strlen(ainds[i]->name) + 1;
+				ainds<REAL>[i]->popid = (ushort)pp;
+				namelen += (int)strlen(ainds<REAL>[i]->name) + 1;
 				nind2++;
 			}
 
 		//Allocate individuals names
-		delete[] pop<REAL>[pp].names;
-		pop<REAL>[pp].names = NULL;
+		DEL(pop<REAL>[pp].names);
 		pop<REAL>[pp].nind = 0;
 	}
 
@@ -171,8 +170,12 @@ TARGET void LoadFile()
 {
 	EvaluationBegin();
 
-	usephase = haplotype || (slide && (slide_estimator_val[12] || slide_estimator_val[13]));
-	uselocpos = haplotype || slide || (diversity_filter && f_windowsize_b && abs(g_format_val) <= BCF) || (convert && convert_format_val[9]);
+	usephase = haplotype || 
+		(decay && (decay_estimator_val[1] || decay_estimator_val[3])) || 
+		(block && (block_estimator_val[1] || block_estimator_val[3]));
+	uselocpos = haplotype || slide || 
+		(diversity_filter && f_windowsize_b && abs(g_format_val) <= BCF) || 
+		(convert && convert_format_val[9]) || (decay) || (block) || (gwas);
 
 	//vcf/bcf format
 	if (abs(g_format_val) <= BCF)
@@ -227,7 +230,7 @@ TARGET void LoadFile()
 						title_buflen <<= 1;
 						char* tbuf2 = new char[title_buflen];
 						strcpy(tbuf2, vcf_header);
-						delete[] vcf_header;
+						DEL(vcf_header);
 					}
 					char* tbuf = StrNextIdx(header[i][j], '\t', 9);
 					int64 tlen = readlen - (tbuf - header[i][j]);
@@ -259,10 +262,10 @@ TARGET void LoadFile()
 		for (int i = 0; i < g_input_row; ++i)
 		{
 			for (int j = 0; j < g_input_col; ++j)
-				delete[] header[i][j];
-			delete[] header[i];
+				DEL(header[i][j]);
+			DEL(header[i]);
 		}
-		delete[] header;
+		DEL(header);
 
 		//create new locus list
 		new (&locus_list) VMEMORY(1);
@@ -272,7 +275,7 @@ TARGET void LoadFile()
 		vcf_header[title_len + 1] = '\0';
 		nind = CountChar(vcf_header, '\t');
 		char* title = vcf_header + 1;
-		ainds = new IND<REAL>*[nind];
+		ainds<REAL> = new IND<REAL>*[nind];
 
 		//construct geno_bucket
 		geno_bucket.CreateBucket();
@@ -282,11 +285,11 @@ TARGET void LoadFile()
 		int indc = 0;
 		do
 		{
-			individual_memory->Alloc(ainds[indc], 1);
-			new(ainds[indc]) IND<REAL>(title, indc);
+			individual_memory->Alloc(ainds<REAL>[indc], 1);
+			new(ainds<REAL>[indc]) IND<REAL>(title, indc);
 			indc++;
 		} while (*title);
-		delete[] vcf_header; vcf_header = (char*)"\0";
+		DEL(vcf_header); vcf_header = (char*)"\0";
 		load_buf = new INCBUFFER[NBUF];
 
 		AssignInds<REAL>();
@@ -324,16 +327,16 @@ TARGET void LoadFile()
 				genotype_count_offset[l] = GT;
 				KT += locus[l].k;
 				GT += locus[l].ngeno;
-				maxK = Max((int)locus[l].k, maxK);
-				maxG = Max((int)locus[l].ngeno, maxG);
+				maxK = std::max((int)locus[l].k, maxK);
+				maxG = std::max((int)locus[l].ngeno, maxG);
 			}
 
 			// use allele frequency only 
 			for (uint i = 0; i < pop<REAL>.size; ++i)
 			{
 				pop<REAL>[i].AllocFreq();
-				delete[] pop<REAL>[i].loc_stat1;
-				delete[] pop<REAL>[i].genocount;
+				DEL(pop<REAL>[i].loc_stat1);
+				DEL(pop<REAL>[i].genocount);
 				pop<REAL>[i].genocount = NULL;
 				pop<REAL>[i].loc_stat1 = NULL;
 			}
@@ -344,12 +347,12 @@ TARGET void LoadFile()
 			else
 				RunThreads(&LoadBCF<REAL>, &LoadBCFGuard<REAL>, NULL, TOTLEN_COMPRESS, TOTLEN_COMPRESS, "\nLoading BCF:\n", g_nthread_val, true, g_progress_val);
 
-			delete[] allele_freq_offset;
-			delete[] genotype_count_offset;
+			DEL(allele_freq_offset);
+			DEL(genotype_count_offset);
 			allele_freq_offset = genotype_count_offset = NULL;
 		}
 
-		delete[] load_buf;
+		DEL(load_buf);
 	}
 	//non-vcf format: genepop|spagedi|cervus|arlequin|structure|polygene|polyrelatedness|genodive|plink
 	else
@@ -370,7 +373,7 @@ TARGET void LoadFile()
 					FSeek(FILE_INFO[i][j].handle, offset, SEEK_SET);
 				}
 			}
-			delete[] buf;
+			DEL(buf);
 		}
 
 		if (ad) Exit("\nError: non-vcf and non-bcf format are incompatible with allelic depth (-ad) option.\n");
@@ -436,8 +439,8 @@ TARGET void LoadFile()
 		new(&slocus[l]) SLOCUS(nlocus_memory[threadid], locus[l]);
 	}
 
-	delete[] locus;
-	delete[] locus_memory;
+	DEL(locus);
+	DEL(locus_memory);
 	locus_memory = nlocus_memory;
 	useslocus = true;
 	CheckGenotypeId<REAL>();
@@ -491,7 +494,7 @@ THREAD2(LoadGenepop)
 	if (nind == 0)
 		Exit("\nError: there are no individuals in this file.\n");
 
-	ainds = new IND<REAL>* [nind];
+	ainds<REAL> = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -515,9 +518,9 @@ THREAD2(LoadGenepop)
 		{
 			buf.Gets(FILE_INFO[0][0].handle);
 			if (LwrLineCmp("pop", buf.data) == 0) continue;
-			if (j != 0) individual_memory->Alloc(ainds[i], 1);
+			if (j != 0) individual_memory->Alloc(ainds<REAL>[i], 1);
 			/*   2   */
-			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
+			new(ainds<REAL>[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : FILE_INFO[0][0].decompressed_len);
 		}
@@ -544,11 +547,11 @@ THREAD2(LoadGenepop)
 	IndexAlleleLength();
 
 	/*   4   */
-	delete[] wt;
-	delete[] gatab;
-	delete[] gtab;
-	delete[] nvcf_gfid;
-	delete[] nvcf_memory;
+	DEL(wt);
+	DEL(gatab);
+	DEL(gtab);
+	DEL(nvcf_gfid);
+	DEL(nvcf_memory);
 }
 
 /* load from Spagedi input format */
@@ -597,7 +600,7 @@ THREAD2(LoadSpagedi)
 
 	FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
 
-	ainds = new IND<REAL>* [nind];
+	ainds<REAL> = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -620,9 +623,9 @@ THREAD2(LoadSpagedi)
 		{
 			buf.Gets(FILE_INFO[0][0].handle);
 			if (LwrLineCmp("end", buf.data) == 0) break;
-			if (j != 0) individual_memory->Alloc(ainds[i], 1);
+			if (j != 0) individual_memory->Alloc(ainds<REAL>[i], 1);
 			/*   2   */
-			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
+			new(ainds<REAL>[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -650,11 +653,11 @@ THREAD2(LoadSpagedi)
 	IndexAlleleLength();
 
 	/*   4   */
-	delete[] wt;
-	delete[] gatab;
-	delete[] gtab;
-	delete[] nvcf_gfid;
-	delete[] nvcf_memory;
+	DEL(wt);
+	DEL(gatab);
+	DEL(gtab);
+	DEL(nvcf_gfid);
+	DEL(nvcf_memory);
 }
 
 /* load from Cervus input format */
@@ -689,7 +692,7 @@ THREAD2(LoadCervus)
 
 	FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
 
-	ainds = new IND<REAL>* [nind];
+	ainds<REAL> = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -711,9 +714,9 @@ THREAD2(LoadCervus)
 		for (int i = 0; i < nind; )
 		{
 			if (buf.Gets(FILE_INFO[0][0].handle) <= 3)  continue;
-			if (j != 0) individual_memory->Alloc(ainds[i], 1);
+			if (j != 0) individual_memory->Alloc(ainds<REAL>[i], 1);
 			/*   2   */
-			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
+			new(ainds<REAL>[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -744,11 +747,11 @@ THREAD2(LoadCervus)
 	IndexAlleleLength();
 
 	/*   4   */
-	delete[] wt;
-	delete[] gatab;
-	delete[] gtab;
-	delete[] nvcf_gfid;
-	delete[] nvcf_memory;
+	DEL(wt);
+	DEL(gatab);
+	DEL(gtab);
+	DEL(nvcf_gfid);
+	DEL(nvcf_memory);
 }
 
 /* load from Arlequin input format */
@@ -812,7 +815,7 @@ THREAD2(LoadArlequin)
 	if (nind == 0)
 		Exit("\nError: there are no individuals in this file.\n");
 
-	ainds = new IND<REAL>* [nind];
+	ainds<REAL> = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -850,9 +853,9 @@ THREAD2(LoadArlequin)
 			{
 				bufp = buf.data + strlen(buf.data);
 				if (buf.Gets(FILE_INFO[0][0].handle, bufp) == 0) break;
-				if (j != 0) individual_memory->Alloc(ainds[i], 1);
+				if (j != 0) individual_memory->Alloc(ainds<REAL>[i], 1);
 				/*   2   */
-				new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
+				new(ainds<REAL>[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 				i++;
 				PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 			}
@@ -875,11 +878,11 @@ THREAD2(LoadArlequin)
 	IndexAlleleLength();
 
 	/*   4   */
-	delete[] wt;
-	delete[] gatab;
-	delete[] gtab;
-	delete[] nvcf_gfid;
-	delete[] nvcf_memory;
+	DEL(wt);
+	DEL(gatab);
+	DEL(gtab);
+	DEL(nvcf_gfid);
+	DEL(nvcf_memory);
 }
 
 /* load from Structure input format */
@@ -960,7 +963,7 @@ THREAD2(LoadStructure)
 	if (nind == 0)
 		Exit("\nError: there are no individuals in this file.\n");
 
-	ainds = new IND<REAL>* [nind];
+	ainds<REAL> = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -1019,9 +1022,9 @@ THREAD2(LoadStructure)
 			}
 
 			//end line
-			if (j != 0) individual_memory->Alloc(ainds[i], 1);
+			if (j != 0) individual_memory->Alloc(ainds<REAL>[i], 1);
 			/*   2   */
-			new(ainds[i]) IND<REAL>(bufp, j, i, gtab, gatab, wt);
+			new(ainds<REAL>[i]) IND<REAL>(bufp, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -1055,11 +1058,11 @@ THREAD2(LoadStructure)
 	IndexAlleleLength();
 
 	/*   4   */
-	delete[] wt;
-	delete[] gatab;
-	delete[] gtab;
-	delete[] nvcf_gfid;
-	delete[] nvcf_memory;
+	DEL(wt);
+	DEL(gatab);
+	DEL(gtab);
+	DEL(nvcf_gfid);
+	DEL(nvcf_memory);
 }
 
 /* load from PolyGene input format */
@@ -1091,7 +1094,7 @@ THREAD2(LoadPolyGene)
 
 	FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
 
-	ainds = new IND<REAL>* [nind];
+	ainds<REAL> = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -1114,9 +1117,9 @@ THREAD2(LoadPolyGene)
 		for (int i = 0; i < nind; )
 		{
 			buf.Gets(FILE_INFO[0][0].handle);
-			if (j != 0) individual_memory->Alloc(ainds[i], 1);
+			if (j != 0) individual_memory->Alloc(ainds<REAL>[i], 1);
 			/*   2   */
-			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
+			new(ainds<REAL>[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -1141,12 +1144,12 @@ THREAD2(LoadPolyGene)
 	IndexAlleleLength();
 
 	/*   4   */
-	delete[] locus_name_b;
-	delete[] wt;
-	delete[] gatab;
-	delete[] gtab;
-	delete[] nvcf_gfid;
-	delete[] nvcf_memory;
+	DEL(locus_name_b);
+	DEL(wt);
+	DEL(gatab);
+	DEL(gtab);
+	DEL(nvcf_gfid);
+	DEL(nvcf_memory);
 }
 
 /* load from PolyRelatedness input format */
@@ -1215,7 +1218,7 @@ THREAD2(LoadPolyRelatedness)
 	if (nind == 0)
 		Exit("\nError: there are no individuals in this file.\n");
 
-	ainds = new IND<REAL>* [nind];
+	ainds<REAL> = new IND<REAL>* [nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -1239,9 +1242,9 @@ THREAD2(LoadPolyRelatedness)
 		{
 			buf.Gets(FILE_INFO[0][0].handle);
 			if (LwrLineCmp("//end of file", buf.data) == 0) break;
-			if (j != 0) individual_memory->Alloc(ainds[i], 1);
+			if (j != 0) individual_memory->Alloc(ainds<REAL>[i], 1);
 			/*   2   */
-			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
+			new(ainds<REAL>[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -1267,12 +1270,12 @@ THREAD2(LoadPolyRelatedness)
 	IndexAlleleLength();
 
 	/*   4   */
-	if (locus_name_b) delete[] locus_name_b;
-	delete[] wt;
-	delete[] gatab;
-	delete[] gtab;
-	delete[] nvcf_gfid;
-	delete[] nvcf_memory;
+	DEL(locus_name_b);
+	DEL(wt);
+	DEL(gatab);
+	DEL(gtab);
+	DEL(nvcf_gfid);
+	DEL(nvcf_memory);
 }
 
 /* load from Genodive input format */
@@ -1327,7 +1330,7 @@ THREAD2(LoadGenoDive)
 	}
 
 	int64 ind_pos = FTell(FILE_INFO[0][0].handle); //backup position
-	ainds = new IND<REAL>* [nind];
+	ainds<REAL> = new IND<REAL>* [nind];
 
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
@@ -1351,9 +1354,9 @@ THREAD2(LoadGenoDive)
 		for (int i = 0; i < nind; )
 		{
 			buf.Gets(FILE_INFO[0][0].handle);
-			if (j != 0) individual_memory->Alloc(ainds[i], 1);
+			if (j != 0) individual_memory->Alloc(ainds<REAL>[i], 1);
 			/*   2   */
-			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
+			new(ainds<REAL>[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -1379,12 +1382,12 @@ THREAD2(LoadGenoDive)
 	IndexAlleleLength();
 
 	/*   4   */
-	if (locus_name_b) delete[] locus_name_b;
-	delete[] wt;
-	delete[] gatab;
-	delete[] gtab;
-	delete[] nvcf_gfid;
-	delete[] nvcf_memory;
+	DEL(locus_name_b);
+	DEL(wt);
+	DEL(gatab);
+	DEL(gtab);
+	DEL(nvcf_gfid);
+	DEL(nvcf_memory);
 }
 
 /* load from Plink input format */
@@ -1454,7 +1457,7 @@ THREAD2(LoadPlink)
 
 	FSeek(FILE_INFO[0][0].handle, ind_pos, SEEK_SET);
 
-	ainds = new IND<REAL>*[nind];
+	ainds<REAL> = new IND<REAL>*[nind];
 	/*   1   */
 	ushort** gatab = new ushort * [nloc];
 	GENOTYPE** gtab = new GENOTYPE * [nloc];
@@ -1476,9 +1479,9 @@ THREAD2(LoadPlink)
 		for (int i = 0; i < nind; )
 		{
 			if (buf.Gets(FILE_INFO[0][0].handle) <= 3)  continue;
-			if (j != 0) individual_memory->Alloc(ainds[i], 1);
+			if (j != 0) individual_memory->Alloc(ainds<REAL>[i], 1);
 			/*   2   */
-			new(ainds[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
+			new(ainds<REAL>[i]) IND<REAL>(buf.data, j, i, gtab, gatab, wt);
 			i++;
 			PROGRESS_VALUE = FTell(FILE_INFO[0][0].handle) + (j ? 0 : TOTLEN_DECOMPRESS);
 		}
@@ -1524,11 +1527,11 @@ THREAD2(LoadPlink)
 
 	/*   4   */
 	if (fmap) FClose(fmap);
-	delete[] wt;
-	delete[] gatab;
-	delete[] gtab;
-	delete[] nvcf_gfid;
-	delete[] nvcf_memory;
+	DEL(wt);
+	DEL(gatab);
+	DEL(gtab);
+	DEL(nvcf_gfid);
+	DEL(nvcf_memory);
 }
 
 /* Indexing integer alleles to zero based for non-vcf input, with allele identifier being the size */
@@ -1594,7 +1597,7 @@ TARGET void IndexAlleleLength()
 
 	}
 
-	delete[] aftab;
+	DEL(aftab);
 }
 
 /* Process lines from memory */
@@ -1755,7 +1758,7 @@ THREAD2(LoadBCF)
 			geno_bucket.offset[ii] = off;//patch
 			GENO_WRITER wt(ii);
 			for (int j = 0; j < nind; ++j)
-				ainds[j]->AddBCFGenotype(ii, gt, gq, dp, adval, maxv, asize, gqlen, dplen, adlen, depth, gfid, gtab, gatab, wt);
+				ainds<REAL>[j]->AddBCFGenotype(ii, gt, gq, dp, adval, maxv, asize, gqlen, dplen, adlen, depth, gfid, gtab, gatab, wt);
 			wt.FinishWrite();
 
 			//add missing at ploidy 1-10
@@ -1770,7 +1773,7 @@ THREAD2(LoadBCF)
 				ad_bucket.AddOffsetAD((uint64)CeilLog2((int)locus[ii].maxdepth + 1), ii, locus[ii].k);
 
 				IND<REAL>::SetAlleleDepth(ii, depth2, nind * locus[ii].k, 0u);
-				delete[] depth2;
+				DEL(depth2);
 			}
 
 			geno_bucket.offset[ii] = off;//patch
@@ -1847,7 +1850,7 @@ THREAD2(LoadBCF)
 
 				//QUAL
 				float f1 = FGetFloat(FILE_INFO[i][j].handle);
-				qual = Min(f1, qual);
+				qual = std::min(f1, qual);
 
 				//#INFO
 				int ninfo = (int)FGetUshort(FILE_INFO[i][j].handle);
@@ -2193,7 +2196,7 @@ THREAD2(LoadVCF)
 							int len = (int)(src1 - genostr);
 							int v = CountPloidy(genostr, len);
 							if (v <= 0 || v > N_MAX_PLOIDY)
-								Exit("\nError: ploidy level greater than %d in individual %s at %d-th locus.\n", N_MAX_PLOIDY, ainds[count]->name, ii + 1);
+								Exit("\nError: ploidy level greater than %d in individual %s at %d-th locus.\n", N_MAX_PLOIDY, ainds<REAL>[count]->name, ii + 1);
 
 							//add missing at ploidy v
 							if (!usedploidy[v])
@@ -2286,7 +2289,7 @@ THREAD2(LoadVCF)
 			GENO_WRITER wt(ii);
 
 			for (int j = 0; j < nind; ++j)
-				ainds[j]->AddVCFGenotype(str, ii, depth, gfid, gtab, gatab, wt);
+				ainds<REAL>[j]->AddVCFGenotype(str, ii, depth, gfid, gtab, gatab, wt);
 			wt.FinishWrite();
 
 			//add missing at ploidy 1-10
@@ -2299,7 +2302,7 @@ THREAD2(LoadVCF)
 			{
 				ad_bucket.AddOffsetAD((uint64)CeilLog2((int)locus[ii].maxdepth + 1), ii, locus[ii].k);
 				IND<REAL>::SetAlleleDepth(ii, depth2, nind * locus[ii].k, 0u);
-				delete[] depth2;
+				DEL(depth2);
 			}
 
 			geno_bucket.offset[ii] = off;//patch
@@ -2576,8 +2579,8 @@ TARGET void ReplaceMissingGenotypes()
 		wt.FinishWrite();
 	}
 
-	delete[] vmin_typed;
-	delete[] vmin_all;
+	DEL(vmin_typed);
+	DEL(vmin_all);
 	VLA_DELETE(ploidytab);
 	VLA_DELETE(nallelestab);
 }
@@ -2634,7 +2637,7 @@ TARGET void IND<REAL>::genepop(char* t, bool iscount, GENOTYPE** gtab, ushort** 
 			alleles[1] = (ushort)ReadIntegerKeep(genstr + 3);
 		}
 		else
-			Exit("\nError: Format error in individual %s at locus %s.\n", name, locus[l].GetName());
+			Exit("\nError: Format error in individual %s at locus %s.\n", name, locus[l].GetNameStr(t));
 
 		if (alleles[0] == '\0' && alleles[1] == '\0')
 		{
@@ -2722,9 +2725,9 @@ TARGET void IND<REAL>::spagedi(char* t, bool iscount, GENOTYPE** gtab, ushort** 
 			if (alleles[v] == 0)
 				ismissing = true;
 			if (++v > N_MAX_PLOIDY)
-				Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetName());
+				Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
 		}
-		maxv = Max(v, maxv);
+		maxv = std::max(v, maxv);
 
 		if (!iscount && ismissing)
 		{
@@ -2897,7 +2900,7 @@ TARGET void IND<REAL>::arlequin(char* t, bool iscount, GENOTYPE** gtab, ushort**
 		TABLE<HASH, uint>& gfid = nvcf_gfid[l];
 
 		if (v > N_MAX_PLOIDY)
-			Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetName());
+			Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
 
 		ushort alleles[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
 		bool ismissing = false;
@@ -2988,7 +2991,7 @@ TARGET void IND<REAL>::structure(char* t, bool iscount, GENOTYPE** gtab, ushort*
 		TABLE<HASH, uint>& gfid = nvcf_gfid[l];
 
 		if (v > N_MAX_PLOIDY)
-			Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetName());
+			Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
 
 		ushort alleles[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
 		bool ismissing = false;
@@ -3167,9 +3170,9 @@ TARGET void IND<REAL>::polyrelatedness(char* t, bool iscount, GENOTYPE** gtab, u
 			if (alleles[v] == genotype_missing)
 				ismissing = true;
 			if (alleles[v] == genotype_ambiguous)
-				Exit("\nError: do not support ambiguous alleles in individual %s at locus %s\n.", name, locus[l].GetName());
+				Exit("\nError: do not support ambiguous alleles in individual %s at locus %s\n.", name, locus[l].GetNameStr(t));
 			if (++v > N_MAX_PLOIDY)
-				Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetName());
+				Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
 		}
 
 		if (ismissing) SetFF(alleles, v);
@@ -3258,9 +3261,9 @@ TARGET void IND<REAL>::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort**
 			if (alleles[v] == 0)
 				ismissing = true;
 			if (++v > N_MAX_PLOIDY)
-				Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetName());
+				Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
 		}
-		maxv = Max(v, maxv);
+		maxv = std::max(v, maxv);
 
 		if (!iscount && ismissing)
 		{
@@ -3312,7 +3315,6 @@ template<typename REAL>
 TARGET void IND<REAL>::plink(char* t, bool iscount, GENOTYPE** gtab, ushort** gatab, GENO_WRITER* wt)
 {
 	ReplaceChar(t, '\t', ' ');
-	int extracol = genotype_extracol;
 	name = StrNextIdx(t, ' ', 1) + 1;
 	char* genstr = NULL;
 
@@ -3431,7 +3433,7 @@ TARGET void IND<REAL>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*
 		return;
 	}
 
-	if (!usephase) Sort(alleles, v); //phaseed, do not sort alleles
+	if (!usephase) Sort(alleles, v); //phased, do not sort alleles
 
 	/*******************************************************************/
 
@@ -3478,7 +3480,7 @@ TARGET void IND<REAL>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*
 		for (int j = 0; j < locus[l].k; ++j)
 		{
 			*depth = ReadBinInteger(adstr, adlen);
-			maxdepth = Max(*depth, maxdepth);
+			maxdepth = std::max(*depth, maxdepth);
 			depth++;
 		}
 		locus[l].maxdepth = maxdepth;
@@ -3510,13 +3512,13 @@ TARGET void IND<REAL>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<
 	}
 
 	if (fmtc == 0)
-		Exit("\nError: Format error in individual %s at locus %s_%s.\n", name, loc.GetChrom(), loc.GetName());
+		Exit("\nError: Format error in individual %s at locus %s_%s.\n", name, loc.GetChrom(), loc.GetNameStr(line));
 
 	//convert hash
 	char* genostr = GetTagValue(linebegin, gtid);
 	int v = CountPloidy(genostr);
 	if (v > N_MAX_PLOIDY) 
-		Exit("\nError: ploidy level greater than %d in individual %s at locus %s_%s.\n", N_MAX_PLOIDY, name, loc.GetChrom(), loc.GetName());
+		Exit("\nError: ploidy level greater than %d in individual %s at locus %s_%s.\n", N_MAX_PLOIDY, name, loc.GetChrom(), loc.GetNameStr(line));
 	
 	//if use phased genotype, exclude unphased genotype as missing
 	if (usephase && ContainsChar(genostr, '/'))
@@ -3579,7 +3581,7 @@ TARGET void IND<REAL>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<
 			for (int j = 0; j < locus[l].k; ++j)
 			{
 				*depth = ReadInteger(++adstr);
-				maxdepth = Max(*depth, maxdepth);
+				maxdepth = std::max(*depth, maxdepth);
 				depth++;
 			}
 			locus[l].maxdepth = maxdepth;
@@ -3598,51 +3600,4 @@ TARGET char* IND<REAL>::GetTagValue(char* re, int tagid)
 	for (int i = 0; i < tagid; ++i)
 		while (*re++);
 	return re;
-}
-
-/* Count ploidy level from VCF genotype string */
-__forceinline TARGET int CountPloidy(char* str)
-{
-	if (str[0] == '\0') return 0;
-	int count = 1;
-	for (int i = 1; str[i]; ++i)
-		count += (str[i] == '|') | (str[i] == '/');
-	return count;
-}
-
-/* Count ploidy level from VCF genotype string */
-__forceinline TARGET int CountPloidy(char* str, int len)
-{
-	int count = 1;
-	switch (len)
-	{
-	case  0: return 0;
-	default :
-	{
-		for (int i = 1; i < len - 1; ++i)
-			count += (str[i] == '|') | (str[i] == '/');
-		return count;
-	}
-	case 20: count += (str[18] == '|') | (str[18] == '/');
-	case 19: count += (str[17] == '|') | (str[17] == '/');
-	case 18: count += (str[16] == '|') | (str[16] == '/');
-	case 17: count += (str[15] == '|') | (str[15] == '/');
-	case 16: count += (str[14] == '|') | (str[14] == '/');
-	case 15: count += (str[13] == '|') | (str[13] == '/');
-	case 14: count += (str[12] == '|') | (str[12] == '/');
-	case 13: count += (str[11] == '|') | (str[11] == '/');
-	case 12: count += (str[10] == '|') | (str[10] == '/');
-	case 11: count += (str[ 9] == '|') | (str[ 9] == '/');
-	case 10: count += (str[ 8] == '|') | (str[ 8] == '/');
-	case  9: count += (str[ 7] == '|') | (str[ 7] == '/');
-	case  8: count += (str[ 6] == '|') | (str[ 6] == '/');
-	case  7: count += (str[ 5] == '|') | (str[ 5] == '/');
-	case  6: count += (str[ 4] == '|') | (str[ 4] == '/');
-	case  5: count += (str[ 3] == '|') | (str[ 3] == '/');
-	case  4: count += (str[ 2] == '|') | (str[ 2] == '/');
-	case  3: count += (str[ 1] == '|') | (str[ 1] == '/');
-	case  2: ;
-	case  1: ;
-	}
-	return count;
 }

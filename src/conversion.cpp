@@ -1,6 +1,5 @@
 /* File Conversion Functions */
 
-#pragma once
 #include "vcfpop.h"
 
 template TARGET void ConvertFile<double>();
@@ -82,9 +81,9 @@ TARGET void ConvertFile()
 		}
 
 		free(conversion_string);
-		delete[] conversion_memory2;
-		delete[] conversion_memory;
-		delete[] convert_buf;
+		DEL(conversion_memory2);
+		DEL(conversion_memory);
+		DEL(convert_buf);
 	}
 
 	EvaluationEnd("File conversion");
@@ -98,7 +97,7 @@ THREAD2(ConvertGenepopGuard)
 	{
 		GUARD_BEGIN
 
-		if (ii == 0 || rinds[ii]->popid != rinds[ii - 1]->popid)
+		if (ii == 0 || rinds<REAL>[ii]->popid != rinds<REAL>[ii - 1]->popid)
 			fprintf(convert_file, "pop\r\n");
 
 		fwrite(convert_buf[ii % NBUF], (int)strlen(convert_buf[ii % NBUF]), 1, convert_file);
@@ -114,23 +113,23 @@ THREAD2(ConvertArlequinGuard)
 	{
 		GUARD_BEGIN
 
-		if (ii == 0 || rinds[ii]->popid != rinds[ii - 1]->popid)
+		if (ii == 0 || rinds<REAL>[ii]->popid != rinds<REAL>[ii - 1]->popid)
 		{
-			ushort popid = (ushort)rinds[ii]->popid;
+			ushort popid = (ushort)rinds<REAL>[ii]->popid;
 			if (ii) fprintf(convert_file, "\t\t}\r\n\r\n");
 
-			int noutput = apops[popid]->nind;
+			int noutput = apops<REAL>[popid]->nind;
 			if (convert_mode_val >= 4)
 			{
 				noutput = 0;
-				for (int j = 0; j < apops[popid]->nind; ++j)
+				for (int j = 0; j < apops<REAL>[popid]->nind; ++j)
 				{
-					IND<REAL>* ind = apops[popid]->inds[j];
+					IND<REAL>* ind = apops<REAL>[popid]->inds[j];
 					noutput += ind->vmax <= 2 ? 1 : ind->vmax / 2;
 				}
 			}
 			fprintf(convert_file, "\t\tSampleName=\"%s\"\r\n\t\tSampleSize=%d\r\n\t\tSampleData={\r\n",
-				apops[popid]->name, noutput);
+				apops<REAL>[popid]->name, noutput);
 		}
 
 		fwrite(convert_buf[ii % NBUF], (int)strlen(convert_buf[ii % NBUF]), 1, convert_file);
@@ -225,7 +224,7 @@ THREAD2(ConvertGenepopInd)
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND<REAL>& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds<REAL>[ii];
 
 		switch (convert_mode_val)
 		{
@@ -244,7 +243,7 @@ THREAD2(ConvertGenepopInd)
 		}
 		case 3://choose
 		{
-			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 			AppendString(str, ind.name);
 			AppendString(str, ",");
 
@@ -301,7 +300,7 @@ THREAD2(ConvertGenepopInd)
 
 			for (int j = 0; j < nsplit2; j += 2)
 			{
-				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 				AppendString(str, ind.name);
 				AppendString(str, "A,"); str[-2] += j / 2;
 
@@ -357,7 +356,7 @@ TARGET void ConvertSpagedi(int ntot, bool& isfirst)
 		noutput = 0;
 		for (int j = 0; j < nind; ++j)
 		{
-			IND<REAL>* ind = ainds[j];
+			IND<REAL>* ind = ainds<REAL>[j];
 			noutput += ind->vmax <= 2 ? 1 : ind->vmax / 2;
 		}
 	}
@@ -394,7 +393,7 @@ THREAD2(ConvertSpagediInd)
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND<REAL>& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds<REAL>[ii];
 
 		switch (convert_mode_val)
 		{
@@ -404,7 +403,7 @@ THREAD2(ConvertSpagediInd)
 		{
 			AppendString(str, ind.name);
 			AppendString(str, "\t");
-			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 
 			for (int64 l = 0; l < nloc; ++l)
 				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
@@ -414,10 +413,10 @@ THREAD2(ConvertSpagediInd)
 		}
 		case 3://choose
 		{
-			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 			AppendString(str, ind.name);
 			AppendString(str, "\t");
-			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 
 			for (int64 l = 0; l < nloc; ++l)
 			{
@@ -446,7 +445,7 @@ THREAD2(ConvertSpagediInd)
 			{
 				AppendString(str, ind.name);
 				AppendString(str, "A\t"); str[-2] += j / 2;
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 
 				for (int64 l = 0; l < nloc; ++l)
 				{
@@ -473,10 +472,10 @@ THREAD2(ConvertSpagediInd)
 
 			for (int j = 0; j < nsplit2; j += 2)
 			{
-				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 				AppendString(str, ind.name);
 				AppendString(str, "A\t"); str[-2] += j / 2;
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 
 				for (int64 l = 0; l < nloc; ++l)
 				{
@@ -550,7 +549,7 @@ THREAD2(ConvertCervusInd)
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND<REAL>& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds<REAL>[ii];
 
 		switch (convert_mode_val)
 		{
@@ -560,7 +559,7 @@ THREAD2(ConvertCervusInd)
 		{
 			AppendString(str, ind.name);
 			AppendString(str, ",");
-			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 
 			for (int64 l = 0; l < nloc; ++l)
 				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
@@ -570,10 +569,10 @@ THREAD2(ConvertCervusInd)
 		}
 		case 3://choose
 		{
-			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 			AppendString(str, ind.name);
 			AppendString(str, ",");
-			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 
 			for (int64 l = 0; l < nloc; ++l)
 			{
@@ -602,7 +601,7 @@ THREAD2(ConvertCervusInd)
 			{
 				AppendString(str, ind.name);
 				AppendString(str, "A,"); str[-2] += j / 2;
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 
 				for (int64 l = 0; l < nloc; ++l)
 				{
@@ -629,10 +628,10 @@ THREAD2(ConvertCervusInd)
 
 			for (int j = 0; j < nsplit2; j += 2)
 			{
-				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 				AppendString(str, ind.name);
 				AppendString(str, "A,"); str[-2] += j / 2;
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 
 				for (int64 l = 0; l < nloc; ++l)
 				{
@@ -706,7 +705,7 @@ TARGET void ConvertArlequin(int ntot, bool& isfirst)
 	fprintf(convert_file, "[[Structure]]\r\n\r\n\t\tStructureName=\"Region\"\r\n\t\tNbGroups=%d\r\n\r\n", nreg[0]);
 	for (int i = 0; i < nreg[0]; ++i)
 	{
-		POP<REAL>* r = lreg >= 0 ? aregs[0][i] : NULL;
+		POP<REAL>* r = lreg >= 0 ? aregs<REAL>[0][i] : NULL;
 		POP<REAL>** pops = r->vpop;
 		fprintf(convert_file, "\t\tGroup={\r\n");
 		for (int j = 0; j < r->npop; ++j)
@@ -724,7 +723,7 @@ THREAD2(ConvertArlequinInd)
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND<REAL>& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds<REAL>[ii];
 
 		switch (convert_mode_val)
 		{
@@ -754,7 +753,7 @@ THREAD2(ConvertArlequinInd)
 
 			for (int o = 0; o < 2; ++o)
 			{
-				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 				for (int64 l = 0; l < nloc; ++l)
 				{
 					GENOTYPE& gt = ind.GetGenotype(l);
@@ -823,7 +822,7 @@ THREAD2(ConvertArlequinInd)
 
 				for (int o = 0; o < 2; ++o)
 				{
-					RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+					RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 					for (int64 l = 0; l < nloc; ++l)
 					{
 						GENOTYPE& gt = ind.GetGenotype(l);
@@ -901,7 +900,7 @@ THREAD2(ConvertStructureInd)
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND<REAL>& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds<REAL>[ii];
 
 		switch (convert_mode_val)
 		{
@@ -915,7 +914,7 @@ THREAD2(ConvertStructureInd)
 			{
 				AppendString(str, ind.name);
 				AppendString(str, " ");
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 
 				for (int64 l = 0; l < nloc; ++l)
 				{
@@ -933,8 +932,8 @@ THREAD2(ConvertStructureInd)
 			{
 				AppendString(str, ind.name);
 				AppendString(str, " ");
-				AppendString(str, apops[ind.popid]->name);
-				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				AppendString(str, apops<REAL>[ind.popid]->name);
+				RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 
 				for (int64 l = 0; l < nloc; ++l)
 				{
@@ -968,7 +967,7 @@ THREAD2(ConvertStructureInd)
 				{
 					AppendString(str, ind.name);
 					AppendString(str, "A "); str[-2] += j / 2;
-					AppendString(str, apops[ind.popid]->name);
+					AppendString(str, apops<REAL>[ind.popid]->name);
 
 					for (int64 l = 0; l < nloc; ++l)
 					{
@@ -998,10 +997,10 @@ THREAD2(ConvertStructureInd)
 			{
 				for (int h = 0; h < 2; ++h)
 				{
-					RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+					RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 					AppendString(str, ind.name);
 					AppendString(str, "A "); str[-2] += j / 2;
-					AppendString(str, apops[ind.popid]->name);
+					AppendString(str, apops<REAL>[ind.popid]->name);
 
 					for (int64 l = 0; l < nloc; ++l)
 					{
@@ -1078,7 +1077,7 @@ THREAD2(ConvertPolygeneInd)
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND<REAL>& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds<REAL>[ii];
 
 		switch (convert_mode_val)
 		{
@@ -1090,7 +1089,7 @@ THREAD2(ConvertPolygeneInd)
 		{
 			AppendString(str, ind.name);
 			AppendString(str, "\t");
-			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 			AppendString(str, "\t");
 			AppendInt(str, convert_mode_val == 1 ? ind.vmin : 2);
 
@@ -1102,10 +1101,10 @@ THREAD2(ConvertPolygeneInd)
 		}
 		case 3://choose
 		{
-			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 			AppendString(str, ind.name);
 			AppendString(str, "\t");
-			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 			AppendString(str, "\t2");
 
 			for (int64 l = 0; l < nloc; ++l)
@@ -1135,7 +1134,7 @@ THREAD2(ConvertPolygeneInd)
 			{
 				AppendString(str, ind.name);
 				AppendString(str, "A\t"); str[-2] += j / 2;
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 				AppendString(str, "\t2");
 
 				for (int64 l = 0; l < nloc; ++l)
@@ -1163,10 +1162,10 @@ THREAD2(ConvertPolygeneInd)
 
 			for (int j = 0; j < nsplit2; j += 2)
 			{
-				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 				AppendString(str, ind.name);
 				AppendString(str, "A\t"); str[-2] += j / 2;
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 				AppendString(str, "\t2");
 
 				for (int64 l = 0; l < nloc; ++l)
@@ -1246,7 +1245,7 @@ THREAD2(ConvertPolyRelatednessInd)
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND<REAL>& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds<REAL>[ii];
 
 		switch (convert_mode_val)
 		{
@@ -1256,7 +1255,7 @@ THREAD2(ConvertPolyRelatednessInd)
 		{
 			AppendString(str, ind.name);
 			AppendString(str, "\t");
-			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 
 			for (int64 l = 0; l < nloc; ++l)
 				AppendString(str, conversion_string[l][ind.GetGenotypeId(l)]);
@@ -1266,10 +1265,10 @@ THREAD2(ConvertPolyRelatednessInd)
 		}
 		case 3://choose
 		{
-			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 			AppendString(str, ind.name);
 			AppendString(str, "\t");
-			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 
 			for (int64 l = 0; l < nloc; ++l)
 			{
@@ -1298,7 +1297,7 @@ THREAD2(ConvertPolyRelatednessInd)
 			{
 				AppendString(str, ind.name);
 				AppendString(str, "A\t"); str[-2] += j / 2;
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 
 				for (int64 l = 0; l < nloc; ++l)
 				{
@@ -1325,10 +1324,10 @@ THREAD2(ConvertPolyRelatednessInd)
 
 			for (int j = 0; j < nsplit2; j += 2)
 			{
-				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 				AppendString(str, ind.name);
 				AppendString(str, "A\t"); str[-2] += j / 2;
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 
 				for (int64 l = 0; l < nloc; ++l)
 				{
@@ -1380,7 +1379,7 @@ TARGET void ConvertGenoDive(int ntot, bool& isfirst)
 		noutput = 0;
 		for (int j = 0; j < nind; ++j)
 		{
-			IND<REAL>* ind = ainds[j];
+			IND<REAL>* ind = ainds<REAL>[j];
 			noutput += ind->vmax <= 2 ? 1 : ind->vmax / 2;
 		}
 	}
@@ -1389,11 +1388,11 @@ TARGET void ConvertGenoDive(int ntot, bool& isfirst)
 
 	for (int i = 0; i < npop; ++i)
 	{
-		POP<REAL>* tp = apops[i];
+		POP<REAL>* tp = apops<REAL>[i];
 		fprintf(convert_file, "%s", tp->name);
 		for (int rl = 0; rl <= lreg; ++rl)
 		{
-			tp = aregs[rl][tp->rid];
+			tp = aregs<REAL>[rl][tp->rid];
 			fprintf(convert_file, "\t%s", tp->name);
 		}
 		fprintf(convert_file, "\r\n");
@@ -1430,7 +1429,7 @@ THREAD2(ConvertGenoDiveInd)
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND<REAL>& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds<REAL>[ii];
 
 		switch (convert_mode_val)
 		{
@@ -1450,7 +1449,7 @@ THREAD2(ConvertGenoDiveInd)
 		}
 		case 3://choose
 		{
-			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 			AppendInt(str, ind.popid + 1);
 			AppendString(str, "\t");
 			AppendString(str, ind.name);
@@ -1510,7 +1509,7 @@ THREAD2(ConvertGenoDiveInd)
 
 			for (int j = 0; j < nsplit2; j += 2)
 			{
-				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
 				AppendInt(str, ind.popid + 1);
 				AppendString(str, "\t");
 				AppendString(str, ind.name);
@@ -1559,7 +1558,7 @@ TARGET void ConvertPlink(int ntot, bool& isfirst)
 	FRES_TIME = localtime(&time1);
 	FRES = FOpen(FRES_NAME, "wb", "%s.%s", g_output_val.c_str(), "convert.plink.map");
 	OpenTempFiles(g_nthread_val, ".convert.plink");
-	convert_file = FOpen(filename, "wb", "%s%s", g_output_val.c_str(), "convert.plink.ped");
+	convert_file = FOpen(filename, "wb", "%s.%s", g_output_val.c_str(), "convert.plink.ped");
 
 	convert_linesize = convert_mode_val <= 3 ?
 		IND_NAME_LEN + (MAX_ALLELE_BYTE * 2 + 2) * nloc + 12 :
@@ -1584,14 +1583,15 @@ THREAD2(ConvertPlinkInd)
 {
 	// map file
 	int64 lst = threadid * nloc / g_nthread_val, led = (threadid + 1) * nloc / g_nthread_val;
-	FILE* ftmp = TEMP_FILES[threadid];
+	FILE* ftmp = TEMP_FILES[threadid];	
+	char name_buf[NAME_BUF_LEN];
 
 	for (int64 l = lst; l < led; ++l)
 	{
 		//chrom	locus	genetic pos	physical pos
 		fprintf(ftmp, "%s\t%s\t0\t%lld\r\n",
 			GetLoc(l).GetChrom(),
-			GetLoc(l).GetName(),
+			GetLoc(l).GetNameStr(name_buf),
 			uselocpos ? GetLocPos(l) : 0ll);
 	}
 
@@ -1601,7 +1601,7 @@ THREAD2(ConvertPlinkInd)
 		THREAD_BEGIN
 
 		char* str = convert_buf[ii % NBUF];
-		IND<REAL>& ind = *rinds[ii];
+		IND<REAL>& ind = *rinds<REAL>[ii];
 
 		switch (convert_mode_val)
 		{
@@ -1609,7 +1609,7 @@ THREAD2(ConvertPlinkInd)
 		case 1:
 		case 2://disable,truncate
 		{
-			AppendString(str, apops[ind.popid]->name);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 			AppendString(str, "\t");
 			AppendString(str, ind.name);
 			AppendString(str, "\t0\t0\t0\t0");
@@ -1623,8 +1623,8 @@ THREAD2(ConvertPlinkInd)
 		}
 		case 3://choose
 		{
-			RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
-			AppendString(str, apops[ind.popid]->name);
+			RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+			AppendString(str, apops<REAL>[ind.popid]->name);
 			AppendString(str, "\t");
 			AppendString(str, ind.name);
 			AppendString(str, "\t0\t0\t0\t0");
@@ -1654,7 +1654,7 @@ THREAD2(ConvertPlinkInd)
 
 			for (int j = 0; j < nsplit2; j += 2)
 			{
-				AppendString(str, apops[ind.popid]->name);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 				AppendString(str, "\t");
 				AppendString(str, ind.name);
 				AppendString(str, "A\t0\t0\t0\t0"); str[-9] += j / 2;
@@ -1684,8 +1684,8 @@ THREAD2(ConvertPlinkInd)
 
 			for (int j = 0; j < nsplit2; j += 2)
 			{
-				RNG<REAL> rng(g_seed_val + ii, RNG_SALT_CONVERT);
-				AppendString(str, apops[ind.popid]->name);
+				RNG<double> rng(g_seed_val + ii, RNG_SALT_CONVERT);
+				AppendString(str, apops<REAL>[ind.popid]->name);
 				AppendString(str, "\t");
 				AppendString(str, ind.name);
 				AppendString(str, "A\t0\t0\t0\t0"); str[-9] += j / 2;

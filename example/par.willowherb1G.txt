@@ -1,10 +1,10 @@
--g_progress=80
--g_seed=0
 -g_output=willowherb1G\out
--g_decimal=5
--g_nthread=16
--g_rscript="C:\Program Files\R\R-4.0.2\bin\x64\Rscript.exe"
+-g_decimal=6
 -g_eval=yes
+-g_gpu=none
+-g_seed=1
+-g_progress=80
+-g_replot=no
 
 -g_missingploidy=2,4,6
 -g_input=data.willowherb1G.vcf.gz
@@ -33,12 +33,14 @@
 -indstat_estimator=Ritland1996
 
 -fst
+-fst_plot=yes
 -fst_estimator=Nei1973
 -fst_level=popXtot,pop
 -fst_locus=all
 -fst_fmt=matrix
 
 -gdist
+-gdist_plot=yes
 -gdist_level=ind
 -gdist_estimator=Euclidean
 -gdist_fmt=matrix
@@ -50,30 +52,36 @@
 -amova_nperm=999
 
 -popas
+-popas_plot=yes
 -popas_model=prcs
 -popas_level=pop
 -popas_error=0.05
 
 -relatedness
+-relatedness_plot=yes
 -relatedness_range=pop
 -relatedness_fmt=matrix
 -relatedness_estimator=Ritland1996_modified
 
 -kinship
+-kinship_plot=yes
 -kinship_range=pop
 -kinship_fmt=matrix
 -kinship_estimator=Ritland1996
 
 -pcoa
+-pcoa_plot=yes
 -pcoa_level=ind
 -pcoa_estimator=Euclidean
 
 -cluster
+-cluster_plot=yes
 -cluster_method=NEAREST
 -cluster_estimator=Euclidean
 -cluster_level=pop
 
 -structure
+-structure_plot=yes
 -structure_admix=no
 -structure_locpriori=no
 -structure_f=no

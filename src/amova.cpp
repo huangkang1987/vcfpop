@@ -1,6 +1,5 @@
 /* Analysis of Molecular Variances Functions */
 
-#pragma once
 #include "vcfpop.h"
 
 template struct VESSEL<double>;
@@ -12,6 +11,9 @@ template struct AMOVA<float >;
 
 template TARGET void CalcAMOVA<double>();
 template TARGET void CalcAMOVA<float >();
+
+template<> AMOVA<double>* amova_buf<double>;
+template<> AMOVA<float >* amova_buf<float >;
 
 #ifndef _VESSEL_ITERATOR
 /* Go to start */
@@ -115,7 +117,7 @@ TARGET ushort VESSEL_ITERATOR<REAL>::GetAllele()
 template<typename REAL>
 TARGET POP<REAL>* VESSEL_ITERATOR<REAL>::GetSubpop(int nlay, int tlay)
 {
-	POP<REAL>* tpop = (POP<REAL>*)total_pop;
+	POP<REAL>* tpop = (POP<REAL>*)total_pop<REAL>;
 	for (int clay = nlay - 1; clay >= tlay; --clay)
 		tpop = tpop->vpop[relative_id[clay]];
 	return tpop;
@@ -125,7 +127,7 @@ TARGET POP<REAL>* VESSEL_ITERATOR<REAL>::GetSubpop(int nlay, int tlay)
 template<typename REAL>
 TARGET IND<REAL>* VESSEL_ITERATOR<REAL>::GetInd(int nlay, int tlay)
 {
-	POP<REAL>* tpop = (POP<REAL>*)total_pop;
+	POP<REAL>* tpop = (POP<REAL>*)total_pop<REAL>;
 	for (int clay = nlay - 1; clay >= tlay; --clay)
 		if (clay > tlay)
 			tpop = tpop->vpop[relative_id[clay]];
@@ -554,7 +556,7 @@ TARGET int VESSEL<REAL>::Replace(VESSEL** vs, int& nvessels, int fa, int method)
 
 /* Shuffle fa level vessels among fb level vessels */
 template<typename REAL>
-TARGET void VESSEL<REAL>::Shuffle(RNG<REAL>& rng, int fa, int fb, int method, VESSEL** buf)
+TARGET void VESSEL<REAL>::Shuffle(RNG<double>& rng, int fa, int fb, int method, VESSEL** buf)
 {
 	if (lay > fb) for (int i = 0; i < nsubunits; ++i)
 		subunits[i]->Shuffle(rng, fa, fb, method, buf);
@@ -725,8 +727,10 @@ TARGET void VESSEL<REAL>::GetSSAneu(double* SS, bool isiam, int nh, int k, REAL*
 template<typename REAL>
 TARGET void VESSEL<REAL>::GetV(double* C, double* SS, double*& V, int nlay)
 {
-	MatrixInv2(C, nlay);
-	MatrixMul(C, nlay, nlay, SS, nlay, 1, V);
+	Mat<double> mCt(C,  nlay, nlay, false, true);
+	Mat<double> mSS(SS, nlay, 1,    false, true);
+	Mat<double> mV (V,  nlay, 1,    false, true);
+	solve(mV, mCt.t(), mSS);
 }
 
 /* Calculate F-statistics */
@@ -763,8 +767,20 @@ TARGET void VESSEL<REAL>::GetF(double* Fi, double* F, int nlay)
 			for (int j = i + 1; j < nlay; ++j)
 				F[i * nlay + j] = 1 - (1 - Fi[j]) / (1 - Fi[i]);
 	}
-
 }
+#endif
+
+#ifndef _AMOVA_PARAM
+
+/* Calculate real_space points */
+template<typename REAL>
+TARGET void AMOVA_PARAM<REAL>::Unc2Real_AMOVA(CPOINT& xx)
+{
+	xx.real_space[0] = 1.0 / (1 + exp(xx.unc_space[0]));
+	if (xx.real_space[0] < MIN_FREQ) xx.real_space[0] = MIN_FREQ;
+	if (xx.real_space[0] > 1 - MIN_FREQ) xx.real_space[0] = 1 - MIN_FREQ;
+}
+
 #endif
 
 #ifndef _AMOVA
@@ -809,7 +825,7 @@ TARGET void AMOVA<REAL>::GetHaplotype(ushort* bucket)
 {
 	for (int i = 0; i < nind; ++i)
 	{
-		IND<REAL>* tind = ainds[i];
+		IND<REAL>* tind = ainds<REAL>[i];
 		int vi = tind->vmin, vi2 = tind->vmax;
 		if (vi != vi2)
 			Exit("\nError: Homoploid amova estimator can only be used for homoploids. Error in individual %s.\n", tind->name);
@@ -848,10 +864,10 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 		Exit("\nError: Stepwise mutation model (smm) in AMOVA can only be applied for non-vcf input file, and should use size as allele identifier. \n");
 
 	for (int i = 0; i < nind; ++i)
-		if (ainds[i]->vmin != ainds[i]->vmax)
-			Exit("\nError: Homoploid AMOVA method do not support aneuploids, in individual %s.\n", ainds[i]->name);
+		if (ainds<REAL>[i]->vmin != ainds<REAL>[i]->vmax)
+			Exit("\nError: Homoploid AMOVA method do not support aneuploids, in individual %s.\n", ainds<REAL>[i]->name);
 
-	int Nh = total_pop->nhaplotypes;
+	int Nh = total_pop<REAL>->nhaplotypes;
 	VESSEL<REAL>** Gpermbuf = new VESSEL<REAL>* [Nh * g_nthread_val];		SetZero(Gpermbuf, Nh * g_nthread_val);
 
 #define distW(x,y) distw[(int64)(x)*Nh+(y)]
@@ -871,7 +887,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 
 	int tref = 0;
 	amova_memory = &mem1; amova_memory->ClearMemory();
-	VESSEL _vs(total_pop, nlay, tref, -1, 1);
+	VESSEL _vs(total_pop<REAL>, nlay, tref, -1, 1);
 
 	double** W;  _vs.InitW(mem1, W, nlay);
 	_vs.InitC(GC, Gtid, Nh, nlay);
@@ -890,7 +906,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 
 		//Calculate genetic distance
 		timepoint begin = GetNow();
-		int64 progress_sep = (int64)(Binomial(total_pop->nhaplotypes, 2) * 0.1 + 0.5);
+		int64 progress_sep = (int64)(Binomial(total_pop<REAL>->nhaplotypes, 2) * 0.1 + 0.5);
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 		for (int64 l = 0; l < nloc; ++l)
 		{
@@ -919,22 +935,22 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 			for (int i1 = 0, h1 = 0; i1 < nind; ++i1)
 			{
 				r1b = r1;
-				int p1id = ainds[i1]->popid;
-				POP<REAL>* p1 = apops[p1id];
+				int p1id = ainds<REAL>[i1]->popid;
+				POP<REAL>* p1 = apops<REAL>[p1id];
 				ushort* als1 = gtab[r1.Read()].GetAlleleArray();
 
-				for (int j1 = 0, v1 = ainds[i1]->vmin; j1 < v1; ++j1, ++h1)
+				for (int j1 = 0, v1 = ainds<REAL>[i1]->vmin; j1 < v1; ++j1, ++h1)
 				{
 					ushort a1 = als1[j1];
 					GENO_READER r2 = r1b;
 
 					for (int i2 = i1, h2 = h1 + 1; i2 < nind; ++i2)
 					{
-						int p2id = ainds[i2]->popid;
-						POP<REAL>* p2 = apops[p2id];
+						int p2id = ainds<REAL>[i2]->popid;
+						POP<REAL>* p2 = apops<REAL>[p2id];
 						ushort* als2 = gtab[r2.Read()].GetAlleleArray();
 
-						for (int j2 = i2 == i1 ? j1 + 1 : 0, v2 = ainds[i2]->vmin; j2 < v2; ++j2, ++h2)
+						for (int j2 = i2 == i1 ? j1 + 1 : 0, v2 = ainds<REAL>[i2]->vmin; j2 < v2; ++j2, ++h2)
 						{
 							ushort a2 = als2[j2];
 
@@ -962,9 +978,9 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 			PROGRESS_VALUE += progress_sep;
 		}
 
-		delete[] MISSING2;
-		delete[] MISSING1;
-		if (MISSING0) delete[] MISSING0;
+		DEL(MISSING2);
+		DEL(MISSING1);
+		DEL(MISSING0);
 		printf("\n%0.3lf seconds, Sumdist = %0.15e.\n", GetElapse(begin), Sum(&distW(0, 0), Nh * Nh)); 
 	}
 	*/
@@ -973,7 +989,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 		//begin = GetNow();
 		SetZero(&distW(0, 0), Nh * Nh);
 
-		int nblock = Min(128, (nloc + 1023) / 1024);
+		int64 nblock = std::min(128ll, (int64)(nloc + 1023) / 1024);
 		int64 nloc2 = 1 + (nloc + nblock - 1) / nblock;
 
 		VLA_NEW(Gdist, REAL, g_nthread_val * (maxploidy * maxploidy + 64));
@@ -983,9 +999,9 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 		int* hst = new int[nind];
 		hst[0] = 0;
 		for (int i = 1; i < nind; ++i)
-			hst[i] = hst[i - 1] + ainds[i - 1]->vmin;
+			hst[i] = hst[i - 1] + ainds<REAL>[i - 1]->vmin;
 
-		for (int blockid = 0; blockid < nblock; blockid++)
+		for (int64 blockid = 0; blockid < nblock; blockid++)
 		{
 			int64 lst = blockid * nloc / nblock, led = (blockid + 1) * nloc / nblock;
 			int64 progress_sep = led - lst;
@@ -1006,10 +1022,10 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 				{
 					for (int p1id = 0; p1id < npop; ++p1id)
 					{
-						POP<REAL>* p1 = apops[p1id];
+						POP<REAL>* p1 = apops<REAL>[p1id];
 						for (int p2id = 0; p2id <= p1id; ++p2id)
 							m2[p1id * npop + p2id] = m2[p2id * npop + p1id] =
-							1 - SumProd(p1->GetFreq(l), apops[p2id]->GetFreq(l), k);
+							1 - SumProd(p1->GetFreq(l), apops<REAL>[p2id]->GetFreq(l), k);
 
 						for (int a = 0; a < k; ++a)
 							m1[a * npop + p1id] = 1 - p1->GetFreq(l, a);
@@ -1020,10 +1036,10 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 					ushort* alen = GetLoc(l).GetAlenArray();
 					for (int p1id = 0; p1id < npop; ++p1id)
 					{
-						POP<REAL>* p1 = apops[p1id];
+						POP<REAL>* p1 = apops<REAL>[p1id];
 						for (int p2id = 0; p2id <= p1id; ++p2id)
 							m2[p1id * npop + p2id] = m2[p2id * npop + p1id] =
-							SumProdSMM(alen, p1->GetFreq(l), apops[p2id]->GetFreq(l), k);
+							SumProdSMM(alen, p1->GetFreq(l), apops<REAL>[p2id]->GetFreq(l), k);
 
 						for (int a = 0; a < k; ++a)
 							m1[a * npop + p1id] = SumProdSMM(alen, p1->GetFreq(l), a, k);
@@ -1044,15 +1060,15 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 				threadid = omp_get_thread_num();
 				REAL* gdist = Gdist + threadid * (maxploidy * maxploidy + 64);
 
-				IND<REAL>* ind1 = ainds[i1];
+				IND<REAL>* ind1 = ainds<REAL>[i1];
 				int p1id = ind1->popid, v1 = ind1->vmin, h1 = hst[i1];
-				POP<REAL>* p1 = apops[p1id];
+				//POP<REAL>* p1 = apops<REAL>[p1id];
 
 				for (int i2 = 0; i2 <= i1; ++i2)
 				{
-					IND<REAL>* ind2 = ainds[i2];
+					IND<REAL>* ind2 = ainds<REAL>[i2];
 					int p2id = ind2->popid, v2 = ind2->vmin, h2 = hst[i2];
-					POP<REAL>* p2 = apops[p2id];
+					//POP<REAL>* p2 = apops<REAL>[p2id];
 
 					for (int64 l = lst; l < led; ++l)
 					{
@@ -1098,10 +1114,10 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 
 		//printf("\n%0.3lf seconds, Sumdist = %0.15e. %x\n", GetElapse(begin), Sum(&distW(0, 0), Nh* Nh), HashString((char*)&distW(0, 0), Nh* Nh * sizeof(REAL)));
 
-		delete[] missing2;
-		delete[] missing1;
-		delete[] missing0;
-		delete[] hst;
+		DEL(missing2);
+		DEL(missing1);
+		DEL(missing0);
+		DEL(hst);
 		VLA_DELETE(Gdist);
 	}
 
@@ -1172,7 +1188,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 				VESSEL<REAL>** permbuf = Gpermbuf + Nh * threadid;
 				amova_memory = &Gmem2[threadid];	amova_memory->ClearMemory();
 				double** w;  _vs.InitW(*amova_memory, w, nlay);
-				RNG<REAL> rng(g_seed_val + threadid, RNG_SALT_AMOVAHOMO);
+				RNG<double> rng(g_seed_val + threadid, RNG_SALT_AMOVAHOMO);
 				VESSEL<REAL> vs2(_vs);
 
 				for (int64 m = threadid; m < nperm; m += g_nthread_val)
@@ -1224,8 +1240,8 @@ TARGET void AMOVA<REAL>::CalcAMOVA_homo()
 	VLA_DELETE(Gef);
 	VLA_DELETE(Gef2);
 	VLA_DELETE(Gmem2);
-	delete[] Gpermbuf;
-	delete[] distw;
+	DEL(Gpermbuf);
+	DEL(distw);
 }
 
 /* Perform AMOVA using aneuploid method */
@@ -1285,7 +1301,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_aneu()
 	VLA_NEW(C, double, nlay * nlay);									SetZero(C, nlay * nlay);
 
 	//Allocate memory for each thread
-	int Nht = total_pop->nhaplotypes;
+	int Nht = total_pop<REAL>->nhaplotypes;
 	VESSEL<REAL>** Gpermbuf = new VESSEL<REAL>* [Nht * g_nthread_val];	SetZero(Gpermbuf, Nht * g_nthread_val);
 
 	VLA_NEW(Gss, double, nlay * g_nthread_val);							SetZero(Gss, nlay * g_nthread_val);
@@ -1327,7 +1343,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_aneu()
 				missing0[i * k + j] = missing0[j * k + i] = ((int)alen[i] - (int)alen[j]) * ((int)alen[i] - (int)alen[j]);
 		}
 
-		int nh = total_pop->loc_stat1[l].nhaplo;
+		int nh = total_pop<REAL>->loc_stat1[l].nhaplo;
 		MEMORY& mem1 = Gmem1[threadid];
 		amova_memory = &mem1; amova_memory->ClearMemory();
 
@@ -1343,7 +1359,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_aneu()
 		VESSEL<REAL>** permbuf = Gpermbuf + Nht * threadid;
 
 		int tref = 0;
-		VESSEL<REAL> _vs(total_pop, nlay, tref, l, 1);
+		VESSEL<REAL> _vs(total_pop<REAL>, nlay, tref, l, 1);
 		double** W;  _vs.InitW(mem1, W, nlay);
 
 		_vs.InitC(c, tid, nh, nlay);
@@ -1362,7 +1378,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_aneu()
 			for (int i1 = 0, h1 = 0; i1 < nind; ++i1)
 			{
 				r1b = r1;
-				//POP* p1 = apops[ainds[i1]->popid];
+				//POP* p1 = apops<REAL>[ainds<REAL>[i1]->popid];
 				GENOTYPE& g1 = gtab[r1.Read()];
 				ushort* als1 = g1.GetAlleleArray();
 
@@ -1376,7 +1392,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_aneu()
 
 					for (int i2 = i1, h2 = h1 + 1; i2 < nind; ++i2)
 					{
-						//POP* p2 = apops[ainds[i2]->popid];
+						//POP* p2 = apops<REAL>[ainds<REAL>[i2]->popid];
 						GENOTYPE& g2 = gtab[r2.Read()];
 						ushort* als2 = g2.GetAlleleArray();
 
@@ -1435,7 +1451,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_aneu()
 
 				for (int64 m2 = 0; m2 < M; ++m2)
 				{
-					RNG<REAL> rng(g_seed_val + pairid * nloc * M + l * M + m2, RNG_SALT_AMOVAANEU);
+					RNG<double> rng(g_seed_val + pairid * nloc * M + l * M + m2, RNG_SALT_AMOVAANEU);
 
 					vs2.Shuffle(rng, fa, fb, 2, permbuf);
 					vs2.InitC(c, tid, nh, nlay);
@@ -1484,7 +1500,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_aneu()
 		}
 	}
 
-	if (MISSING0) delete[] MISSING0;
+	DEL(MISSING0);
 		
 	/*******************************************************************/
 
@@ -1581,41 +1597,42 @@ TARGET void AMOVA<REAL>::CalcAMOVA_aneu()
 	VLA_DELETE(Gef2);
 	VLA_DELETE(C);
 	VLA_DELETE(Gmem1);
-	delete[] Gpermbuf;
-	delete[] SSL;
-	delete[] CL;
+	DEL(Gpermbuf);
+	DEL(SSL);
+	DEL(CL);
 
 	if (CachePerm && PseudoPerm)
 	{
-		delete[] Gmss;
-		delete[] Gmc;
+		DEL(Gmss);
+		DEL(Gmc);
 	}
 }
 
 /* Calculate likelihood for permuated data */
 template<typename REAL>
-TARGET double AMOVA<REAL>::Likelihood(CPOINT& xx, void** Param)
+TARGET double AMOVA<REAL>::AMOVA_Likelihood(void* Param, CPOINT& xx, rmat& G, rmat& H)
 {
-	int clay = *(int*)Param[0];
-	int nlay = *(int*)Param[1];
-	VESSEL_ITERATOR<REAL>& ve = *(VESSEL_ITERATOR<REAL>*)Param[2];
+	AMOVA_PARAM<REAL>& param = *(AMOVA_PARAM<REAL>*)Param;
+	int clay = param.clay, nlay = param.nlay;
+	VESSEL_ITERATOR<REAL>& ve = *param.ve;
 
-	xx.Image2RealSelfing();
+	param.Unc2Real_AMOVA(xx);
 	ve.Rewind(nlay);
 	int64 slog = 0; double prod = 1;
-	double f = xx.real[0];
+	double f = xx.real_space[0];
 	OpenLog(slog, prod);//slog,prod
 
 	for (int i = 0; i < nind; ++i)
 	{
-		IND<REAL>* ind = ainds[ve.GetHapId()];
+		IND<REAL>* ind = ainds<REAL>[ve.GetHapId()];
+#pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 		for (int64 l = 0; l < nloc; ++l)
 		{
 			GENOTYPE& gt = ind->GetGenotype(l);//fine
 			if (gt.Nalleles())
 			{
 				double gfz = gt.GFZ(ve.trace[clay + 1]->GetAlleleCount(l), ve.trace[clay + 1]->nhaplos[l], f);
-				ChargeLog(slog, prod, gfz);
+				ChargeLogAtomic(slog, prod, gfz);
 			}
 		}
 		ve.Next(nlay);
@@ -1641,15 +1658,15 @@ TARGET void AMOVA<REAL>::CalcAMOVA_ml()
 		Exit("\nError: Stepwise mutation model (smm) in AMOVA can only be applied for non-vcf input file, and should use size as allele identifier. \n");
 
 	for (int i = 0; i < nind; ++i)
-		if (ainds[i]->vmin != ainds[i]->vmax)
-			Exit("\nError: Likelihood AMOVA method do not support aneuploids, in individual %s.\n", ainds[i]->name);
+		if (ainds<REAL>[i]->vmin != ainds<REAL>[i]->vmax)
+			Exit("\nError: Likelihood AMOVA method do not support aneuploids, in individual %s.\n", ainds<REAL>[i]->name);
 
 	int tref = 0;
 	amova_memory = &mem1; amova_memory->ClearMemory();
-	VESSEL<REAL> _vs(total_pop, nlay, tref, -1, 4);
+	VESSEL<REAL> _vs(total_pop<REAL>, nlay, tref, -1, 4);
 	double** W;  _vs.InitW(mem1, W, nlay);
 
-	int Nht = total_pop->nhaplotypes;
+	int Nht = total_pop<REAL>->nhaplotypes;
 	VESSEL<REAL>** Gpermbuf = new VESSEL<REAL>* [Nht * g_nthread_val];		SetZero(Gpermbuf, Nht * g_nthread_val);
 
 	VLA_NEW(Fi, double, nlay);									SetZero(Fi, nlay);
@@ -1669,10 +1686,10 @@ TARGET void AMOVA<REAL>::CalcAMOVA_ml()
 	for (int clay = Lind; clay < nlay; ++clay)
 	{
 		VESSEL_ITERATOR<REAL> ve(amova_cind_val == 2 ? 0 : 1, _vs, nlay);
-		void* Param[] = { (void*)&clay, (void*)&nlay, (void*)&ve };
-		CPOINT xx = CPOINT::DownHillSimplex(1, 0, false, 0.1, 10, AMOVA::Likelihood, Param);
-		xx.Image2RealSelfing();
-		Fi[clay] = xx.real[0];
+		AMOVA_PARAM<REAL> Param{ clay, nlay, &ve };
+		CPOINT xx = CPOINT::DownHillSimplex((void*)&Param, AMOVA::AMOVA_Likelihood, 1, 0.1, 10);
+		Param.Unc2Real_AMOVA(xx);
+		Fi[clay] = xx.real_space[0];
 	}
 	VESSEL<REAL>::GetF(Fi, F, nlay);
 
@@ -1692,7 +1709,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_ml()
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(static, 1)
 			for (int64 m = 0; m < nperm; ++m)
 			{
-				RNG<REAL> rng(g_seed_val + pairid * nperm + m, RNG_SALT_AMOVAML);
+				RNG<double> rng(g_seed_val + pairid * nperm + m, RNG_SALT_AMOVAML);
 
 				threadid = omp_get_thread_num();
 				double* fi = Gfi + nlay * threadid;
@@ -1709,10 +1726,10 @@ TARGET void AMOVA<REAL>::CalcAMOVA_ml()
 				vs2.Shuffle(rng, fa, fb, 4, permbuf);
 				for (int clay = Lind; clay < nlay; ++clay)
 				{
-					void* Param[] = { (void*)&clay, (void*)&nlay, (void*)&ve };
-					CPOINT xx = CPOINT::DownHillSimplex(1, 0, false, 0.1, 10, AMOVA::Likelihood, Param);
-					xx.Image2RealSelfing();
-					fi[clay] = xx.real[0];
+					AMOVA_PARAM<REAL> Param{ clay, nlay, &ve };
+					CPOINT xx = CPOINT::DownHillSimplex((void*)&Param, AMOVA::AMOVA_Likelihood, 1, 0.1, 10);
+					Param.Unc2Real_AMOVA(xx);
+					fi[clay] = xx.real_space[0];
 				}
 
 				VESSEL<REAL>::GetF(fi, f, nlay);
@@ -1753,7 +1770,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_ml()
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 	for (int64 l = 0; l < nloc; ++l)
 	{
-		double nh = total_pop->loc_stat1[l].nhaplo;
+		double nh = total_pop<REAL>->loc_stat1[l].nhaplo;
 		if (nh == 0) continue;
 
 		double* c = Gc + nlay * nlay * threadid;
@@ -1761,8 +1778,8 @@ TARGET void AMOVA<REAL>::CalcAMOVA_ml()
 		int* tid = Gtid + (nlay + 1) * threadid;
 		double* tw = Gtw + (nlay + 1) * threadid;
 
-		AtomicAddFloat(SSTOT, (1.0 - SumSquare(total_pop->GetFreq(l), GetLoc(l).k) /* loc_stat1[l].a2 */) * 0.5 * nh);
-		_vs.InitC(c, tid, total_pop->loc_stat1[l].nhaplo, nlay);
+		AtomicAddFloat(SSTOT, (1.0 - SumSquare(total_pop<REAL>->GetFreq(l), GetLoc(l).k) /* loc_stat1[l].a2 */) * 0.5 * nh);
+		_vs.InitC(c, tid, total_pop<REAL>->loc_stat1[l].nhaplo, nlay);
 		_vs.GetC(tw, tid, c, nlay, W, l);
 		Add(c2, c, nlay * nlay);
 	}
@@ -1786,7 +1803,11 @@ TARGET void AMOVA<REAL>::CalcAMOVA_ml()
 	double VTOT = SSTOT / sstot;
 	Mul(V, VTOT, nlay);
 
-	MatrixMul(C, nlay, nlay, V, nlay, 1, SS);
+	//MatrixMul(C, nlay, nlay, V, nlay, 1, SS);
+	mat mCt((double*)C, nlay, nlay, false, true);
+	mat mVt((double*)V, 1 , nlay, false, true);
+	mat mSt((double*)SS, 1 , nlay, false, true);
+	mSt = mVt * mCt;
 
 	VLA_DELETE(Fi);
 	VLA_DELETE(C);
@@ -1800,7 +1821,7 @@ TARGET void AMOVA<REAL>::CalcAMOVA_ml()
 	VLA_DELETE(Ge);
 	VLA_DELETE(Gef);
 	VLA_DELETE(Gef2);
-	delete[] Gpermbuf;
+	DEL(Gpermbuf);
 }
 
 /* Destructor */
@@ -1808,22 +1829,22 @@ template<typename REAL>
 TARGET AMOVA<REAL>::~AMOVA()
 {
 	for (int clay = 0; clay < nlay; ++clay)
-		delete[] SSW[clay];
-	delete[] nSSW;
-	delete[] SSW;
-	delete[] EF;
-	delete[] EF2;
-	delete[] G;
-	delete[] E;
-	delete[] DF;
-	delete[] SS;
-	delete[] V;
-	delete[] F;
+		DEL(SSW[clay]);
+	DEL(nSSW);
+	DEL(SSW);
+	DEL(EF);
+	DEL(EF2);
+	DEL(G);
+	DEL(E);
+	DEL(DF);
+	DEL(SS);
+	DEL(V);
+	DEL(F);
 }
 
 /* Write results */
 template<typename REAL>
-TARGET void AMOVA<REAL>::PrintAMOVA(FILE* fout)
+TARGET void AMOVA<REAL>::WriteAMOVA(FILE* fout)
 {
 	MEMORY mem1;
 	amova_memory = &mem1;
@@ -1946,7 +1967,7 @@ TARGET void AMOVA<REAL>::PrintAMOVA(FILE* fout)
 		for (int rl = lreg - 1; rl >= 0; --rl)
 		{
 			int tref = 0;
-			VESSEL<REAL> vs(total_pop, nlay, tref, -1, 1);
+			VESSEL<REAL> vs(total_pop<REAL>, nlay, tref, -1, 1);
 			VESSEL_ITERATOR<REAL> ve1(2 + Lind + rl, vs, nlay);
 
 			fprintf(fout, "%s%sSS within regions level %d %s", g_linebreak_val, g_linebreak_val, rl + 1, g_linebreak_val);
@@ -1960,7 +1981,7 @@ TARGET void AMOVA<REAL>::PrintAMOVA(FILE* fout)
 				for (int rl2 = rl; rl2 < lreg; ++rl2)
 				{
 					fprintf(fout, "%s%c", tr->name, g_delimiter_val);
-					tr = aregs[rl2 + 1][tr->rid];
+					tr = aregs<REAL>[rl2 + 1][tr->rid];
 				}
 				WriteReal(fout, SSW[Lind + rl + 1][i]);
 				ve1.Next(nlay);
@@ -1970,7 +1991,7 @@ TARGET void AMOVA<REAL>::PrintAMOVA(FILE* fout)
 
 		{
 			int tref = 0;
-			VESSEL<REAL> vs(total_pop, nlay, tref, -1, 1);
+			VESSEL<REAL> vs(total_pop<REAL>, nlay, tref, -1, 1);
 			VESSEL_ITERATOR<REAL> ve1(1 + Lind, vs, nlay);
 
 			fprintf(fout, "%s%sSS within populations%sPop", g_linebreak_val, g_linebreak_val, g_linebreak_val);
@@ -1983,7 +2004,7 @@ TARGET void AMOVA<REAL>::PrintAMOVA(FILE* fout)
 				fprintf(fout, "%s%s%c", g_linebreak_val, tr->name, g_delimiter_val);
 				for (int rl = 0; rl < lreg; ++rl)
 				{
-					tr = aregs[rl][tr->rid];
+					tr = aregs<REAL>[rl][tr->rid];
 					fprintf(fout, "%s%c", tr->name, g_delimiter_val);
 				}
 				WriteReal(fout, SSW[Lind][i]);
@@ -1994,7 +2015,7 @@ TARGET void AMOVA<REAL>::PrintAMOVA(FILE* fout)
 		if (Lind)
 		{
 			int tref = 0;
-			VESSEL<REAL> vs(total_pop, nlay, tref, -1, 1);
+			VESSEL<REAL> vs(total_pop<REAL>, nlay, tref, -1, 1);
 			VESSEL_ITERATOR<REAL> ve1(1, vs, nlay);
 
 			fprintf(fout, "%s%sSS within individuals%sInd%cPop", g_linebreak_val, g_linebreak_val, g_linebreak_val, g_delimiter_val);
@@ -2008,7 +2029,7 @@ TARGET void AMOVA<REAL>::PrintAMOVA(FILE* fout)
 				fprintf(fout, "%s%s%c%s%c", g_linebreak_val, ti->name, g_delimiter_val, tr->name, g_delimiter_val);
 				for (int rl = 0; rl < lreg; ++rl)
 				{
-					tr = aregs[rl][tr->rid];
+					tr = aregs<REAL>[rl][tr->rid];
 					fprintf(fout, "%s%c", tr->name, g_delimiter_val);
 				}
 				WriteReal(fout, SSW[0][i]);
@@ -2021,8 +2042,8 @@ TARGET void AMOVA<REAL>::PrintAMOVA(FILE* fout)
 	VLA_DELETE(MS);
 	for (int rl = 0; rl < lreg; ++rl)
 	{
-		delete[] level_name[rl + 1 + Lind];
-		delete[] level_short[rl + 1 + Lind];
+		DEL(level_name[rl + 1 + Lind]);
+		DEL(level_short[rl + 1 + Lind]);
 	}
 	VLA_DELETE(level_name);
 	VLA_DELETE(level_short);
@@ -2030,9 +2051,9 @@ TARGET void AMOVA<REAL>::PrintAMOVA(FILE* fout)
 #endif
 
 #define extern 
-extern _thread MEMORY* amova_memory;				//memory class for amova vessels
-extern void* amova_buf_;							//Read/Write buffer, nthread
-#define amova_buf (*(AMOVA<REAL>**)&amova_buf_)
+extern thread_local MEMORY* amova_memory;				//memory class for amova vessels
+template<typename REAL>
+extern AMOVA<REAL>* amova_buf;						//Read/Write buffer, nthread
 #undef extern 
 
 /* Calculate analysis of molecular variance */
@@ -2055,8 +2076,8 @@ TARGET void CalcAMOVA()
 
 				switch (i1)
 				{
-				case 1: nt += nloc * (int64)(Binomial(total_pop->nhaplotypes, 2) + 0.5) +
-					(int64)(Binomial(total_pop->nhaplotypes, 2) + 0.5) * 10 +
+				case 1: nt += nloc * (int64)(Binomial(total_pop<REAL>->nhaplotypes, 2) + 0.5) +
+					(int64)(Binomial(total_pop<REAL>->nhaplotypes, 2) + 0.5) * 10 +
 					nperm * (int64)(BINOMIAL[(i3 == 1) + 2 + lreg][2] + 0.5) * 10000; break;
 				case 2:
 				{
@@ -2085,13 +2106,13 @@ TARGET void CalcAMOVA()
 				amova_cmethod_val = i1;
 				amova_cmutation_val = i2;
 				amova_cind_val = i3;
-				amova_buf = new AMOVA<REAL>();
+				amova_buf<REAL> = new AMOVA<REAL>();
 
 				int64 nced = 0;
 				switch (i1)
 				{
-				case 1: nced += nloc * (int64)(Binomial(total_pop->nhaplotypes, 2) + 0.5) +
-					(int64)(Binomial(total_pop->nhaplotypes, 2) + 0.5) * 10 +
+				case 1: nced += nloc * (int64)(Binomial(total_pop<REAL>->nhaplotypes, 2) + 0.5) +
+					(int64)(Binomial(total_pop<REAL>->nhaplotypes, 2) + 0.5) * 10 +
 					nperm * (int64)(BINOMIAL[(i3 == 1) + 2 + lreg][2] + 0.5) * 10000; break;
 				case 2:
 				{
@@ -2110,8 +2131,8 @@ TARGET void CalcAMOVA()
 
 				isfirst = false;
 
-				amova_buf[0].PrintAMOVA(FRES);
-				delete amova_buf; 
+				amova_buf<REAL>[0].WriteAMOVA(FRES);
+				delete amova_buf<REAL>; 
 			}
 
 	CloseResFile();
@@ -2123,8 +2144,8 @@ THREAD2(AMOVAThread)
 {
 	switch (amova_cmethod_val)
 	{
-	case 1: amova_buf[threadid].CalcAMOVA_homo(); break;
-	case 2: amova_buf[threadid].CalcAMOVA_aneu(); break;
-	case 3: amova_buf[threadid].CalcAMOVA_ml(); break;
+	case 1: amova_buf<REAL>[threadid].CalcAMOVA_homo(); break;
+	case 2: amova_buf<REAL>[threadid].CalcAMOVA_aneu(); break;
+	case 3: amova_buf<REAL>[threadid].CalcAMOVA_ml(); break;
 	}
 }

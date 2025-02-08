@@ -1,6 +1,4 @@
 # Draw heatmap for genetic distance results of vcfpop
-options(warn = -1)
-options(echo = FALSE)
 
 UseLibrary <- function(lib) 
 {
@@ -148,8 +146,7 @@ for (i in 1:length(figw))
 {
   pheight <- pheight - figh[i] / theight
   tfig <- tfig + draw_plot(figs[[i]], x = 0.0, y = pheight, width = figw[i] / twidth, height = figh[i] / theight)
-}
-
+}  
 figfile <- paste(substr(file, 0, nchar(file) - 4), ".pdf", sep = '')
 ggsave(figfile, plot = tfig, width = twidth, height = theight, limitsize = FALSE)
 cat(paste('\n', basename(figfile), '\n', sep=''))

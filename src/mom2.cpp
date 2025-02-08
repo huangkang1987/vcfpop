@@ -1,8 +1,6 @@
 /* Method-of-moment estimation of relatedness coefficient for polyploids */
 
 #include "vcfpop.h"
-#include "mom.h"
-#include "mom2.h"
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
 template TARGET void MOMRelatednessAssign8<double>(int refmode, double* e, double* f, int* xx);

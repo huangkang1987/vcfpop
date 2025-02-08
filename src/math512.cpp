@@ -1,14 +1,20 @@
 /* AVX512 Instruction Set Functions */
+
 #include "vcfpop.h"
 
 #ifndef __aarch64__
 
-template TARGET512 void RNG512<double>::Poly<32>(__m512d* arr, int n, __m512i* re);
-template TARGET512 void RNG512<double>::Poly<64>(__m512d* arr, int n, __m512i* re);
-template TARGET512 void RNG512<float >::Poly<32>(__m512* arr, int n, __m512i* re);
-template TARGET512 void RNG512<float >::Poly<64>(__m512* arr, int n, __m512i* re);
+template struct RNG512<double>;
+template struct RNG512<float >;
+template TARGET512 void RNG512<double>::Integer<uint  >(uint  * re, int64 n, uint   minv, uint   maxv);
+template TARGET512 void RNG512<double>::Integer<uint64>(uint64* re, int64 n, uint64 minv, uint64 maxv);
+template TARGET512 void RNG512<float >::Integer<uint  >(uint  * re, int64 n, uint   minv, uint   maxv);
+template TARGET512 void RNG512<float >::Integer<uint64>(uint64* re, int64 n, uint64 minv, uint64 maxv);
 
 #ifndef _RNG512_FP64
+#define XS 8
+#define XS2 16
+
 /* Initialize rng */
 TARGET512 RNG512<double>::RNG512()
 {
@@ -18,133 +24,267 @@ TARGET512 RNG512<double>::RNG512()
 /* Initialize rng */
 TARGET512 RNG512<double>::RNG512(uint64 seed, uint64 salt)
 {
-	__m512i a[8], s, m;
+	__m512i a[XS], s, m;
 
-	REP(8) { a[kk] = _mm512_set_epi64(seed + 7, seed + 6, seed + 5, seed + 4, seed + 3, seed + 2, seed + 1, seed + 0); seed += 8; }
+	UNROLL(XS) { a[kk] = _mm512_set_epi64(seed + 7, seed + 6, seed + 5, seed + 4, seed + 3, seed + 2, seed + 1, seed + 0); seed += 8; }
 
 	s = _mm512_set1_epi64(salt);
 	m = _mm512_set1_epi32(0x5bd1e995);
 
-	REP(8) a[kk] = _mm512_xor_si512(a[kk], _mm512_slli_epi64(_mm512_andnot_si512(a[kk], _mm512_set1_epi64(0xFFFFFFFF)), 32));
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_slli_epi64(_mm512_andnot_si512(a[kk], _mm512_set1_epi64(0xFFFFFFFF)), 32));
 
 	s = _mm512_xor_si512(s, _mm512_slli_epi64(_mm512_andnot_si512(s, _mm512_set1_epi64(0xFFFFFFFF)), 32));
 
-	// uint s = s ^ sizeof(uint);
-	s = _mm512_xor_si512(s, _mm512_set1_epi32(sizeof(uint)));
+	// uint s = s ^ 4;
+	s = _mm512_xor_si512(s, _mm512_set1_epi32(4));
 
 	// a *= m;
-	REP(8) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
+	UNROLL(XS) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
 
 	// a ^= a >> 24;
-	REP(8) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 24));
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 24));
 
 	// a *= m;
-	REP(8) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
+	UNROLL(XS) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
 
 	// s *= m;
 	s = _mm512_mullo_epi32(s, m);//OK
 
 	// a ^= s;
-	REP(8) a[kk] = _mm512_xor_si512(a[kk], s);
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], s);
 
 	// a ^= a >> 13;
-	REP(8) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 13));
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 13));
 
 	// a *= m;
-	REP(8) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
+	UNROLL(XS) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
 
 	// a ^= a >> 15;
-	REP(8) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 15));
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 15));
 
 	// original
-	REP(8) x[kk] = _mm512_xor_si512(_mm512_set1_epi64(0x159A55E5075BCD15), a[kk]);
+	UNROLL(XS) x[kk] = _mm512_xor_si512(_mm512_set1_epi64(0x159A55E5005BCD15), a[kk]);
 
-	REP(8) a[kk] = _mm512_slli_epi64(a[kk], 6);
+	UNROLL(XS) a[kk] = _mm512_slli_epi64(a[kk], 6);
 
-	REP(8) y[kk] = _mm512_xor_si512(_mm512_set1_epi64(0x054913331F123BB5), a[kk]);
+	UNROLL(XS) y[kk] = _mm512_xor_si512(_mm512_set1_epi64(0x054913331F123BB5), a[kk]);
 }
 
-/* Draw a uniform distriubted real number, added minfreq outside */
-template<int nbits>
+/* Draw 64 64-bit integers in [0,n), 64*n frequencies are in arr */
 TARGET512 void RNG512<double>::Poly(__m512d* arr, int n, __m512i* re)
 {
-	__m512d t[8], s[8];
+	__m512d t[XS], s[XS];
 	__m512d one = _mm512_set1_pd(1.0);
 	__m512i mask1 = _mm512_set1_epi64(0x000FFFFFFFFFFFFF);
 	__m512i mask2 = _mm512_set1_epi64(0x3FF0000000000000);
 	__m512i* r = (__m512i*)t;
 
-	REP(8) s[kk] = _mm512_setzero_pd();
+	UNROLL(XS) s[kk] = _mm512_setzero_pd();
 
-	for (int i8 = 0; i8 < n * 8; i8 += 8)
-		REP(8) s[kk] = _mm512_add_pd(s[kk], arr[kk + i8]);
+	for (int i = 0; i < n * XS; i += XS)
+		UNROLL(XS) s[kk] = _mm512_add_pd(s[kk], arr[kk + i]);
 
+	XorShift();
+
+	UNROLL(XS) r[kk] = _mm512_add_epi64(x[kk], y[kk]);
+
+	UNROLL(XS) r[kk] = _mm512_and_si512(r[kk], mask1);
+
+	UNROLL(XS) r[kk] = _mm512_or_si512(r[kk], mask2);
+
+	UNROLL(XS) t[kk] = _mm512_sub_pd(t[kk], one);
+
+	UNROLL(XS) t[kk] = _mm512_mul_pd(t[kk], s[kk]);
+
+	__m512i midx[XS], nidx[XS], ninc[XS];
+	__mmask8 b[XS], f[XS] = { 0 };
+
+	UNROLL(XS) midx[kk] = _mm512_set1_epi64(n - 1);
+	UNROLL(XS) nidx[kk] = _mm512_setzero_si512();
+	UNROLL(XS) ninc[kk] = _mm512_set1_epi64(1);
+
+	for (int i = 0; i < n * XS; i += XS)
 	{
-		__m512i a[8], b[8];
+		UNROLL(XS) b[kk] = _mm512_cmp_pd_mask(t[kk], arr[kk + i], _CMP_LT_OS);
 
-		REP(8) a[kk] = x[kk];
+		UNROLL(XS) t[kk] = _mm512_sub_pd(t[kk], arr[kk + i]);
 
-		REP(8) b[kk] = y[kk];
+		UNROLL(XS) b[kk] = (~f[kk]) & b[kk];
 
-		REP(8) x[kk] = b[kk];
+		UNROLL(XS) f[kk] = f[kk] | b[kk];
 
-		REP(8) a[kk] = _mm512_xor_si512(a[kk], _mm512_slli_epi64(a[kk], 23));
+		UNROLL(XS) midx[kk] = _mm512_mask_blend_epi64(b[kk], midx[kk], nidx[kk]);//ok
 
-		REP(8) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi64(a[kk], 18));
-
-		REP(8) a[kk] = _mm512_xor_si512(a[kk], b[kk]);
-
-		REP(8) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi64(b[kk], 5));
-
-		REP(8) y[kk] = a[kk];
-
-		REP(8) r[kk] = _mm512_add_epi64(a[kk], b[kk]);
+		UNROLL(XS) nidx[kk] = _mm512_add_epi64(nidx[kk], ninc[kk]);
 	}
 
-	REP(8) r[kk] = _mm512_and_si512(r[kk], mask1);
+	UNROLL(XS) re[kk] = midx[kk];
+}
 
-	REP(8) r[kk] = _mm512_or_si512(r[kk], mask2);
+/* Draw uniform distriubted intergers */
+TARGET512 void RNG512<double>::XorShift()
+{
+	__m512i a[XS], b[XS];
 
-	REP(8) t[kk] = _mm512_sub_pd(t[kk], one);
+	UNROLL(XS) a[kk] = x[kk];
 
-	REP(8) t[kk] = _mm512_mul_pd(t[kk], s[kk]);
+	UNROLL(XS) b[kk] = y[kk];
 
-	__m512i midx[8], nidx[8], ninc[8];
-	__mmask8 b[8], f[8] = { 0 };
+	UNROLL(XS) x[kk] = b[kk];
 
-	REP(8) midx[kk] = _mm512_set1_epi64(n - 1);
-	REP(8) nidx[kk] = _mm512_setzero_si512();
-	REP(8) ninc[kk] = _mm512_set1_epi64(1);
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_slli_epi64(a[kk], 23));
 
-	for (int i8 = 0; i8 < n * 8; i8 += 8)
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi64(a[kk], 18));
+
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], b[kk]);
+
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi64(b[kk], 5));
+
+	UNROLL(XS) y[kk] = a[kk];
+}
+
+/* Draw uniform distriubted integers */
+template<typename INT>
+TARGET512 void RNG512<double>::Integer(INT* re, int64 n, INT minv, INT maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(INT);
+	int64 i = 0;
+	INT modv = maxv - minv;
+	INT* rei = re;
+
+	for (; i <= n - xesize; i += xesize)
 	{
-		REP(8) b[kk] = _mm512_cmp_pd_mask(t[kk], arr[kk + i8], _CMP_LT_OS);
-
-		REP(8) t[kk] = _mm512_sub_pd(t[kk], arr[kk + i8]);
-
-		REP(8) b[kk] = (~f[kk]) & b[kk];
-
-		REP(8) f[kk] = f[kk] | b[kk];
-
-		REP(8) midx[kk] = _mm512_mask_blend_epi64(b[kk], midx[kk], nidx[kk]);//ok
-
-		REP(8) nidx[kk] = _mm512_add_epi64(nidx[kk], ninc[kk]);
+		XorShift();
+		UNROLL(XS) { _mm512_storeu_si512((__m512i*)rei, _mm512_add_epi64(x[kk], y[kk])); rei += E512B / sizeof(INT); };
 	}
 
-	if constexpr (nbits == 32)
+	if (i != n)
 	{
-		__m256i* re2 = (__m256i*)re;
-		REP(8) re2[kk] = _mm512_cvtepi64_epi32(midx[kk]);
+		__m512i re2[XS];
+		XorShift();
+		UNROLL(XS) re2[kk] = _mm512_add_epi64(x[kk], y[kk]);
+		SetVal((INT*)rei, (INT*)re2, n - i);
 	}
-	else
+
+	if (maxv != (INT)-1 || minv != 0)
 	{
-		REP(8) re[kk] = midx[kk];
+		for (i = 0; i < n; ++i)
+			re[i] = re[i] % modv + minv;
 	}
 }
 
+/* Draw uniform distriubted real numbers */
+TARGET512 void RNG512<double>::Uniform(double* re, int n, double minv, double maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(double);
+	int i = 0;
+	double range = maxv - minv;
+
+	__m512i mask1 = _mm512_set1_epi64(0x000FFFFFFFFFFFFF);
+	__m512i mask2 = _mm512_set1_epi64(0x3FF0000000000000);
+	__m512d v1 = _mm512_set1_pd(minv - range);
+	__m512d v2 = _mm512_set1_pd(range);
+
+	if (range == 1.0)
+	{
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { _mm512_storeu_pd(re, _mm512_add_pd(_mm512_castsi512_pd(_mm512_or_si512(_mm512_and_si512(_mm512_add_epi64(x[kk], y[kk]), mask1), mask2)), v1)); re += E512D; }
+		}
+	}
+	else
+	{
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { _mm512_storeu_pd(re, _mm512_fmaddx_pd(_mm512_castsi512_pd(_mm512_or_si512(_mm512_and_si512(_mm512_add_epi64(x[kk], y[kk]), mask1), mask2)), v2, v1)); re += E512D; }
+		}
+	}
+
+	if (i != n)
+	{
+		__m512d ref[XS];
+		XorShift();
+		UNROLL(XS) ref[kk] = _mm512_fmaddx_pd(_mm512_castsi512_pd(_mm512_or_si512(_mm512_and_si512(_mm512_add_epi64(x[kk], y[kk]), mask1), mask2)), v2, v1);
+		SetVal((double*)re, (double*)ref, n - i);
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGET512 void RNG512<double>::Normal(double* re, int n, double mean, double sd)
+{
+	constexpr int xhsize = XS / 2;
+	constexpr int xesize = XS * E512D;
+
+	int i = 0;
+
+	__m512i mask1 = _mm512_set1_epi64(0x000FFFFFFFFFFFFF);
+	__m512i mask2 = _mm512_set1_epi64(0x3FF0000000000000);
+	__m512d v1 = _mm512_set1_pd(-1);
+	__m512d min_freq = _mm512_set1_pd(MIN_FREQ);
+	__m512d pi2 = _mm512_set1_pd(2.0 * M_PI);
+	__m512d mu = _mm512_set1_pd(mean);
+	__m512d s = _mm512_set1_pd(sd);
+
+	for (; i <= n - xesize; i += xesize)
+	{
+		XorShift();
+		UNROLL(XS) _mm512_storeu_pd(re + E512D * kk, _mm512_add_pd(_mm512_castsi512_pd(_mm512_or_si512(_mm512_and_si512(_mm512_add_epi64(x[kk], y[kk]), mask1), mask2)), v1));
+
+		__m512d u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = _mm512_max_pd(_mm512_loadu_pd(re + j * E512D), min_freq);
+			u2 = _mm512_mul_pd(_mm512_loadu_pd(re + j * E512D + xhsize * E512D), pi2);
+
+			UNROLL(E512D) simd_f64(u1, kk) = sqrt(-2.0 * log(simd_f64(u1, kk)));
+			UNROLL(E512D) simd_f64(u3, kk) = cos(simd_f64(u2, kk));
+			UNROLL(E512D) simd_f64(u4, kk) = sin(simd_f64(u2, kk));
+				
+			_mm512_storeu_pd(re + j * E512D, _mm512_mul_pd(u1, u3));
+			_mm512_storeu_pd(re + j * E512D + xhsize * E512D, _mm512_mul_pd(u1, u4));
+		}
+			
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) { _mm512_storeu_pd(re, _mm512_fmaddx_pd(_mm512_loadu_pd(re), s, mu)); re += E512D; }
+		else
+			re += XS * E512D;
+	}
+
+	if (i != n)
+	{
+		double ref[XS * E512D];
+
+		XorShift();
+		UNROLL(XS) _mm512_storeu_pd(ref + E512D * kk, _mm512_add_pd(_mm512_castsi512_pd(_mm512_or_si512(_mm512_and_si512(_mm512_add_epi64(x[kk], y[kk]), mask1), mask2)), v1));
+
+		__m512d u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = _mm512_max_pd(_mm512_loadu_pd(ref + j * E512D), min_freq);
+			u2 = _mm512_mul_pd(_mm512_loadu_pd(ref + j * E512D + xhsize * E512D), pi2);
+
+			UNROLL(E512D) simd_f64(u1, kk) = sqrt(-2.0 * log(simd_f64(u1, kk)));
+			UNROLL(E512D) simd_f64(u3, kk) = cos(simd_f64(u2, kk));
+			UNROLL(E512D) simd_f64(u4, kk) = sin(simd_f64(u2, kk));
+			
+			_mm512_storeu_pd(ref + j * E512D, _mm512_mul_pd(u1, u3));
+			_mm512_storeu_pd(ref + j * E512D + xhsize * E512D, _mm512_mul_pd(u1, u4));
+		}
+		
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) _mm512_storeu_pd(ref + kk * E512D, _mm512_fmaddx_pd(_mm512_loadu_pd(re), s, mu)); 
+
+		SetVal((double*)re, (double*)ref, n - i);
+	}
+}
 #endif
 
 #ifndef _RNG512_FP32
+#define XS 4
+#define XS2 8
+
 /* Initialize rng */
 TARGET512 RNG512<float>::RNG512()
 {
@@ -154,213 +294,296 @@ TARGET512 RNG512<float>::RNG512()
 /* Initialize rng */
 TARGET512 RNG512<float>::RNG512(uint64 seed, uint64 salt)
 {
-	__m512i a[4], s, m;
-	REP(4) { a[kk] = _mm512_set_epi32(Mix(seed + 15), Mix(seed + 14), Mix(seed + 13), Mix(seed + 12), Mix(seed + 11), Mix(seed + 10), Mix(seed + 9), Mix(seed + 8), Mix(seed + 7), Mix(seed + 6), Mix(seed + 5), Mix(seed + 4), Mix(seed + 3), Mix(seed + 2), Mix(seed + 1), Mix(seed + 0)); seed += 16; }
+	__m512i a[XS], s, m;
+	UNROLL(XS) { a[kk] = _mm512_set_epi32(Mix(seed + 15), Mix(seed + 14), Mix(seed + 13), Mix(seed + 12), Mix(seed + 11), Mix(seed + 10), Mix(seed + 9), Mix(seed + 8), Mix(seed + 7), Mix(seed + 6), Mix(seed + 5), Mix(seed + 4), Mix(seed + 3), Mix(seed + 2), Mix(seed + 1), Mix(seed + 0)); seed += 16; }
 
 	s = _mm512_set1_epi32(Mix(salt));
 	m = _mm512_set1_epi32(0x5bd1e995);
 
-	// uint s = s ^ sizeof(uint);
-	s = _mm512_xor_si512(s, _mm512_set1_epi32(sizeof(uint)));
+	// uint s = s ^ 4;
+	s = _mm512_xor_si512(s, _mm512_set1_epi32(4));
 
 	// a *= m;
-	REP(4) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
+	UNROLL(XS) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
 
 	// a ^= a >> 24;
-	REP(4) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 24));
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 24));
 
 	// a *= m;
-	REP(4) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
+	UNROLL(XS) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
 
 	// s *= m;
 	s = _mm512_mullo_epi32(s, m);//OK
 
 	// a ^= s;
-	REP(4) a[kk] = _mm512_xor_si512(a[kk], s);
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], s);
 
 	// a ^= a >> 13;
-	REP(4) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 13));
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 13));
 
 	// a *= m;
-	REP(4) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
+	UNROLL(XS) a[kk] = _mm512_mullo_epi32(a[kk], m);//OK
 
 	// a ^= a >> 15;
-	REP(4) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 15));
+	UNROLL(XS) a[kk] = _mm512_xor_si512(a[kk], _mm512_srli_epi32(a[kk], 15));
 
 	// original
-	REP(4) x[kk] = _mm512_xor_si512(_mm512_set1_epi32(0x075BCD15), a[kk]);
+	UNROLL(XS) x[kk] = _mm512_xor_si512(_mm512_set1_epi32(0x005BCD15), a[kk]);
 
-	REP(4) a[kk] = _mm512_slli_epi32(a[kk], 3);
+	UNROLL(XS) a[kk] = _mm512_slli_epi32(a[kk], 3);
 
-	REP(4) y[kk] = _mm512_xor_si512(_mm512_set1_epi32(0x159A55E5), a[kk]);
+	UNROLL(XS) y[kk] = _mm512_xor_si512(_mm512_set1_epi32(0x159A55E5), a[kk]);
 
-	REP(4) a[kk] = _mm512_slli_epi32(a[kk], 3);
+	UNROLL(XS) a[kk] = _mm512_slli_epi32(a[kk], 3);
 
-	REP(4) z[kk] = _mm512_xor_si512(_mm512_set1_epi32(0x1F123BB5), a[kk]);
+	UNROLL(XS) z[kk] = _mm512_xor_si512(_mm512_set1_epi32(0x1F123BB5), a[kk]);
 }
 
-/* Draw a uniform distriubted real number, added minfreq outside */
-template<int nbits>
+/* Draw 64 64-bit integers in [0,n), 64*n frequencies are in arr */
 TARGET512 void RNG512<float>::Poly(__m512* arr, int n, __m512i* re)
 {
-	__m512 t[4], s[4]; __m512i u[16];
+	__m512 t[XS], s[XS]; 
 	__m512 one = _mm512_set1_ps(1.0f);
-	__m512i mask1 = _mm512_set1_epi32(0x007FFFFF);
+	__m512i mask1 = _mm512_set1_epi32(0x000FFFFF);
 	__m512i mask2 = _mm512_set1_epi32(0x3F800000);
 	__m512i* r = (__m512i*)t;
 
-	REP(4) s[kk] = _mm512_setzero_ps();
+	UNROLL(XS) s[kk] = _mm512_setzero_ps();
 
-	for (int i4 = 0; i4 < n * 4; i4 += 4)
-		REP(4) s[kk] = _mm512_add_ps(s[kk], arr[kk + i4]);
+	for (int i = 0; i < n * XS; i += XS)
+		UNROLL(XS) s[kk] = _mm512_add_ps(s[kk], arr[kk + i]);
 
+	XorShift();
+
+	UNROLL(XS) r[kk] = _mm512_and_si512(z[kk], mask1);
+
+	UNROLL(XS) r[kk] = _mm512_or_si512(r[kk], mask2);
+
+	UNROLL(XS) t[kk] = _mm512_sub_ps(t[kk], one);
+
+	UNROLL(XS) t[kk] = _mm512_mul_ps(t[kk], s[kk]);
+
+	__m512i midx[XS] = { _mm512_set1_epi32(n - 1), _mm512_set1_epi32(n - 1), _mm512_set1_epi32(n - 1), _mm512_set1_epi32(n - 1) };
+	__m512i nidx[XS] = { _mm512_setzero_si512(), _mm512_setzero_si512(), _mm512_setzero_si512(), _mm512_setzero_si512() };
+	__m512i ninc[XS] = { _mm512_set1_epi32(1), _mm512_set1_epi32(1), _mm512_set1_epi32(1), _mm512_set1_epi32(1) };
+	__mmask16 b[XS], f[XS] = { 0 };
+
+	for (int i = 0; i < n * XS; i += XS)
 	{
-		//xorshift
-		REP(4) u[kk] = _mm512_slli_epi32(x[kk], 16);
-		REP(4) x[kk] = _mm512_xor_si512(x[kk], u[kk]);
+		UNROLL(XS) b[kk] = _mm512_cmp_ps_mask(t[kk], arr[kk + i], _CMP_LT_OS);
 
-		REP(4) u[kk] = _mm512_srli_epi32(x[kk], 5);
-		REP(4) x[kk] = _mm512_xor_si512(x[kk], u[kk]);
+		UNROLL(XS) t[kk] = _mm512_sub_ps(t[kk], arr[kk + i]);
 
-		REP(4) u[kk] = _mm512_slli_epi32(x[kk], 1);
-		REP(4) x[kk] = _mm512_xor_si512(x[kk], u[kk]);
+		UNROLL(XS) b[kk] = (~f[kk]) & b[kk];
 
-		REP(4) u[kk] = x[kk];
-
-		REP(4) x[kk] = y[kk];
-
-		REP(4) y[kk] = z[kk];
-
-		REP(4) z[kk] = _mm512_xor_si512(u[kk], x[kk]);
-
-		REP(4) z[kk] = _mm512_xor_si512(z[kk], y[kk]);
-	}
-
-	REP(4) r[kk] = _mm512_and_si512(z[kk], mask1);
-
-	REP(4) r[kk] = _mm512_or_si512(r[kk], mask2);
-
-	REP(4) t[kk] = _mm512_sub_ps(t[kk], one);
-
-	REP(4) t[kk] = _mm512_mul_ps(t[kk], s[kk]);
-
-	__m512i midx[4] = { _mm512_set1_epi32(n - 1), _mm512_set1_epi32(n - 1), _mm512_set1_epi32(n - 1), _mm512_set1_epi32(n - 1) };
-	__m512i nidx[4] = { _mm512_setzero_si512(), _mm512_setzero_si512(), _mm512_setzero_si512(), _mm512_setzero_si512() };
-	__m512i ninc[4] = { _mm512_set1_epi32(1), _mm512_set1_epi32(1), _mm512_set1_epi32(1), _mm512_set1_epi32(1) };
-	__mmask16 b[4], f[4] = { 0 };
-
-	for (int i4 = 0; i4 < n * 4; i4 += 4)
-	{
-		REP(4) b[kk] = _mm512_cmp_ps_mask(t[kk], arr[kk + i4], _CMP_LT_OS);
-
-		REP(4) t[kk] = _mm512_sub_ps(t[kk], arr[kk + i4]);
-
-		REP(4) b[kk] = (~f[kk]) & b[kk];
-
-		REP(4) f[kk] = f[kk] | b[kk];
+		UNROLL(XS) f[kk] = f[kk] | b[kk];
 
 		//GCC has a bug here, cannot correct move nidx to midx according to the mask b2
-		REP(4) midx[kk] = _mm512_mask_mov_epi32(midx[kk], b[kk], nidx[kk]);
+		UNROLL(XS) midx[kk] = _mm512_mask_mov_epi32(midx[kk], b[kk], nidx[kk]);
 
-		REP(4) nidx[kk] = _mm512_add_epi32(nidx[kk], ninc[kk]);
+		UNROLL(XS) nidx[kk] = _mm512_add_epi32(nidx[kk], ninc[kk]);
 	}
 
-	if constexpr (nbits == 32)
+	__m256i* midx2 = (__m256i*)midx;
+	UNROLL(XS2) re[kk] = _mm512_cvtepi32_epi64(midx2[kk]);
+}
+
+/* Draw uniform distriubted intergers */
+TARGET512 void RNG512<float>::XorShift()
+{
+	__m512i u[XS];
+
+	UNROLL(XS) u[kk] = _mm512_slli_epi32(x[kk], 16);
+	UNROLL(XS) x[kk] = _mm512_xor_si512(x[kk], u[kk]);
+
+	UNROLL(XS) u[kk] = _mm512_srli_epi32(x[kk], 5);
+	UNROLL(XS) x[kk] = _mm512_xor_si512(x[kk], u[kk]);
+
+	UNROLL(XS) u[kk] = _mm512_slli_epi32(x[kk], 1);
+	UNROLL(XS) x[kk] = _mm512_xor_si512(x[kk], u[kk]);
+
+	UNROLL(XS) u[kk] = x[kk];
+
+	UNROLL(XS) x[kk] = y[kk];
+
+	UNROLL(XS) y[kk] = z[kk];
+
+	UNROLL(XS) z[kk] = _mm512_xor_si512(u[kk], x[kk]);
+
+	UNROLL(XS) z[kk] = _mm512_xor_si512(z[kk], y[kk]);
+}
+
+/* Draw uniform distriubted integers */
+template<typename INT>
+TARGET512 void RNG512<float>::Integer(INT* re, int64 n, INT minv, INT maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(INT);
+	int64 i = 0;
+	INT modv = maxv - minv;
+	INT* rei = re;
+
+	for (; i <= n - xesize; i += xesize)
 	{
-		REP(4) re[kk] = midx[kk];
+		XorShift();
+		UNROLL(XS) { _mm512_storeu_si512((__m512i*)rei, z[kk]); rei += E512B / sizeof(INT); }
+	}
+
+	if (i != n)
+	{
+		XorShift();
+		SetVal((INT*)rei, (INT*)z, n - i);
+	}
+
+	if (maxv != (INT)-1 || minv != 0)
+	{
+		for (i = 0; i < n; ++i)
+			re[i] = re[i] % modv + minv;
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGET512 void RNG512<float>::Uniform(float* re, int n, float minv, float maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(float);
+
+	int i = 0;
+	float range = maxv - minv;
+
+	__m512i mask1 = _mm512_set1_epi32(0x000FFFFF);
+	__m512i mask2 = _mm512_set1_epi32(0x3F800000);
+	__m512 v1 = _mm512_set1_ps(minv - range);
+	__m512 v2 = _mm512_set1_ps(range);
+
+	if (range == 1.0)
+	{
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { _mm512_storeu_ps(re, _mm512_add_ps(_mm512_castsi512_ps(_mm512_or_si512(_mm512_and_si512(z[kk], mask1), mask2)), v1)); re += E512F; }
+		}
 	}
 	else
 	{
-		__m256i* midx2 = (__m256i*)midx;
-		REP(8) re[kk] = _mm512_cvtepi32_epi64(midx2[kk]);
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { _mm512_storeu_ps(re, _mm512_fmaddx_ps(_mm512_castsi512_ps(_mm512_or_si512(_mm512_and_si512(z[kk], mask1), mask2)), v2, v1)); re += E512F; }
+		}
+	}
+
+	if (i != n)
+	{
+		__m512 ref[XS];
+		XorShift();
+		UNROLL(XS) ref[kk] = _mm512_fmaddx_ps(_mm512_castsi512_ps(_mm512_or_si512(_mm512_and_si512(z[kk], mask1), mask2)), v2, v1);
+		SetVal((float*)re, (float*)ref, n - i);
 	}
 }
 
+/* Draw uniform distriubted real numbers */
+TARGET512 void RNG512<float>::Normal(float* re, int n, float mean, float sd)
+{
+	constexpr int xhsize = XS / 2;
+	constexpr int xesize = XS * E512F;
+
+	int i = 0;
+
+	__m512i mask1 = _mm512_set1_epi32(0x000FFFFF);
+	__m512i mask2 = _mm512_set1_epi32(0x3F800000);
+	__m512 v1 = _mm512_set1_ps(-1);
+	__m512 min_freq = _mm512_set1_ps((float)MIN_FREQ);
+	__m512 pi2 = _mm512_set1_ps((float)(2.0 * M_PI));
+	__m512 mu = _mm512_set1_ps(mean);
+	__m512 s = _mm512_set1_ps(sd);
+
+	for (; i <= n - xesize; i += xesize)
+	{
+		XorShift();
+		UNROLL(XS) _mm512_storeu_ps(re + kk * E256F, _mm512_add_ps(_mm512_castsi512_ps(_mm512_or_si512(_mm512_and_si512(z[kk], mask1), mask2)), v1));
+		
+		__m512 u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = _mm512_max_ps(_mm512_loadu_ps(re + j * E512F), min_freq);
+			u2 = _mm512_mul_ps(_mm512_loadu_ps(re + j * E512F + xhsize * E512F), pi2);
+
+			UNROLL(E512F) simd_f32(u1, kk) = sqrt(-2.0 * log(simd_f32(u1, kk)));
+			UNROLL(E512F) simd_f32(u3, kk) = cos(simd_f32(u2, kk));
+			UNROLL(E512F) simd_f32(u4, kk) = sin(simd_f32(u2, kk));
+			
+			_mm512_storeu_ps(re + j * E512F, _mm512_mul_ps(u1, u3));
+			_mm512_storeu_ps(re + j * E512F + xhsize * E512F, _mm512_mul_ps(u1, u4));
+		}
+		
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) { _mm512_storeu_ps(re, _mm512_fmaddx_ps(_mm512_loadu_ps(re), s, mu)); re += E512F; }
+		else
+			re += XS * E512F;
+	}
+
+	if (i != n)
+	{
+		float ref[XS * E512F];
+
+		XorShift();
+		UNROLL(XS) _mm512_storeu_ps(ref + kk * E512F, _mm512_add_ps(_mm512_castsi512_ps(_mm512_or_si512(_mm512_and_si512(z[kk], mask1), mask2)), v1));
+
+		__m512 u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = _mm512_max_ps(_mm512_loadu_ps(ref + j * E512F), min_freq);
+			u2 = _mm512_mul_ps(_mm512_loadu_ps(ref + j * E512F + xhsize * E512F), pi2);
+
+			UNROLL(E512F) simd_f32(u1, kk) = sqrt(-2.0 * log(simd_f32(u1, kk)));
+			UNROLL(E512F) simd_f32(u3, kk) = cos(simd_f32(u2, kk));
+			UNROLL(E512F) simd_f32(u4, kk) = sin(simd_f32(u2, kk));
+			
+			_mm512_storeu_ps(&ref[j * E512F], _mm512_mul_ps(u1, u3));
+			_mm512_storeu_ps(&ref[j * E512F + xhsize * E512F], _mm512_mul_ps(u1, u4));
+		}
+		
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) _mm512_storeu_ps(ref + kk * E512F, _mm512_fmaddx_ps(_mm512_loadu_ps(re), s, mu)); 
+
+		SetVal((float*)re, (float*)ref, n - i);
+	}
+}
 #endif
-
-__forceinline TARGET512 double __mm512_reduce_add_pd(__m512d v0)
-{
-	__m256d v1 = _mm256_add_pd(_mm512_extractf64x4_pd(v0, 0), _mm512_extractf64x4_pd(v0, 1));
-	__m128d v2 = _mm_add_pd(_mm256_extractf128_pd(v1, 0), _mm256_extractf128_pd(v1, 1));
-	return simd_f64(v2, 0) + simd_f64(v2, 1);
-}
-
-__forceinline TARGET512 double __mm512_reduce_mul_pd(__m512d v0)
-{
-	__m256d v1 = _mm256_mul_pd(_mm512_extractf64x4_pd(v0, 0), _mm512_extractf64x4_pd(v0, 1));
-	__m128d v2 = _mm_mul_pd(_mm256_extractf128_pd(v1, 0), _mm256_extractf128_pd(v1, 1));
-	return simd_f64(v2, 0) * simd_f64(v2, 1);
-}
-
-__forceinline TARGET512 float __mm512_reduce_add_ps(__m512 v0)
-{
-	__m256 v1 = _mm256_add_ps(_mm512_extractf32x8_ps(v0, 0), _mm512_extractf32x8_ps(v0, 1));
-	__m128 v2 = _mm_add_ps(_mm256_extractf128_ps(v1, 0), _mm256_extractf128_ps(v1, 1));
-	__m128 v3 = _mm_add_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
-	return simd_f32(v3, 0) + simd_f32(v3, 1);
-}
-
-__forceinline TARGET512 float __mm512_reduce_mul_ps(__m512 v0)
-{
-	__m256 v1 = _mm256_mul_ps(_mm512_extractf32x8_ps(v0, 0), _mm512_extractf32x8_ps(v0, 1));
-	__m128 v2 = _mm_mul_ps(_mm256_extractf128_ps(v1, 0), _mm256_extractf128_ps(v1, 1));
-	__m128 v3 = _mm_mul_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
-	return simd_f32(v3, 0) * simd_f32(v3, 1);
-}
-
-__forceinline TARGET512 double __mm512_reduce_add_psd(__m512 v0)
-{
-	__m512d v0b = _mm512_add_pd(
-		_mm512_cvtps_pd(_mm512_extractf32x8_ps(v0, 0)),
-		_mm512_cvtps_pd(_mm512_extractf32x8_ps(v0, 1)));
-	__m256d v1 = _mm256_add_pd(_mm512_extractf64x4_pd(v0b, 0), _mm512_extractf64x4_pd(v0b, 1));
-	__m128d v2 = _mm_add_pd(_mm256_extractf128_pd(v1, 0), _mm256_extractf128_pd(v1, 1));
-	return simd_f64(v2, 0) + simd_f64(v2, 1);
-}
-
-__forceinline TARGET512 double __mm512_reduce_mul_psd(__m512 v0)
-{
-	__m512d v0b = _mm512_mul_pd(
-		_mm512_cvtps_pd(_mm512_extractf32x8_ps(v0, 0)),
-		_mm512_cvtps_pd(_mm512_extractf32x8_ps(v0, 1)));
-	__m256d v1 = _mm256_mul_pd(_mm512_extractf64x4_pd(v0b, 0), _mm512_extractf64x4_pd(v0b, 1));
-	__m128d v2 = _mm_mul_pd(_mm256_extractf128_pd(v1, 0), _mm256_extractf128_pd(v1, 1));
-	return simd_f64(v2, 0) * simd_f64(v2, 1);
-}
 
 TARGET512 int64 GetMinIdx512(double* A, int64 n, double& val)
 {
-	constexpr int N = 2;
+#define N 2
 	int64 i = 0;
 	val = DBL_MAX;
 	uint64 idx = (uint64)-1;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d min1[N], a[N];
-		__m512i midx[N], nidx[N], msep = _mm512_set1_epi64(N * sizeof(__m512d) / sizeof(double));
-		REP(N) min1[kk] = _mm512_set1_pd(val);
-		REP(N) midx[kk] = _mm512_set1_epi64(0xFFFFFFFFFFFFFFFF);
-		REP(N) nidx[kk] = _mm512_set_epi64(7 + (kk << 3), 6 + (kk << 3), 5 + (kk << 3), 4 + (kk << 3), 3 + (kk << 3), 2 + (kk << 3), 1 + (kk << 3), 0 + (kk << 3));
+		__m512d min1[N];
+		__m512i midx[N], nidx[N], msep = _mm512_set1_epi64(N * E512D);
+		UNROLL(N) min1[kk] = _mm512_set1_pd(val);
+		UNROLL(N) midx[kk] = _mm512_set1_epi64(0xFFFFFFFFFFFFFFFF);
+		UNROLL(N) nidx[kk] = _mm512_set_epi64(7 + (kk << 3), 6 + (kk << 3), 5 + (kk << 3), 4 + (kk << 3), 3 + (kk << 3), 2 + (kk << 3), 1 + (kk << 3), 0 + (kk << 3));
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
+			UNROLL(N) 
+			{
+				midx[kk] = _mm512_mask_mov_epi64(midx[kk], _mm512_cmp_pd_mask(min1[kk], _mm512_loadu_pd(A), _CMP_GT_OS), nidx[kk]);
+				min1[kk] = _mm512_min_pd(min1[kk], _mm512_loadu_pd(A));
+				A += E512D;
+			}
 
-			REP(N) midx[kk] = _mm512_mask_mov_epi64(midx[kk], _mm512_cmp_pd_mask(min1[kk], a[kk], _CMP_GT_OS), nidx[kk]);
-
-			REP(N) min1[kk] = _mm512_min_pd(min1[kk], a[kk]);
-
-			REP(N) nidx[kk] = _mm512_add_epi64(nidx[kk], msep);
+			UNROLL(N) nidx[kk] = _mm512_add_epi64(nidx[kk], msep);
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) midx[kk] = _mm512_mask_mov_epi64(midx[kk], _mm512_cmp_pd_mask(min1[kk], min1[kk + KK], _CMP_GT_OS), midx[kk + KK]);
-			REP(KK) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + KK]);
+			midx[kk] = _mm512_mask_mov_epi64(midx[kk], _mm512_cmp_pd_mask(min1[kk], min1[kk + KK], _CMP_GT_OS), midx[kk + KK]);
+			min1[kk] = _mm512_min_pd(min1[kk], min1[kk + KK]);
 		}
 
-		for (int64 j = 0; j < N * sizeof(__m512d) / sizeof(double); ++j)
+		for (int64 j = 0; j < E512D; ++j)
 		{
 			if (simp_f64(min1, j) > val) continue;
 			val = simp_f64(min1, j);
@@ -380,37 +603,38 @@ TARGET512 int64 GetMinIdx512(double* A, int64 n, double& val)
 
 TARGET512 int64 GetMinIdx512(float* A, int64 n, float& val)
 {
-	constexpr int N = 2;
+#define N 2
 	int64 i = 0;
 	val = FLT_MAX;
 	uint idx = (uint)-1;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 min1[N], a[N];
-		__m512i midx[N], nidx[N], msep = _mm512_set1_epi32(N * sizeof(__m512) / sizeof(float));
-		REP(N) min1[kk] = _mm512_set1_ps(val);
-		REP(N) midx[kk] = _mm512_set1_epi8((char)0xFF);
-		REP(N) nidx[kk] = _mm512_set_epi32(15 + (kk << 4), 14 + (kk << 4), 13 + (kk << 4), 12 + (kk << 4), 11 + (kk << 4), 10 + (kk << 4), 9 + (kk << 4), 8 + (kk << 4), 7 + (kk << 4), 6 + (kk << 4), 5 + (kk << 4), 4 + (kk << 4), 3 + (kk << 4), 2 + (kk << 4), 1 + (kk << 4), 0 + (kk << 4));
+		__m512 min1[N];
+		__m512i midx[N], nidx[N], msep = _mm512_set1_epi32(N * E512F);
+		UNROLL(N) min1[kk] = _mm512_set1_ps(val);
+		UNROLL(N) midx[kk] = _mm512_set1_epi8((char)0xFF);
+		UNROLL(N) nidx[kk] = _mm512_set_epi32(15 + (kk << 4), 14 + (kk << 4), 13 + (kk << 4), 12 + (kk << 4), 11 + (kk << 4), 10 + (kk << 4), 9 + (kk << 4), 8 + (kk << 4), 7 + (kk << 4), 6 + (kk << 4), 5 + (kk << 4), 4 + (kk << 4), 3 + (kk << 4), 2 + (kk << 4), 1 + (kk << 4), 0 + (kk << 4));
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
+			UNROLL(N) 
+			{
+				midx[kk] = _mm512_mask_mov_epi32(midx[kk], _mm512_cmp_ps_mask(min1[kk], _mm512_loadu_ps(A), _CMP_GT_OS), nidx[kk]);
+				min1[kk] = _mm512_min_ps(min1[kk], _mm512_loadu_ps(A));
+				A += E512F;
+			}
 
-			REP(N) midx[kk] = _mm512_mask_mov_epi32(midx[kk], _mm512_cmp_ps_mask(min1[kk], a[kk], _CMP_GT_OS), nidx[kk]);
-
-			REP(N) min1[kk] = _mm512_min_ps(min1[kk], a[kk]);
-
-			REP(N) nidx[kk] = _mm512_add_epi64(nidx[kk], msep);
+			UNROLL(N) nidx[kk] = _mm512_add_epi64(nidx[kk], msep);
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) midx[kk] = _mm512_mask_mov_epi32(midx[kk], _mm512_cmp_ps_mask(min1[kk], min1[kk + KK], _CMP_GT_OS), midx[kk + KK]);
-			REP(KK) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + KK]);
+			midx[kk] = _mm512_mask_mov_epi32(midx[kk], _mm512_cmp_ps_mask(min1[kk], min1[kk + KK], _CMP_GT_OS), midx[kk + KK]);
+			min1[kk] = _mm512_min_ps(min1[kk], min1[kk + KK]);
 		}
 
-		for (int64 j = 0; j < sizeof(__m512) / sizeof(float); ++j)
+		for (int64 j = 0; j < E512F; ++j)
 		{
 			if (simp_f32(min1, j) > val) continue;
 			val = simp_f32(min1, j);
@@ -430,32 +654,31 @@ TARGET512 int64 GetMinIdx512(float* A, int64 n, float& val)
 
 TARGET512 void GetMinMaxVal512(double* A, int64 n, double& minv, double& maxv)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	minv = DBL_MAX;
 	maxv = -DBL_MAX;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d min1[N], max1[N], a[N];
-		REP(N) min1[kk] = _mm512_set1_pd(minv);
-		REP(N) max1[kk] = _mm512_set1_pd(maxv);
+		__m512d min1[N], max1[N];
+		UNROLL(N) min1[kk] = _mm512_set1_pd(minv);
+		UNROLL(N) max1[kk] = _mm512_set1_pd(maxv);
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N)
+			UNROLL(N)
 			{
-				min1[kk] = _mm512_min_pd(min1[kk], a[kk]);
-				max1[kk] = _mm512_max_pd(max1[kk], a[kk]);
+				min1[kk] = _mm512_min_pd(min1[kk], _mm512_loadu_pd(A));
+				max1[kk] = _mm512_max_pd(max1[kk], _mm512_loadu_pd(A));
+				A += E512D;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + KK]);
-			REP(KK) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + KK]);
+			min1[kk] = _mm512_min_pd(min1[kk], min1[kk + KK]);
+			max1[kk] = _mm512_max_pd(max1[kk], max1[kk + KK]);
 		}
 
 		minv = _mm512_reduce_min_pd(min1[0]);
@@ -464,39 +687,38 @@ TARGET512 void GetMinMaxVal512(double* A, int64 n, double& minv, double& maxv)
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < minv) minv = *A;
-		if (*A > maxv) maxv = *A;
+		minv = std::min(minv, *A);
+		maxv = std::max(maxv, *A);
 	}
 }
 
 TARGET512 void GetMinMaxVal512(float* A, int64 n, float& minv, float& maxv)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	minv = FLT_MAX;
 	maxv = -FLT_MAX;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 min1[N], max1[N], a[N];
-		REP(N) min1[kk] = _mm512_set1_ps(minv);
-		REP(N) max1[kk] = _mm512_set1_ps(maxv);
+		__m512 min1[N], max1[N];
+		UNROLL(N) min1[kk] = _mm512_set1_ps(minv);
+		UNROLL(N) max1[kk] = _mm512_set1_ps(maxv);
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N)
+			UNROLL(N)
 			{
-				min1[kk] = _mm512_min_ps(min1[kk], a[kk]);
-				max1[kk] = _mm512_max_ps(max1[kk], a[kk]);
+				min1[kk] = _mm512_min_ps(min1[kk], _mm512_loadu_ps(A));
+				max1[kk] = _mm512_max_ps(max1[kk], _mm512_loadu_ps(A));
+				A += E512F;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + KK]);
-			REP(KK) max1[kk] = _mm512_max_ps(max1[kk], max1[kk + KK]);
+			min1[kk] = _mm512_min_ps(min1[kk], min1[kk + KK]);
+			max1[kk] = _mm512_max_ps(max1[kk], max1[kk + KK]);
 		}
 
 		minv = _mm512_reduce_min_ps(min1[0]);
@@ -505,76 +727,63 @@ TARGET512 void GetMinMaxVal512(float* A, int64 n, float& minv, float& maxv)
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < minv) minv = *A;
-		if (*A > maxv) maxv = *A;
+		minv = std::min(minv, *A);
+		maxv = std::max(maxv, *A);
 	}
 }
 
 TARGET512 double GetMaxVal512(double* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	double val = -DBL_MAX;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
 		__m512d max1[N];
-		REP(N) max1[kk] = _mm512_set1_pd(val);
+		UNROLL(N) max1[kk] = _mm512_set1_pd(val);
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
-			{
-				max1[kk] = _mm512_max_pd(max1[kk], _mm512_loadu_pd(A)); 
-				A += sizeof(__m512d) / sizeof(double);
-			}
+			UNROLL(N) { max1[kk] = _mm512_max_pd(max1[kk], _mm512_loadu_pd(A)); A += E512D; }
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + KK]);
+		REDUCE(max1) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + KK]);
 		
 		val = _mm512_reduce_max_pd(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 	return val;
 }
 
 TARGET512 float GetMaxVal512(float* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	float val = -FLT_MAX;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
 		__m512 max1[N];
-		REP(N) max1[kk] = _mm512_set1_ps(val);
+		UNROLL(N) max1[kk] = _mm512_set1_ps(val);
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { max1[kk] = _mm512_max_ps(max1[kk], _mm512_loadu_ps(A)); A += sizeof(__m512) / sizeof(float); }
+			UNROLL(N) { max1[kk] = _mm512_max_ps(max1[kk], _mm512_loadu_ps(A)); A += E512F; }
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = _mm512_max_ps(max1[kk], max1[kk + KK]);
-
-		__m128* max2 = (__m128*)max1;
-		REP(2) max2[kk] = _mm_max_ps(max2[kk], max2[kk + 2]);
-		REP(1) max2[kk] = _mm_max_ps(max2[kk], max2[kk + 1]);
-
-		val = Max(Max(simp_f32(max1, 0), simp_f32(max1, 1)),
-				  Max(simp_f32(max1, 2), simp_f32(max1, 3)));
+		REDUCE(max1) max1[kk] = _mm512_max_ps(max1[kk], max1[kk + KK]);
+		
+		val = _mm512_reduce_max_ps(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 
 	return val;
@@ -582,74 +791,87 @@ TARGET512 float GetMaxVal512(float* A, int64 n)
 
 TARGET512 double GetMaxVal512(double* A, int64 n, int64 sep)
 {
-	constexpr int N = 2;
+	//suboptimal to compile
+	{
+		double val = -DBL_MAX;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			val = std::max(val, *A);
+		return val;
+	}
+
+#define N 2
 	int64 i = 0;
 	double val = -DBL_MAX;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512i vindex = _mm512_mullo_epi64(_mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0), _mm512_set1_epi64(sep));
-		__m512d max1[N];
-		REP(N) max1[kk] = _mm512_set1_pd(val);
+		__m512d max1 = _mm512_set1_pd(val);
+		__m512i vindex = _mm512_set_epi64(7 * sep, 6 * sep, 5 * sep, 4 * sep, 3 * sep, 2 * sep, 1 * sep, 0 * sep);
+		volatile __m512d t0 = _mm512_i64gather_pd(vindex, A, sizeof(double));
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
+			UNROLL(N)
 			{
-				max1[kk] = _mm512_max_pd(max1[kk], _mm512_i64gather_pd(vindex, A, sizeof(double)));
-				A += sizeof(__m512d) / sizeof(double) * sep;
+				volatile __m512d t1 = _mm512_i64gather_pd(vindex, A + E512D * sep, sizeof(double));
+				
+				max1 = _mm512_max_pd(max1, _mm512_i64gather_pd(vindex, A, sizeof(double)));
+				
+				A += E512D * sep;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = _mm512_max_pd(max1[kk], max1[kk + KK]);
-
-		val = _mm512_reduce_max_pd(max1[0]);
+		val = _mm512_reduce_max_pd(max1);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
+
 	return val;
 }
 
 TARGET512 float GetMaxVal512(float* A, int64 n, int64 sep)
 {
-	constexpr int N = 2;
+	//suboptimal to compile
+	{
+		float val = -FLT_MAX;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			val = std::max(val, *A);
+		return val;
+	}
+
+#define N 2
 	int64 i = 0;
 	float val = -FLT_MAX;
 
-	if (n >= N * sizeof(__m256) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512i vindex = _mm512_mullo_epi64(_mm512_set1_epi64(sep), _mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0));
-		__m256 max1[N];
-		REP(N) max1[kk] = _mm256_set1_ps(val);
+		__m512 max1 = _mm512_set1_ps(val);
+		__m512i vindex = _mm512_set_epi32(15 * sep, 14 * sep, 13 * sep, 12 * sep, 11 * sep, 10 * sep, 9 * sep, 8 * sep, 7 * sep, 6 * sep, 5 * sep, 4 * sep, 3 * sep, 2 * sep, 1 * sep, 0 * sep);
+		//volatile __m512 t0 = _mm512_i32gather_ps(vindex, A, sizeof(float));
 
-		for (int64 l1 = n - N * sizeof(__m256) / sizeof(float); i <= l1; i += N * sizeof(__m256) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) 
-			{ 
-				max1[kk] = _mm256_max_ps(max1[kk], _mm512_i64gather_ps(vindex, A, sizeof(float))); 
-				A += sizeof(__m256) / sizeof(float) * sep; 
+			UNROLL(N)
+			{
+				//volatile __m512 t1 = _mm512_i32gather_ps(vindex, A + E512F * sep, sizeof(float));
+				
+				max1 = _mm512_max_ps(max1, _mm512_i32gather_ps(vindex, A, sizeof(float)));
+				
+				A += E512F * sep;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = _mm256_max_ps(max1[kk], max1[kk + KK]);
-
-		__m128* max2 = (__m128*)max1;
-		REP(1) max2[kk] = _mm_max_ps(max2[kk], max2[kk + 1]);
-
-		val = Max(Max(simp_f32(max1, 0), simp_f32(max1, 1)),
-				  Max(simp_f32(max1, 2), simp_f32(max1, 3)));
+		val = _mm512_reduce_max_ps(max1);
 	}
 
-	for (; i < n; ++i, A += sep)
+	for (; i < n; ++i, ++A)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 
 	return val;
@@ -657,128 +879,99 @@ TARGET512 float GetMaxVal512(float* A, int64 n, int64 sep)
 
 TARGET512 double GetMinVal512(double* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	double val = DBL_MAX;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
 		__m512d min1[N];
-		REP(N) min1[kk] = _mm512_set1_pd(val);
+		UNROLL(N) min1[kk] = _mm512_set1_pd(val);
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
-			{
-				min1[kk] = _mm512_min_pd(min1[kk], _mm512_loadu_pd(A));
-				A += sizeof(__m512d) / sizeof(double);
-			}
+			UNROLL(N) { min1[kk] = _mm512_min_pd(min1[kk], _mm512_loadu_pd(A)); A += E512D; }
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + KK]);
-
+		REDUCE(min1) min1[kk] = _mm512_min_pd(min1[kk], min1[kk + KK]);
+		
 		val = _mm512_reduce_min_pd(min1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A > val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
 	return val;
 }
 
 TARGET512 float GetMinVal512(float* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	float val = FLT_MAX;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
 		__m512 min1[N];
-		REP(N) min1[kk] = _mm512_set1_ps(val);
+		UNROLL(N) min1[kk] = _mm512_set1_ps(val);
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { min1[kk] = _mm512_min_ps(min1[kk], _mm512_loadu_ps(A)); A += sizeof(__m512) / sizeof(float); }
+			UNROLL(N) { min1[kk] = _mm512_min_ps(min1[kk], _mm512_loadu_ps(A)); A += E512F; }
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + KK]);
-
-		__m128* min2 = (__m128*)min1;
-		REP(2) min2[kk] = _mm_min_ps(min2[kk], min2[kk + 2]);
-		REP(1) min2[kk] = _mm_min_ps(min2[kk], min2[kk + 1]);
-
-		val = Min(Min(simp_f32(min1, 0), simp_f32(min1, 1)),
-				  Min(simp_f32(min1, 2), simp_f32(min1, 3)));
+		REDUCE(min1) min1[kk] = _mm512_min_ps(min1[kk], min1[kk + KK]);
+		
+		val = _mm512_reduce_min_ps(min1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A > val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
+
 	return val;
 }
 
 TARGET512 int64 GetMinVal512(int64* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	int64 val = 0x7FFFFFFFFFFFFFFF;
 
-	if (n >= N * sizeof(__m512i) / sizeof(int64))
+	if (n >= N * E512D)
 	{
 		__m512i min1[N];
-		REP(N) min1[kk] = _mm512_set1_epi64(0x7FFFFFFFFFFFFFFF);
+		UNROLL(N) min1[kk] = _mm512_set1_epi64(0x7FFFFFFFFFFFFFFF);
 
-		for (int64 l1 = n - N * sizeof(__m512i) / sizeof(int64); i <= l1; i += N * sizeof(__m512i) / sizeof(int64))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) 
-			{ 
-				min1[kk] = _mm512_min_epi64(min1[kk], _mm512_loadu_si512(A)); 
-				A += sizeof(__m512i) / sizeof(int64); 
-			}
+			UNROLL(N) { min1[kk] = _mm512_min_epi64(min1[kk], _mm512_loadu_si512(A)); A += E512D; }
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) min1[kk] = _mm512_min_epi64(min1[kk], min1[kk + KK]);
-
+		REDUCE(min1) min1[kk] = _mm512_min_epi64(min1[kk], min1[kk + KK]);
+		
 		val = _mm512_reduce_min_epi64(min1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A > val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
-
 	return val;
 }
 
 TARGET512 void SetVal512(uint* A, ushort* B, int64 n)
 {
+#define N 4
 	int64 i = 0;
 
-	if (n >= 32)
+	if (n >= N * E512F)
 	{
-		__m512i b;
-		__m256i& b1 = *((__m256i*) & b + 0);
-		__m256i& b2 = *((__m256i*) & b + 1);
-		__m512i v1, v2;
-
-		for (int64 l1 = n - 32; i <= l1; i += 32)
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			b = _mm512_loadu_si512(B); B += 32;
-
-			v1 = _mm512_cvtepu16_epi32(b1);
-			v2 = _mm512_cvtepu16_epi32(b2);
-
-			_mm512_storeu_si512(A, v1); A += 16;
-			_mm512_storeu_si512(A, v2); A += 16;
+			UNROLL(N) { _mm512_storeu_si512(A, _mm512_cvtepu16_epi32(_mm256_loadu_si256((__m256i*)B))); A += E512F; B += E512F; }
 		}
 	}
 
@@ -836,35 +1029,25 @@ TARGET512 void ChargeLog512(int64& slog, double& prod, __m512& val)
 
 TARGET512 double LogProd512(double* A, int64 n)
 {
-	return LogProdAVX(A, n);
-	
-	/*
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 32)
+	if (n >= N * E512D)
 	{
-		__m512d pd = _mm512_set1_pd(1.0), dunder = _mm512_set1_pd(DOUBLE_UNDERFLOW), dover = _mm512_set1_pd(DOUBLE_OVERFLOW);
-		__mmask8 flag;
+		__m512d pd[E512_512];
+		UNROLL(E512_512) pd[kk] = _mm512_set1_pd(1.0);
 
-		for (int64 l1 = n - 32; i <= l1; i += 32)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(2)
-			{
-				pd = _mm512_mul_pd(pd, _mm512_mul_pd(_mm512_loadu_pd(A), _mm512_loadu_pd(A + 8)));
-				A += 16;
-			}
+			UNROLL(N) UNROLL(E512_512)
+			{ pd[kk] = _mm512_mul_pd(pd[kk], _mm512_loadu_pd(A)); A += E512D; }
 
-			//
-			flag = _mm512_cmp_pd_mask(pd, dunder, _CMP_LT_OS) | _mm512_cmp_pd_mask(dover, pd, _CMP_LT_OS);
-
-			//if (flag) [[unlikely]]
-
-			AddExponent512(slog, pd);
+			UNROLL(E512_512) AddExponent512(slog, pd[kk]);
 		}
 
-		__m128d* pd1 = (__m128d*)&pd;
-		REP(4) ChargeLogSSE(slog, prod, pd1[kk]);
+		__m128d* pd1 = (__m128d*)pd;
+		UNROLL(E512_128) ChargeLogSSE(slog, prod, pd1[kk]);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -872,67 +1055,29 @@ TARGET512 double LogProd512(double* A, int64 n)
 
 	CloseLog(slog, prod);
 	return prod;
-	*/
 }
 
 TARGET512 double LogProd512(float* A, int64 n)
 {
-	return LogProdAVX(A, n);
-
-	/*
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 64)
+	if (n >= N * E512D)
 	{
-		__m512d pd = _mm512_set1_pd(1.0);
+		__m512d pd[E512_512];
+		UNROLL(E512_512) pd[kk] = _mm512_set1_pd(1.0);
 
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(4)
-			{
-				pd = _mm512_mul_pd(pd, _mm512_mul_pd(
-						_mm512_cvtps_pd(_mm256_loadu_ps(A)),
-						_mm512_cvtps_pd(_mm256_loadu_ps(A + 8))));
-				A += 16;
-			}
+			UNROLL(N) UNROLL(E512_512) 
+			{ pd[kk] = _mm512_mul_pd(pd[kk], _mm512_cvtps_pd(_mm256_loadu_ps(A))); A += E512D; }
 
-			AddExponent512(slog, pd);
+			UNROLL(E512_512) AddExponent512(slog, pd[kk]);
 		}
 
-		__m128d* pd1 = (__m128d*) & pd;
-		REP(4) ChargeLogSSE(slog, prod, pd1[kk]);
-	}
-
-	for (; i < n; ++i, ++A)
-		ChargeLog(slog, prod, *A);
-
-	CloseLog(slog, prod);
-	return prod;
-	*/
-}
-
-TARGET512 float LogProd512x(float* A, int64 n)
-{
-	int64 i = 0;
-	int64 slog = 0; double prod = 1;
-
-	if (n >= 32)
-	{
-		__m512 pd = _mm512_set1_ps(1.0f);
-
-		for (int64 l1 = n - 32; i <= l1; i += 32)
-		{
-			pd = _mm512_mul_ps(pd, _mm512_loadu_ps(A));
-			pd = _mm512_mul_ps(pd, _mm512_loadu_ps(A + 16));
-
-			A += 32;
-
-			AddExponent512(slog, pd);
-		}
-
-		__m128* pd1 = (__m128*)&pd;
-		REP(4) ChargeLogSSE(slog, prod, pd1[kk]);
+		__m128d* pd1 = (__m128d*)pd;
+		UNROLL(E512_128) ChargeLogSSE(slog, prod, pd1[kk]);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -944,294 +1089,140 @@ TARGET512 float LogProd512x(float* A, int64 n)
 
 TARGET512 double LogProd512(double* A, int64 n, int64 sep)
 {
+	//suboptimal to compile
+	{
+		int64 slog = 0; double prod = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			ChargeLog(slog, prod, *A);
+
+		CloseLog(slog, prod);
+		return prod;
+	}
+
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 8)
+	if (n >= N * E512D)
 	{
-		_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-		_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-		_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-		_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-		_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-		_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-		_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-		_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
+		__m512d pd[E512_512];
+		UNROLL(E512_512) pd[kk] = _mm512_set1_pd(1.0);
+		__m512i vindex = _mm512_mullo_epi64(_mm512_sub_epi64(_mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0), _mm512_set1_epi64(0)), _mm512_set1_epi64(sep));
 
-		__m512d pd = _mm512_set1_pd(1.0), dunder = _mm512_set1_pd(DOUBLE_UNDERFLOW), dover = _mm512_set1_pd(DOUBLE_OVERFLOW);
-		__m512i vindex = _mm512_mullo_epi64(_mm512_set_epi64(-9, -10, -11, -12, -13, -14, -15, -16), _mm512_set1_epi64(sep));
-		__mmask8 flag;
-
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-			_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-			_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-			_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-			_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-			_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-			_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-			_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
+			UNROLL(N) UNROLL(E512_512) 
+			{ pd[kk] = _mm512_mul_pd(pd[kk], _mm512_i64gather_pd(vindex, A, sizeof(double))); A += E512D * sep; }
 
-			pd = _mm512_mul_pd(pd, _mm512_i64gather_pd(vindex, A, sizeof(double)));
-
-			flag = _mm512_cmp_pd_mask(pd, dunder, _CMP_LT_OS) | _mm512_cmp_pd_mask(dover, pd, _CMP_LT_OS);
-
-			if (flag) [[unlikely]]
-				AddExponent512(slog, pd);
+			UNROLL(E512_512) AddExponent512(slog, pd[kk]);
 		}
 
-		__m128d* pd1 = (__m128d*)&pd;
-		REP(4) ChargeLogSSE(slog, prod, pd1[kk]);
-		A -= 8 * sep;
+		__m128d* pd1 = (__m128d*)pd;
+		UNROLL(E512_128) ChargeLogSSE(slog, prod, pd1[kk]);
 	}
 
 	for (; i < n; ++i, A += sep)
 		ChargeLog(slog, prod, *A);
 
 	CloseLog(slog, prod);
+
 	return prod;
 }
 
 TARGET512 double LogProd512(float* A, int64 n, int64 sep)
 {
-	return LogProdSSE(A, n, sep);
-}
-
-TARGET512 float LogProd512x(float* A, int64 n, int64 sep)
-{
-	return LogProdSSEx(A, n, sep);
-	/*
-	int64 i = 0;
-	int64 slog = 0; double prod = 1;
-
-	if (n >= 32)
+	//suboptimal to compile
 	{
-		__m512 pd = _mm512_set1_ps(1.0f);
-		__m512i vindex = _mm512_mullo_epi32(_mm512_set1_epi32(sep), _mm512_set_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)); xxx
+		int64 slog = 0; double prod = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			ChargeLog(slog, prod, *A);
 
-		for (int64 l1 = n - 32; i <= l1; i += 32)
-		{
-			pd = _mm512_mul_ps(pd, _mm512_i32xxgather_ps(vindex, A, sizeof(float)));
-			A += 16 * sep;
-
-			pd = _mm512_mul_ps(pd, _mm512_i32xxgather_ps(vindex, A, sizeof(float)));
-			A += 16 * sep;
-
-			AddExponent512(slog, pd);
-		}
-
-		__m128* pd1 = (__m128*)&pd;
-		REP(4) ChargeLogSSE(slog, prod, pd1[kk]);
+		CloseLog(slog, prod);
+		return prod;
 	}
-
-	for (; i < n; ++i, A += sep)
-		ChargeLog(slog, prod, *A);
-
-	CloseLog(slog, prod);
-	return prod;
-	*/
 }
 
 TARGET512 double LogProdDiv512(double* A, double* B, int64 n, int64 sep)
 {
-	int64 slog1 = 0; double prod1 = 1;
-	int64 slog2 = 0; double prod2 = 1;
-
-	for (int64 i = 0; i < n; ++i, A += sep, B += sep)
+	//suboptimal to compile
 	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-	return prod1 - prod2;
-
-	/*
-	int64 i = 0;
-	int64 slog1 = 0; double prod1 = 1;
-	int64 slog2 = 0; double prod2 = 1;
-
-	if (n >= 64)
-	{
-		__m512d pd1 = _mm512_set1_pd(1.0), pd2 = _mm512_set1_pd(1.0);
-		__m512i vindex = _mm512_mullo_epi64(_mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0), _mm512_set1_epi64(sep));
-
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		int64 slog1 = 0; double prod1 = 1;
+		int64 slog2 = 0; double prod2 = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep, B += sep)
 		{
-			REP(8)
-			{
-				pd1 = _mm512_mul_pd(pd1, _mm512_i64gather_pd(vindex, A, sizeof(double))); A += sep * 8;
-				pd2 = _mm512_mul_pd(pd2, _mm512_i64gather_pd(vindex, B, sizeof(double))); B += sep * 8;
-			}
-
-			AddExponent512(slog1, pd1);
-			AddExponent512(slog2, pd2);
+			ChargeLog(slog1, prod1, *A);
+			ChargeLog(slog2, prod2, *B);
 		}
 
-		__m128d* pd11 = (__m128d*)&pd1;
-		__m128d* pd22 = (__m128d*)&pd2;
-		REP(4) ChargeLogSSE(slog1, prod1, pd11[kk]);
-		REP(4) ChargeLogSSE(slog2, prod2, pd22[kk]);
+		CloseLog(slog1, prod1);
+		CloseLog(slog2, prod2);
+		return prod1 - prod2;
 	}
-
-	for (; i < n; ++i, A += sep, B += sep)
-	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-
-	return prod1 - prod2;
-	*/
 }
 
 TARGET512 double LogProdDiv512(float* A, float* B, int64 n, int64 sep)
 {
-	int64 i = 0;
-	int64 slog1 = 0; double prod1 = 1;
-	int64 slog2 = 0; double prod2 = 1;
-
-	if (n >= 64)
+	//suboptimal to compile
 	{
-		__m512d pd1 = _mm512_set1_pd(1.0), pd2 = _mm512_set1_pd(1.0);
-
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		int64 slog1 = 0; double prod1 = 1;
+		int64 slog2 = 0; double prod2 = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep, B += sep)
 		{
-			REP(8)
-			{
-				pd1 = _mm512_mul_pd(pd1, _mm512_set_pd(A[7 * sep], A[6 * sep], A[5 * sep], A[4 * sep], A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 8 * sep;
-				pd2 = _mm512_mul_pd(pd2, _mm512_set_pd(B[7 * sep], B[6 * sep], B[5 * sep], B[4 * sep], B[3 * sep], B[2 * sep], B[1 * sep], B[0 * sep])); B += 8 * sep;
-			}
-
-			AddExponent512(slog1, pd1);
-			AddExponent512(slog2, pd2);
+			ChargeLog(slog1, prod1, *A);
+			ChargeLog(slog2, prod2, *B);
 		}
 
-		__m128d* pd11 = (__m128d*)&pd1;
-		__m128d* pd22 = (__m128d*)&pd2;
-
-		REP(4) ChargeLogSSE(slog1, prod1, pd11[kk]);
-		REP(4) ChargeLogSSE(slog2, prod2, pd22[kk]);
+		CloseLog(slog1, prod1);
+		CloseLog(slog2, prod2);
+		return prod1 - prod2;
 	}
-
-	for (; i < n; ++i, A += sep, B += sep)
-	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-
-	return prod1 - prod2;
-}
-
-TARGET512 float LogProdDiv512x(float* A, float* B, int64 n, int64 sep)
-{
-	int64 i = 0;
-	int64 slog1 = 0; double prod1 = 1;
-	int64 slog2 = 0; double prod2 = 1;
-
-	if (n >= 64)
-	{
-		__m512 pd1 = _mm512_set1_ps(1.0f), pd2 = _mm512_set1_ps(1.0f);
-
-		for (int64 l1 = n - 64; i <= l1; i += 64)
-		{
-			REP(4)
-			{
-				pd1 = _mm512_mul_ps(pd1, _mm512_set_ps(
-					A[15 * sep], A[14 * sep], A[13 * sep], A[12 * sep], A[11 * sep], A[10 * sep], A[9 * sep], A[8 * sep], A[7 * sep], A[6 * sep], A[5 * sep], A[4 * sep], A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep]));
-				pd2 = _mm512_mul_ps(pd2, _mm512_set_ps(
-					B[15 * sep], B[14 * sep], B[13 * sep], B[12 * sep], B[11 * sep], B[10 * sep], B[9 * sep], B[8 * sep], B[7 * sep], B[6 * sep], B[5 * sep], B[4 * sep], B[3 * sep], B[2 * sep], B[1 * sep], B[0 * sep]));
-				A += 16 * sep; B += 16 * sep;
-			}
-
-			AddExponent512(slog1, pd1);
-			AddExponent512(slog2, pd2);
-		}
-
-		__m128* pd11 = (__m128*)&pd1;
-		__m128* pd22 = (__m128*)&pd2;
-
-		REP(4) ChargeLogSSE(slog1, prod1, pd11[kk]);
-		REP(4) ChargeLogSSE(slog2, prod2, pd22[kk]);
-	}
-
-	for (; i < n; ++i, A += sep, B += sep)
-	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-
-	return prod1 - prod2;
 }
 
 TARGET512 int64 CountNonZero512(byte* A, int64 n)
 {
 	int64 i = 0;
-	uint64 r1 = 0, r2 = 0, r3 = 0, r4 = 0;
+	uint64 re = 0;
 
-	if (n >= 256)
+	if (n >= E512B)
 	{
-		uint64 x1 = 0, x2 = 0, x3 = 0, x4 = 0;
-		__m512i z = _mm512_setzero_si512();
-		__m512i a1, a2, a3, a4;
+		__m512i a = _mm512_setzero_si512(), z = _mm512_setzero_si512(), o = _mm512_set1_epi8(0x01);
 
-		for (int64 l1 = n - 256; i <= l1; i += 256)
+		for (int64 l1 = n - E512B; i <= l1; i += E512B)
 		{
-			a1 = _mm512_loadu_si512(A); A += 64;
-			a2 = _mm512_loadu_si512(A); A += 64;
-			a3 = _mm512_loadu_si512(A); A += 64;
-			a4 = _mm512_loadu_si512(A); A += 64;
-
-			x1 = _mm512_cmpgt_epu8_mask(a1, z);
-			x2 = _mm512_cmpgt_epu8_mask(a2, z);
-			x3 = _mm512_cmpgt_epu8_mask(a3, z);
-			x4 = _mm512_cmpgt_epu8_mask(a4, z);
-
-			r1 += _mm_popcnt_u64(x1);
-			r2 += _mm_popcnt_u64(x2);
-			r3 += _mm_popcnt_u64(x3);
-			r4 += _mm_popcnt_u64(x4);
+			a = _mm512_add_epi64(a, _mm512_sad_epu8(z, _mm512_min_epu8(o, _mm512_loadu_si512(A))));
+			A += E512B;
 		}
-
-		r1 = r1 + r2 + r3 + r4;
+		
+		re += _mm512_reduce_add_epi64(a);
 	}
 
 	for (; i < n; ++i, ++A)
-		if (*A) r1++;
+		if (*A) re++;
 
-	return (int64)r1;
+	return (int64)re;
 }
 
 TARGET512 double Sum512(double* A, int64 n)
 {
-	constexpr int N = 2;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d s[N], a[N];
-		REP(N) s[kk] = _mm512_setzero_pd();
+		__m512d s[E512_512] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_512) 
+			{ s[kk] = _mm512_add_pd(s[kk], _mm512_loadu_pd(A)); A += E512D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1247,24 +1238,21 @@ TARGET512 double Sum512(double* A, int64 n)
 
 TARGET512 double Sum512(float* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(__m256) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m512d s[N], a[N];
-		REP(N) s[kk] = _mm512_setzero_pd();
+		__m512d s[E512_512] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m256) / sizeof(float); i <= l1; i += N * sizeof(__m256) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_cvtps_pd(_mm256_loadu_ps(A)); A += sizeof(__m256) / sizeof(float); }
-
-			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_512)
+			{ s[kk] = _mm512_add_pd(s[kk], _mm512_cvtps_pd(_mm256_loadu_ps(A))); A += E512D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1280,24 +1268,21 @@ TARGET512 double Sum512(float* A, int64 n)
 
 TARGET512 float Sum512x(float* A, int64 n)
 {
-	constexpr int N = 2;
+#define N 4
 	int64 i = 0;
-	float re = 0;
+	volatile float re = 0;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 s[N], a[N];
-		REP(N) s[kk] = _mm512_setzero_ps();
+		__m512 s[E512_512] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N) s[kk] = _mm512_add_ps(s[kk], a[kk]);
+			UNROLL(N)  UNROLL(E512_512) 
+			{ s[kk] = _mm512_add_ps(s[kk], _mm512_loadu_ps(A)); A += E512F; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_ps(s[0]);
 	}
@@ -1313,24 +1298,20 @@ TARGET512 float Sum512x(float* A, int64 n)
 
 TARGET512 int64 Sum512(byte* A, int64 n)
 {
-	constexpr int N = 4;
-	uint64 re = 0;
+#define N 4
+	int64 re = 0;
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512i) / sizeof(byte))
+	if (n >= N * E512B)
 	{
-		__m512i s[N], a[N], z = _mm512_setzero_si512();
-		REP(N) s[kk] = _mm512_setzero_si512();
+		__m512i s = _mm512_setzero_si512(), z = _mm512_setzero_si512();
 
-		for (int64 l1 = n - N * sizeof(__m512i) / sizeof(byte); i <= l1; i += N * sizeof(__m512i) / sizeof(byte))
+		for (int64 l1 = n - N * E512B; i <= l1; i += N * E512B)
 		{
-			REP(N) { a[kk] = _mm512_loadu_si512(A); A += sizeof(__m512i) / sizeof(byte); }
-
-			REP(N) { s[kk] = _mm512_add_epi64(s[kk], _mm512_sad_epu8(a[kk], z)); }
+			UNROLL(N) { s = _mm512_add_epi64(s, _mm512_sad_epu8(_mm512_loadu_si512(A), z)); A += E512B; }
 		}
-
-		s[0] = _mm512_add_epi64(_mm512_add_epi64(s[0], s[1]), _mm512_add_epi64(s[2], s[3]));
-		re += _mm512_reduce_add_epi64(s[0]);
+		
+		re += _mm512_reduce_add_epi64(s);
 	}
 
 	for (; i < n; ++i)
@@ -1341,25 +1322,36 @@ TARGET512 int64 Sum512(byte* A, int64 n)
 
 TARGET512 double Sum512(double* A, int64 n, int64 sep)
 {
-	constexpr int N = 2;
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	//suboptimal to compile
 	{
-		__m512d s[N], a[N];
-		REP(N) s[kk] = _mm512_setzero_pd();
-		__m512i vindex = _mm512_mullo_epi64(_mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0), _mm512_set1_epi64(sep));
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re += *A;
+		return re;
+	}
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d s[E512_512] = { 0 };
+		__m512i vindex = _mm512_set_epi64(7 * sep, 6 * sep, 5 * sep, 4 * sep, 3 * sep, 2 * sep, 1 * sep, 0 * sep);
+		UNROLL(E512D) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_i64gather_pd(vindex, A, sizeof(double)); A += sizeof(__m512d) / sizeof(double) * sep; }
-
-			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_512)
+			{
+				UNROLL(E512D) _mm_prefetch((const char*)&A[E512D * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm512_add_pd(s[kk], _mm512_i64gather_pd(vindex, A, sizeof(double)));
+				A += E512D * sep;
+			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1375,160 +1367,113 @@ TARGET512 double Sum512(double* A, int64 n, int64 sep)
 
 TARGET512 double Sum512(float* A, int64 n, int64 sep)
 {
-	return SumSSE(A, n, sep);
-
-	/*
-	constexpr int N = 4;
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= N * sizeof(__m256) / sizeof(float))
+	//suboptimal to compile
 	{
-		__m512d s[N];
-		__m256 a[N];
-		REP(N) s[kk] = _mm512_setzero_pd();
-		__m512i vindex = _mm512_mullo_epi64(_mm512_set1_epi64(sep), _mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0));
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re += *A;
+		return re;
+	}
 
-		for (int64 l1 = n - N * sizeof(__m256) / sizeof(float); i <= l1; i += N * sizeof(__m256) / sizeof(float))
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d s[E512_512] = { 0 };
+		__m256i vindex = _mm256_set_epi32(7 * sep, 6 * sep, 5 * sep, 4 * sep, 3 * sep, 2 * sep, 1 * sep, 0 * sep);
+		UNROLL(E512D) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
+			UNROLL(N) UNROLL(E512_512)
 			{
-				a[kk] = _mm512_i64gather_ps(vindex, A, sizeof(float));
-				s[kk] = _mm512_add_pd(s[kk], _mm512_cvtps_pd(a[kk]));
-				A += sep * sizeof(__m256) / sizeof(float);
+				UNROLL(E512D) _mm_prefetch((const char*)&A[E512D * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm512_add_pd(s[kk], _mm512_cvtps_pd(_mm256_i32gather_ps(A, vindex, sizeof(float))));
+				A += E512D * sep;
 			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
 	{
-		volatile float v1 = *A;
+		volatile double v1 = *A;
 		re += v1;
 	}
 
 	return re;
-	*/
 }
 
 TARGET512 float Sum512x(float* A, int64 n, int64 sep)
 {
-	return SumSSEx(A, n, sep);
-	/*
-
-	constexpr int N = 2;
-	int64 i = 0;
-	float re = 0;
-
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	//suboptimal to compile
 	{
-		__m512 s[N];
-		REP(N) s[kk] = _mm512_setzero_ps();
-		__m512i vindex = _mm512_mullo_epi32(_mm512_set_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0), _mm512_set1_epi32(sep));
+		float re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re += *A;
+		return re;
+	}
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+	//suboptimal to AVX
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		__m512 s[E512_512] = { 0 };
+		__m512i vindex = _mm512_set_epi32(15 * sep, 14 * sep, 13 * sep, 12 * sep, 11 * sep, 10 * sep, 9 * sep, 8 * sep, 7 * sep, 6 * sep, 5 * sep, 4 * sep, 3 * sep, 2 * sep, 1 * sep, 0 * sep);
+		UNROLL(E512F) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { s[kk] = _mm512_add_ps(s[kk], _mm512_i32xxgather_ps(vindex, A, sizeof(float))); A += sep * sizeof(__m512) / sizeof(float); }
+			UNROLL(N) UNROLL(E512_512)
+			{
+				UNROLL(E512F) _mm_prefetch((const char*)&A[E512F * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm512_add_ps(s[kk], _mm512_i32gather_ps(vindex, A, sizeof(float)));
+				A += E512F * sep;
+			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_ps(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
-	{	
+	{
 		volatile float v1 = *A;
 		re += v1;
 	}
 
 	return re;
-	*/
-}
-
-TARGET512 void Sum512(double* A, double** B, int64 KK, int64 n)
-{
-	constexpr int N = 16;
-	int64 i = 0;
-
-	if (n >= N * sizeof(__m512d) / sizeof(double))
-	{
-		__m512d a[N];
-
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
-		{
-			REP(N) a[kk] = _mm512_setzero_pd();
-
-			for (int64 j = 0; j < KK; ++j)
-				REP(N) a[kk] = _mm512_add_pd(a[kk], _mm512_loadu_pd(&B[j][i + kk * sizeof(__m512d) / sizeof(double)]));
-
-			REP(N) { _mm512_storeu_pd(A, a[kk]); A += sizeof(__m512d) / sizeof(double); }
-		}
-	}
-
-	for (; i < n; ++i)
-	{
-		double Ai = 0;
-		for (int64 j = 0; j < KK; ++j)
-			Ai += B[j][i];
-		*A++ = Ai;
-	}
-}
-
-TARGET512 void Sum512(float* A, float** B, int64 KK, int64 n)
-{
-	constexpr int N = 16;
-	int64 i = 0;
-
-	if (n >= N * sizeof(__m256) / sizeof(float))
-	{
-		__m512d a[N];
-
-		for (int64 l1 = n - N * sizeof(__m256) / sizeof(float); i <= l1; i += N * sizeof(__m256) / sizeof(float))
-		{
-			REP(N) a[kk] = _mm512_setzero_pd();
-
-			for (int64 j = 0; j < KK; ++j)
-				REP(N) a[kk] = _mm512_add_pd(a[kk], _mm512_cvtps_pd(_mm256_loadu_ps(&B[j][i + kk * sizeof(__m256) / sizeof(float)])));
-
-			REP(N) { _mm256_storeu_ps(A, _mm512_cvtpd_ps(a[kk])); A += sizeof(__m256) / sizeof(float); }
-		}
-	}
-
-	for (; i < n; ++i)
-	{
-		double Ai = 0;
-		for (int64 j = 0; j < KK; ++j)
-			Ai += B[j][i];
-		*A++ = Ai;
-	}
 }
 
 TARGET512 double Prod512(double* A, int64 n)
 {
-	constexpr int N = 2;
+#define N 4
 	int64 i = 0;
-	double re = 1;
+	volatile double re = 1;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d s[N], a[N];
-		REP(N) s[kk] = _mm512_set1_pd(1);
+		__m512d s[E512_512];
+		UNROLL(E512_512) s[kk] = _mm512_set1_pd(1);
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) s[kk] = _mm512_mul_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_512)
+			{ s[kk] = _mm512_mul_pd(s[kk], _mm512_loadu_pd(A)); A += E512D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_mul_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_mul_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_mul_pd(s[0]);
 	}
@@ -1544,27 +1489,22 @@ TARGET512 double Prod512(double* A, int64 n)
 
 TARGET512 double Prod512(float* A, int64 n)
 {
-	return ProdAVX(A, n);
-
-	/*
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(__m256) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m512d s[N], a[N];
-		REP(N) s[kk] = _mm512_set1_pd(1);
+		__m512d s[E512_512];
+		UNROLL(E512_512) s[kk] = _mm512_set1_pd(1);
 
-		for (int64 l1 = n - N * sizeof(__m256) / sizeof(float); i <= l1; i += N * sizeof(__m256) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_cvtps_pd(_mm256_loadu_ps(A)); A += sizeof(__m256) / sizeof(float); }
-
-			REP(N) s[kk] = _mm512_mul_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_512)
+			{ s[kk] = _mm512_mul_pd(s[kk], _mm512_cvtps_pd(_mm256_loadu_ps(A))); A += E512D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_mul_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_mul_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_mul_pd(s[0]);
 	}
@@ -1576,76 +1516,194 @@ TARGET512 double Prod512(float* A, int64 n)
 	}
 
 	return re;
-	*/
 }
 
 TARGET512 float Prod512x(float* A, int64 n)
 {
-	constexpr int N = 2;
+#define N 4
 	int64 i = 0;
-	volatile float re = 1;
+	volatile float re = 0;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 s[N], a[N];
-		REP(N) s[kk] = _mm512_set1_ps(1);
+		__m512 s[E512_512];
+		UNROLL(E512_512) s[kk] = _mm512_set1_ps(1);
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N) s[kk] = _mm512_mul_ps(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_512)
+			{ s[kk] = _mm512_mul_ps(s[kk], _mm512_loadu_ps(A)); A += E512F; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_mul_ps(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_mul_ps(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_mul_ps(s[0]);
 	}
 
 	for (; i < n; ++i)
-		re *= *A++;
+	{
+		volatile float v1 = *A++;
+		re *= v1;
+	}
 
 	return re;
 }
 
 TARGET512 double Prod512(double* A, int64 n, int64 sep)
 {
-	return ProdSSE(A, n, sep);
+	//suboptimal to compile
+	{
+		double re = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re *= *A;
+		return re;
+	}
+
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d s[E512_512];
+		UNROLL(E512_512) s[kk] = _mm512_set1_pd(1);
+		__m512i vindex = _mm512_set_epi64(7 * sep, 6 * sep, 5 * sep, 4 * sep, 3 * sep, 2 * sep, 1 * sep, 0 * sep);
+		UNROLL(E512D) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_512)
+			{
+				UNROLL(E512D) _mm_prefetch((const char*)&A[E512D * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm512_mul_pd(s[kk], _mm512_i64gather_pd(vindex, A, sizeof(double)));
+				A += E512D * sep;
+			}
+		}
+
+		REDUCE(s) s[kk] = _mm512_mul_pd(s[kk], s[kk + KK]);
+
+		re = __mm512_reduce_mul_pd(s[0]);
+	}
+
+	for (; i < n; ++i, A += sep)
+	{
+		volatile double v1 = *A;
+		re *= v1;
+	}
+
+	return re;
 }
 
 TARGET512 double Prod512(float* A, int64 n, int64 sep)
 {
-	return ProdSSE(A, n, sep);
+	//suboptimal to compile
+	{
+		double re = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re *= *A;
+		return re;
+	}
+
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d s[E512_512];
+		UNROLL(E512_512) s[kk] = _mm512_set1_pd(1);
+		__m256i vindex = _mm256_set_epi32(7 * sep, 6 * sep, 5 * sep, 4 * sep, 3 * sep, 2 * sep, 1 * sep, 0 * sep);
+		UNROLL(E512D) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_512)
+			{
+				UNROLL(E512D) _mm_prefetch((const char*)&A[E512D * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm512_mul_pd(s[kk], _mm512_cvtps_pd(_mm256_i32gather_ps(A, vindex, sizeof(float))));
+				A += E512D * sep;
+			}
+		}
+
+		REDUCE(s) s[kk] = _mm512_mul_pd(s[kk], s[kk + KK]);
+
+		re = __mm512_reduce_mul_pd(s[0]);
+	}
+
+	for (; i < n; ++i, A += sep)
+	{
+		volatile double v1 = *A;
+		re *= v1;
+	}
+
+	return re;
 }
 
 TARGET512 float Prod512x(float* A, int64 n, int64 sep)
 {
-	return ProdSSEx(A, n, sep);
+	//suboptimal to compile
+	{
+		float re = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re *= *A;
+		return re;
+	}
+
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		__m512 s[E512_512];
+		UNROLL(E512_512) s[kk] = _mm512_set1_ps(1);
+		__m512i vindex = _mm512_set_epi32(15 * sep, 14 * sep, 13 * sep, 12 * sep, 11 * sep, 10 * sep, 9 * sep, 8 * sep, 7 * sep, 6 * sep, 5 * sep, 4 * sep, 3 * sep, 2 * sep, 1 * sep, 0 * sep);
+		UNROLL(E512F) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
+		{
+			UNROLL(N) UNROLL(E512_512)
+			{
+				UNROLL(E512F) _mm_prefetch((const char*)&A[E512F * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm512_mul_ps(s[kk], _mm512_i32gather_ps(vindex, A, sizeof(float)));
+				A += E512F * sep;
+			}
+		}
+
+		REDUCE(s) s[kk] = _mm512_mul_ps(s[kk], s[kk + KK]);
+
+		re = __mm512_reduce_mul_ps(s[0]);
+	}
+
+	for (; i < n; ++i, A += sep)
+	{
+		volatile float v1 = *A;
+		re *= v1;
+	}
+
+	return re;
 }
 
 TARGET512 double SumSquare512(double* A, int64 n)
 {
-	constexpr int N = 2;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d s[N], a[N];
-		REP(N) s[kk] = _mm512_setzero_pd();
+		__m512d s[E512_512] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], a[kk]);
-
-			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_512) 
+			{ s[kk] = _mm512_fmaddx_pd(_mm512_loadu_pd(A), _mm512_loadu_pd(A), s[kk]); A += E512D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1661,26 +1719,24 @@ TARGET512 double SumSquare512(double* A, int64 n)
 
 TARGET512 double SumSquare512(float* A, int64 n)
 {
-	return SumSquareAVX(A, n);
-	/*
-	constexpr int N = 2;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(__m256) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m512d s[N], a[N];
-		REP(N) s[kk] = _mm512_setzero_pd();
+		__m512d s[E512_512] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m256) / sizeof(float); i <= l1; i += N * sizeof(__m256) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_cvtps_pd(_mm256_loadu_ps(A)); A += sizeof(__m256) / sizeof(float); }
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], a[kk]);
-			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_512)
+			{
+				__m512d v1  = _mm512_cvtps_pd(_mm256_loadu_ps(A)); A += E512D;
+				s[kk] = _mm512_fmaddx_pd(v1, v1, s[kk]);
+			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1692,78 +1748,32 @@ TARGET512 double SumSquare512(float* A, int64 n)
 	}
 
 	return re;
-	*/
-}
-
-TARGET512 float SumSquare512x(float* A, int64 n)
-{
-	constexpr int N = 2;
-	int64 i = 0;
-	float re = 0;
-
-	if (n >= N * sizeof(__m512) / sizeof(float))
-	{
-		__m512 s[N], a[N];
-		REP(N) s[kk] = _mm512_setzero_ps();
-
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
-		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N) a[kk] = _mm512_mul_ps(a[kk], a[kk]);
-
-			REP(N) s[kk] = _mm512_add_ps(s[kk], a[kk]);
-		}
-
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
-
-		re = __mm512_reduce_add_ps(s[0]);
-	}
-
-	for (; i < n; ++i, ++A)
-	{
-		volatile float v1 = *A * *A;
-		re += v1;
-	}
-
-	return re;
 }
 
 TARGET512 int64 SumSquare512(byte* A, int64 n)
 {
-	constexpr int N = 2;
+#define N 2
 	int64 i = 0;
 	uint64 re = 0;
 
-	if (n >= sizeof(__m512i) / sizeof(byte))
+	if (n >= N * E512B)
 	{
-		__m512i a, t[2], s = _mm512_setzero_si512();
-		REP(2) t[kk] = _mm512_setzero_si512();
-		__m256i* s2 = (__m256i*)&s;
+		__m512i t = _mm512_setzero_si512(), s = _mm512_setzero_si512();
+		__m128i* s2 = (__m128i*)&s;
 
-		for (int64 l1 = n - N * sizeof(__m512i) / sizeof(byte); i <= l1; i += N * sizeof(__m512i) / sizeof(byte))
+		for (int64 l1 = n - N * E512B; i <= l1; i += N * E512B)
 		{
-			REP(N)
+			UNROLL(N) { s = _mm512_add_epi16(s, _mm512_maddubs_epi16(_mm512_loadu_si512(A), _mm512_loadu_si512(A))); A += E512B; }
+			
+			if ((i & (E512B * 128 - 1)) == 0) [[unlikely]]
 			{
-				a = _mm512_loadu_si512((__m512i*)A);
-				A += sizeof(__m512i) / sizeof(byte);
-				s = _mm512_add_epi16(s, _mm512_maddubs_epi16(a, a));
-			}
-
-			if ((i & (sizeof(__m512i) / sizeof(byte) * 128 - 1)) == 0)
-			{
-				t[0] = _mm512_add_epi32(t[0], _mm512_cvtepi16_epi32(s2[0]));
-				t[1] = _mm512_add_epi32(t[1], _mm512_cvtepi16_epi32(s2[1]));
+				UNROLL(E512_128) t = _mm512_add_epi64(t, _mm512_cvtepi16_epi64(s2[kk]));
 				s = _mm512_setzero_si512();
 			}
 		}
-
-		t[0] = _mm512_add_epi32(t[0], _mm512_cvtepi16_epi32(s2[0]));
-		t[1] = _mm512_add_epi32(t[1], _mm512_cvtepi16_epi32(s2[1]));
-		t[0] = _mm512_add_epi32(t[0], t[1]);
-
-		re = _mm512_reduce_add_epi32(t[0]);
+		
+		UNROLL(E512_128) t = _mm512_add_epi64(t, _mm512_cvtepi16_epi64(s2[kk]));
+		re = _mm512_reduce_add_epi64(t);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -1774,30 +1784,30 @@ TARGET512 int64 SumSquare512(byte* A, int64 n)
 
 TARGET512 void SumSumSquare512(double* A, int64 n, double& sum, double& sumsq)
 {
-	constexpr int N = 2;
+#define N 4
 	int64 i = 0;
-	double re1 = 0, re2 = 0;
+	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d s1[N], s2[N], a[N];
-		REP(N) s1[kk] = s2[kk] = _mm512_setzero_pd();
+		__m512d s1[E512_512] = { 0 }, s2[E512_512] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
+			UNROLL(N) UNROLL(E512_512)
+			{
+				__m512d v1 = _mm512_loadu_pd(A); A += E512D;
 
-			REP(N) s1[kk] = _mm512_add_pd(s1[kk], a[kk]);
+				s1[kk] = _mm512_add_pd(v1, s1[kk]);
 
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], a[kk]);
-
-			REP(N) s2[kk] = _mm512_add_pd(s2[kk], a[kk]);
+				s2[kk] = _mm512_fmaddx_pd(v1, v1, s2[kk]);
+			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = _mm512_add_pd(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = _mm512_add_pd(s2[kk], s2[kk + KK]);
+			s1[kk] = _mm512_add_pd(s1[kk], s1[kk + KK]);
+			s2[kk] = _mm512_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = __mm512_reduce_add_pd(s1[0]);
@@ -1818,30 +1828,30 @@ TARGET512 void SumSumSquare512(double* A, int64 n, double& sum, double& sumsq)
 
 TARGET512 void SumSumSquare512(float* A, int64 n, double& sum, double& sumsq)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
-	double re1 = 0, re2 = 0;
+	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N * sizeof(__m256) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m512d s1[N], s2[N], a[N];
-		REP(N) s1[kk] = s2[kk] = _mm512_setzero_pd();
+		__m512d s1[E512_512] = { 0 }, s2[E512_512] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m256) / sizeof(float); i <= l1; i += N * sizeof(__m256) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_cvtps_pd(_mm256_loadu_ps(A)); A += sizeof(__m256) / sizeof(float); }
+			UNROLL(N) UNROLL(E512_512)
+			{ 
+				__m512d v1 = _mm512_cvtps_pd(_mm256_loadu_ps(A)); A += E512D;
 
-			REP(N) s1[kk] = _mm512_add_pd(s1[kk], a[kk]);
+				s1[kk] = _mm512_add_pd(v1, s1[kk]);
 
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], a[kk]);
-
-			REP(N) s2[kk] = _mm512_add_pd(s2[kk], a[kk]);
+				s2[kk] = _mm512_fmaddx_pd(v1, v1, s2[kk]);
+			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = _mm512_add_pd(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = _mm512_add_pd(s2[kk], s2[kk + KK]);
+			s1[kk] = _mm512_add_pd(s1[kk], s1[kk + KK]);
+			s2[kk] = _mm512_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = __mm512_reduce_add_pd(s1[0]);
@@ -1862,70 +1872,232 @@ TARGET512 void SumSumSquare512(float* A, int64 n, double& sum, double& sumsq)
 
 TARGET512 double SumProdDiv512(double* A1, double* A2, double* B, int64 sep, int64 n)
 {
-	return SumProdDivAVX(A1, A2, B, sep, n);
+	//suboptimal to compile
+	{
+		double re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
+		{
+			volatile double v1 = (double)*A1 * (double)*B;
+			volatile double v2 = (double)*A2 * (double)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
+
+#define N 2
+	int64 i = 0;
+	volatile double re1 = 0, re2 = 0;
+
+	if (n >= N * E512D)
+	{
+		UNROLL(E512D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+
+		__m512d s1[E512_512] = { 0 }, s2[E512_512] = { 0 };
+		__m512i vindex = _mm512_set_epi64(-9 * sep, -10 * sep, -11 * sep, -12 * sep, -13 * sep, -14 * sep, -15 * sep, -16 * sep);
+		
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_512)
+			{
+				UNROLL(E512D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+
+				__m512d b = _mm512_i64gather_pd(vindex, B, sizeof(double));
+				
+				s1[kk] = _mm512_fmaddx_pd(b, _mm512_loadu_pd(A1), s1[kk]); A1 += E512D;
+
+				s2[kk] = _mm512_fmaddx_pd(b, _mm512_loadu_pd(A2), s2[kk]); A1 += E512D;
+			}
+		}
+
+		re1 = __mm512_reduce_add_pd(s1[0]);
+		re2 = __mm512_reduce_add_pd(s2[0]);
+
+		B -= E512D * sep;
+	}
+
+	for (; i < n; ++i, A1++, A2++, B += sep)
+	{
+		volatile double v1 = (double)*A1 * (double)*B;
+		volatile double v2 = (double)*A2 * (double)*B;
+		re1 += v1;
+		re2 += v2;
+	}
+
+	return re1 / re2;
 }
 
 TARGET512 double SumProdDiv512(double* A1, float* A2, float* B, int64 sep, int64 n)
 {
-	return SumProdDivSSE(A1, A2, B, sep, n);
+	//suboptimal to compile
+	{
+		double re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
+		{
+			volatile double v1 = (double)*A1 * (double)*B;
+			volatile double v2 = (double)*A2 * (double)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
+
+#define N 2
+	int64 i = 0;
+	volatile double re1 = 0, re2 = 0;
+
+	if (n >= N * E512D)
+	{
+		UNROLL(E512D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+
+		__m512d s1[E512_512] = { 0 }, s2[E512_512] = { 0 };
+		__m256i vindex = _mm256_set_epi32(-9 * sep, -10 * sep, -11 * sep, -12 * sep, -13 * sep, -14 * sep, -15 * sep, -16 * sep);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_512)
+			{
+				UNROLL(E512D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+
+				__m512d b = _mm512_cvtps_pd(_mm256_i32gather_ps(B, vindex, sizeof(float)));
+
+				s1[0] = _mm512_fmaddx_pd(_mm512_loadu_pd(A1), b, s1[kk]); A1 += E512D; 
+
+				s2[0] = _mm512_fmaddx_pd(_mm512_cvtps_pd(_mm256_loadu_ps(A2)), b, s2[kk]); A2 += E512D; 
+			}
+		}
+
+		re1 = __mm512_reduce_add_pd(s1[0]);
+		re2 = __mm512_reduce_add_pd(s2[0]);
+
+		B -= E512D * sep;
+	}
+
+	for (; i < n; ++i, A1++, A2++, B += sep)
+	{
+		volatile double v1 = (double)*A1 * (double)*B;
+		volatile double v2 = (double)*A2 * (double)*B;
+		re1 += v1;
+		re2 += v2;
+	}
+
+	return re1 / re2;
 }
 
 TARGET512 double SumProdDiv512(float* A1, float* A2, float* B, int64 sep, int64 n)
 {
-	return SumProdDivSSE(A1, A2, B, sep, n);
+	//suboptimal to compile
+	{
+		double re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
+		{
+			volatile double v1 = (double)*A1 * (double)*B;
+			volatile double v2 = (double)*A2 * (double)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
+
+#define N 2
+	int64 i = 0;
+	volatile double re1 = 0, re2 = 0;
+
+	if (n >= N * E512D)
+	{
+		UNROLL(E512D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+
+		__m512d s1[E512_512] = { 0 }, s2[E512_512] = { 0 };
+		__m256i vindex = _mm256_set_epi32(-9 * sep, -10 * sep, -11 * sep, -12 * sep, -13 * sep, -14 * sep, -15 * sep, -16 * sep);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_512)
+			{
+				UNROLL(E512D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+
+				__m512d b = _mm512_cvtps_pd(_mm256_i32gather_ps(B, vindex, sizeof(float)));
+
+				s1[0] = _mm512_fmaddx_pd(_mm512_cvtps_pd(_mm256_loadu_ps(A1)), b, s1[0]); A1 += E512D;
+
+				s2[0] = _mm512_fmaddx_pd(_mm512_cvtps_pd(_mm256_loadu_ps(A2)), b, s2[0]); A2 += E512D;
+			}
+		}
+
+		re1 = __mm512_reduce_add_pd(s1[0]);
+		re2 = __mm512_reduce_add_pd(s2[0]);
+
+		B -= E512D * sep;
+	}
+
+	for (; i < n; ++i, A1++, A2++, B += sep)
+	{
+		volatile double v1 = (double)*A1 * (double)*B;
+		volatile double v2 = (double)*A2 * (double)*B;
+		re1 += v1;
+		re2 += v2;
+	}
+
+	return re1 / re2;
 }
 
 TARGET512 float SumProdDiv512x(float* A1, float* A2, float* B, int64 sep, int64 n)
 {
-	return SumProdDivSSEx(A1, A2, B, sep, n);
+	//suboptimal to compile
+	{
+		float re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
+		{
+			volatile float v1 = (float)*A1 * (float)*B;
+			volatile float v2 = (float)*A2 * (float)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
 }
 
 TARGET512 double SumProd512(double* A, double* B, int64 sep, int64 n)
 {
-	return SumProdSSE(A, B, sep, n);
-}
+	//suboptimal to compile
+	{
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A++, B += sep)
+			re += (double)*A * (double)*B;
+		return re;
+	}
 
-TARGET512 double SumProd512(float* A, float* B, int64 sep, int64 n)
-{
-	return SumProdSSE(A, B, sep, n);
-}
-
-TARGET512 float SumProd512x(float* A, float* B, int64 sep, int64 n)
-{
-	return SumProdSSEx(A, B, sep, n);
-}
-
-TARGET512 double SumProd512(double* A, double* B, int64 n)
-{
-	constexpr int N = 4;
+#define N 2
 	int64 i = 0;
 	volatile double re = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d s[N], a[N], b[N];
-		REP(N) s[kk] = _mm512_setzero_pd();
+		__m512d s = _mm512_setzero_pd();
+		__m512i vindex = _mm512_set_epi64(7 * sep, 6 * sep, 5 * sep, 4 * sep, 3 * sep, 2 * sep, 1 * sep, 0 * sep);
+		volatile __m512d t0 = _mm512_i64gather_pd(vindex, B, sizeof(double));
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
+			UNROLL(N)
 			{
-				a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double);
-				b[kk] = _mm512_loadu_pd(B); B += sizeof(__m512d) / sizeof(double);
+				volatile __m512d t1 = _mm512_i64gather_pd(vindex, B + E512D * sep, sizeof(double));
+				
+				s = _mm512_fmaddx_pd(_mm512_loadu_pd(A), _mm512_i64gather_pd(vindex, B, sizeof(double)), s); A += E512D;
+				
+				B += E512D * sep;
 			}
-
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], b[kk]);
-
-			REP(N) s[kk] = _mm512_add_pd(s[kk], a[kk]);
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
-
-		re = __mm512_reduce_add_pd(s[0]);
+		re = __mm512_reduce_add_pd(s); 
 	}
 
-	for (; i < n; ++i, ++A, ++B)
+	for (; i < n; ++i, ++A, B += sep)
 	{
 		volatile double v1 = *A * *B;
 		re += v1;
@@ -1934,31 +2106,88 @@ TARGET512 double SumProd512(double* A, double* B, int64 n)
 	return re;
 }
 
-TARGET512 double SumProd512(float* A, float* B, int64 n)
+TARGET512 double SumProd512(float* A, float* B, int64 sep, int64 n)
 {
-	return SumProdAVX(A, B, n);
-	/*
-	constexpr int N = 4;
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= N * sizeof(__m256) / sizeof(float))
+	//suboptimal to compile
 	{
-		__m512d s[N];
-		REP(N) s[kk] = _mm512_setzero_pd();
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A++, B += sep)
+			re += (double)*A * (double)*B;
+		return re;
+	}
 
-		for (int64 l1 = n - N * sizeof(__m256) / sizeof(float); i <= l1; i += N * sizeof(__m256) / sizeof(float))
+#define N 2
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		UNROLL(E256F) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+
+		__m512d s[E512_512] = { 0 };
+		__m256i vindex = _mm256_set_epi32(-9 * sep, -10 * sep, -11 * sep, -12 * sep, -13 * sep, -14 * sep, -15 * sep, -16 * sep);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) 
+			UNROLL(N) UNROLL(E512_512)
 			{
-				s[kk] = _mm512_add_pd(s[kk], _mm512_mul_pd(_mm512_cvtps_pd(_mm256_loadu_ps(A)), _mm512_cvtps_pd(_mm256_loadu_ps(B))));
-				A += sizeof(__m256) / sizeof(float); 
-				B += sizeof(__m256) / sizeof(float);
+				UNROLL(E256F) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+				
+				s[kk] = _mm512_fmaddx_pd(_mm512_cvtps_pd(_mm256_loadu_ps(A)), _mm512_cvtps_pd(_mm256_i32gather_ps(B, vindex, sizeof(float))), s[kk]);
+				
+				A += E512D;
 			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+
+		re = __mm512_reduce_add_pd(s[0]);
+
+		B -= E256F * sep;
+	}
+
+	for (; i < n; ++i, A++, B += sep)
+	{
+		volatile double v1 = (double)*A * (double)*B;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGET512 float SumProd512x(float* A, float* B, int64 sep, int64 n)
+{
+	//suboptimal to compile
+	{
+		float re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A++, B += sep)
+		{
+			volatile float v1 = *A * *B;
+			re += v1;
+		}
+		return re;
+	}
+}
+
+TARGET512 double SumProd512(double* A, double* B, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d s[E512_512] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N)UNROLL(E512_512) 
+			{ s[kk] = _mm512_fmaddx_pd(_mm512_loadu_pd(A), _mm512_loadu_pd(B), s[kk]); A += E512D; B += E512D; }
+		}
+
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_pd(s[0]);
 	}
@@ -1970,39 +2199,182 @@ TARGET512 double SumProd512(float* A, float* B, int64 n)
 	}
 
 	return re;
-	*/
+}
+
+TARGET512 double SumProd512(float* A, float* B, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d s[E512_512] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_512) 
+			{ s[kk] = _mm512_fmaddx_pd(_mm512_cvtps_pd(_mm256_loadu_ps(A)), _mm512_cvtps_pd(_mm256_loadu_ps(B)), s[kk]); A += E512D; B += E512D; }
+		}
+
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+
+		re = __mm512_reduce_add_pd(s[0]);
+	}
+	
+	for (; i < n; ++i, ++A, ++B)
+	{
+		volatile double v1 = (double)*A * (double)*B;
+		re += v1;
+	}
+
+	return re;
 }
 
 TARGET512 float SumProd512x(float* A, float* B, int64 n)
 {
-	constexpr int N = 2;
+#define N 4
 	int64 i = 0;
 	volatile float re = 0;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 s[N];
-		REP(N) s[kk] = _mm512_setzero_ps();
+		__m512 s[E512_512] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N)
-			{
-				s[kk] = _mm512_add_ps(s[kk], _mm512_mul_ps(_mm512_loadu_ps(A), _mm512_loadu_ps(B)));
-				A += sizeof(__m512) / sizeof(float);
-				B += sizeof(__m512) / sizeof(float);
-			}
+			UNROLL(N) UNROLL(E512_512) 
+			{ s[kk] = _mm512_fmaddx_ps(_mm512_loadu_ps(A), _mm512_loadu_ps(B), s[kk]); A += E512F; B += E512F; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
 
 		re = __mm512_reduce_add_ps(s[0]);
 	}
 
 	for (; i < n; ++i, ++A, ++B)
 	{
-		volatile float v1 = *A * *B;
+		volatile float v1 = (float)*A * (float)*B;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGET512 double SumProd512(double* A, double* B, double* C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d s[E512_512] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_512)
+			{ s[kk] = _mm512_fmaddx_pd(_mm512_mul_pd(_mm512_loadu_pd(A), _mm512_loadu_pd(B)), _mm512_loadu_pd(C), s[kk]); A += E512D; B += E512D; C += E512D; }
+		}
+
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+
+		re = __mm512_reduce_add_pd(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B, ++C)
+	{
+		volatile double v1 = (double)*A * (double)*B * (double)*C;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGET512 float SumProd512(float* A, float* B, float* C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		__m512 s[E512_512] = { 0 };
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
+		{
+			UNROLL(N) UNROLL(E512_512) 
+			{ s[kk] = _mm512_fmaddx_ps(_mm512_mul_ps(_mm512_loadu_ps(A), _mm512_loadu_ps(B)), _mm512_loadu_ps(C), s[kk]); A += E512F; B += E512F; C += E512F; }
+		}
+
+		REDUCE(s) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
+
+		re = __mm512_reduce_add_ps(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B, ++C)
+	{
+		volatile float v1 = (float)*A * (float)*B * (float)*C;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGET512 double SumSqProd512(double* A, double* B, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d s[E512_512] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_512) 
+			{ s[kk] = _mm512_fmaddx_pd(_mm512_mul_pd(_mm512_loadu_pd(A), _mm512_loadu_pd(A)), _mm512_loadu_pd(B), s[kk]); A += E512D; B += E512D; }
+		}
+
+		REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+
+		re = __mm512_reduce_add_pd(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B)
+	{
+		volatile double v1 = (double)*A * (double)*A * (double)*B;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGET512 float SumSqProd512(float* A, float* B, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		__m512 s[E512_512] = { 0 };
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
+		{
+			UNROLL(N) UNROLL(E512_512)
+			{ s[kk] = _mm512_fmaddx_ps(_mm512_mul_ps(_mm512_loadu_ps(A), _mm512_loadu_ps(A)), _mm512_loadu_ps(B), s[kk]); A += E512F; B += E512F; }
+		}
+
+		REDUCE(s) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
+
+		re = __mm512_reduce_add_ps(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B)
+	{
+		volatile float v1 = (float)*A * (float)*A * (float)*B;
 		re += v1;
 	}
 
@@ -2011,22 +2383,14 @@ TARGET512 float SumProd512x(float* A, float* B, int64 n)
 
 TARGET512 void Add512(double* A, double* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += 8; }
-
-			REP(N) { b[kk] = _mm512_loadu_pd(B); B += 8; }
-
-			REP(N) a[kk] = _mm512_add_pd(a[kk], b[kk]);
-
-			REP(N) _mm512_storeu_pd(A + (kk - N) * sizeof(__m512d) / sizeof(double), a[kk]);
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_add_pd(_mm512_loadu_pd(A), _mm512_loadu_pd(B))); A += E512D; B += E512D; }
 		}
 	}
 
@@ -2036,22 +2400,14 @@ TARGET512 void Add512(double* A, double* B, int64 n)
 
 TARGET512 void Add512(float* A, float* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N) { b[kk] = _mm512_loadu_ps(B); B += sizeof(__m512) / sizeof(float); }
-
-			REP(N) a[kk] = _mm512_add_ps(a[kk], b[kk]);
-
-			REP(N) _mm512_storeu_ps(A + (kk - N) * sizeof(__m512) / sizeof(float), a[kk]);
+			UNROLL(N) { _mm512_storeu_ps(A, _mm512_add_ps(_mm512_loadu_ps(A), _mm512_loadu_ps(B))); A += E512F; B += E512F; }
 		}
 	}
 
@@ -2061,22 +2417,14 @@ TARGET512 void Add512(float* A, float* B, int64 n)
 
 TARGET512 void Add512(int64* A, int64* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512i) / sizeof(int64))
+	if (n >= N * E512D)
 	{
-		__m512i a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m512i) / sizeof(int64); i <= l1; i += N * sizeof(__m512i) / sizeof(int64))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_si512((__m512i*)A); A += sizeof(__m512i) / sizeof(int64); }
-
-			REP(N) { b[kk] = _mm512_loadu_si512((__m512i*)B); B += sizeof(__m512i) / sizeof(int64); }
-
-			REP(N) a[kk] = _mm512_add_epi64(a[kk], b[kk]);
-
-			REP(N) _mm512_storeu_si512((__m512i*)(A + (kk - N) * sizeof(__m512i) / sizeof(int64)), a[kk]);
+			UNROLL(N) { _mm512_storeu_si512(A, _mm512_add_epi64(_mm512_loadu_si512(A), _mm512_loadu_si512(B))); A += E512D; B += E512D; }
 		}
 	}
 
@@ -2086,22 +2434,14 @@ TARGET512 void Add512(int64* A, int64* B, int64 n)
 
 TARGET512 void Add512(int* A, int* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512i) / sizeof(int))
+	if (n >= N * E512F)
 	{
-		__m512i a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m512i) / sizeof(int); i <= l1; i += N * sizeof(__m512i) / sizeof(int))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_si512((__m512i*)A); A += sizeof(__m512i) / sizeof(int); }
-
-			REP(N) { b[kk] = _mm512_loadu_si512((__m512i*)B); B += sizeof(__m512i) / sizeof(int); }
-
-			REP(N) a[kk] = _mm512_add_epi32(a[kk], b[kk]);
-
-			REP(N) _mm512_storeu_si512((__m512i*)(A + (kk - N) * sizeof(__m512i) / sizeof(int)), a[kk]);
+			UNROLL(N) { _mm512_storeu_si512(A, _mm512_add_epi32(_mm512_loadu_si512(A), _mm512_loadu_si512(B))); A += E512F; B += E512F; }
 		}
 	}
 
@@ -2111,20 +2451,16 @@ TARGET512 void Add512(int* A, int* B, int64 n)
 
 TARGET512 void Add512(int* A, int B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512i) / sizeof(int))
+	if (n >= N * E512F)
 	{
-		__m512i a[N], b = _mm512_set1_epi32(B);
+		__m512i b = _mm512_set1_epi32(B);
 
-		for (int64 l1 = n - N * sizeof(__m512i) / sizeof(int); i <= l1; i += N * sizeof(__m512i) / sizeof(int))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_si512((__m512i*)A); A += sizeof(__m512i) / sizeof(int); }
-
-			REP(N) a[kk] = _mm512_add_epi32(a[kk], b);
-
-			REP(N) _mm512_storeu_si512((__m512i*)(A + (kk - N) * sizeof(__m512i) / sizeof(int)), a[kk]);
+			UNROLL(N) { _mm512_storeu_si512(A, _mm512_add_epi32(_mm512_loadu_si512(A), b)); A += E512F; }
 		}
 	}
 
@@ -2134,20 +2470,16 @@ TARGET512 void Add512(int* A, int B, int64 n)
 
 TARGET512 void Add512(double* A, double B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d b = _mm512_set1_pd(B), a[N];
+		__m512d b = _mm512_set1_pd(B);
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm512_add_pd(a[kk], b);
-
-			REP(N) _mm512_storeu_pd(A + (kk - N) * sizeof(__m512d) / sizeof(double), a[kk]);
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_add_pd(_mm512_loadu_pd(A), b)); A += E512D; }
 		}
 	}
 
@@ -2157,151 +2489,119 @@ TARGET512 void Add512(double* A, double B, int64 n)
 
 TARGET512 void Add512(float* A, float B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 b = _mm512_set1_ps(B), a[N];
+		__m512 b = _mm512_set1_ps(B);
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N) a[kk] = _mm512_add_ps(a[kk], b);
-
-			REP(N) _mm512_storeu_ps(A + (kk - N) * sizeof(__m512) / sizeof(float), a[kk]);
+			UNROLL(N) { _mm512_storeu_ps(A, _mm512_add_ps(_mm512_loadu_ps(A), b)); A += E512F; }
 		}
 	}
 
-	for (; i < n; ++i, A++, B)
+	for (; i < n; ++i, A++)
 		*A += B;
 }
 
-TARGET512 void Mul512(double* C, double* A, double* B, int64 n)
+TARGET512 void Mul512(double* A, double* B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) { b[kk] = _mm512_loadu_pd(B); B += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], b[kk]);
-
-			REP(N) { _mm512_storeu_pd(C, a[kk]); C += sizeof(__m512d) / sizeof(double); }
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_mul_pd(_mm512_loadu_pd(B), _mm512_loadu_pd(C))); A += E512D; B += E512D; C += E512D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * *B++;
-		*C++ = v1;
+		volatile double v1 = *B++ * *C++;
+		*A++ = v1;
 	}
 }
 
-TARGET512 void Mul512(float* C, float* A, float* B, int64 n)
+TARGET512 void Mul512(float* A, float* B, float* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N) { b[kk] = _mm512_loadu_ps(B); B += sizeof(__m512) / sizeof(float); }
-
-			REP(N) a[kk] = _mm512_mul_ps(a[kk], b[kk]);
-
-			REP(N) { _mm512_storeu_ps(C, a[kk]); C += sizeof(__m512) / sizeof(float); }
+			UNROLL(N) { _mm512_storeu_ps(A, _mm512_mul_ps(_mm512_loadu_ps(B), _mm512_loadu_ps(C))); A += E512F; B += E512F; C += E512F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * *B++;
-		*C++ = v1;
+		volatile float v1 = *B++ * *C++;
+		*A++ = v1;
 	}
 }
 
-TARGET512 void Mul512(double* C, double* A, double B, int64 n)
+TARGET512 void Mul512(double* A, double* B, double C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d b = _mm512_set1_pd(B), a[N];
+		__m512d c = _mm512_set1_pd(C);
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], b);
-
-			REP(N) { _mm512_storeu_pd(C, a[kk]); C += sizeof(__m512d) / sizeof(double); }
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_mul_pd(_mm512_loadu_pd(B), c)); A += E512D; B += E512D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * B;
-		*C++ = v1;
+		volatile double v1 = *B++ * C;
+		*A++ = v1;
 	}
 }
 
-TARGET512 void Mul512(float* C, float* A, float B, int64 n)
+TARGET512 void Mul512(float* A, float* B, float C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 b = _mm512_set1_ps(B), a[N];
+		__m512 c = _mm512_set1_ps(C);
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N) a[kk] = _mm512_mul_ps(a[kk], b);
-
-			REP(N) { _mm512_storeu_ps(C, a[kk]); C += sizeof(__m512) / sizeof(float); }
+			UNROLL(N) { _mm512_storeu_ps(A, _mm512_mul_ps(_mm512_loadu_ps(B), c)); A += E512F; B += E512F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * B;
-		*C++ = v1;
+		volatile float v1 = *B++ * C;
+		*A++ = v1;
 	}
 }
 
 TARGET512 void Mul512(double* A, double B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d b = _mm512_set1_pd(B), a[N];
+		__m512d b = _mm512_set1_pd(B);
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], b);
-
-			REP(N) _mm512_storeu_pd(A + (kk - N) * sizeof(__m512d) / sizeof(double), a[kk]);
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_mul_pd(_mm512_loadu_pd(A), b)); A += E512D; }
 		}
 	}
 
@@ -2314,20 +2614,16 @@ TARGET512 void Mul512(double* A, double B, int64 n)
 
 TARGET512 void Mul512(float* A, float B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 b = _mm512_set1_ps(B), a[N];
+		__m512 b = _mm512_set1_ps(B);
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N) a[kk] = _mm512_mul_ps(a[kk], b);
-
-			REP(N) _mm512_storeu_ps(A + (kk - N) * sizeof(__m512) / sizeof(float), a[kk]);
+			UNROLL(N) { _mm512_storeu_ps(A, _mm512_mul_ps(_mm512_loadu_ps(A), b)); A += E512F; }
 		}
 	}
 
@@ -2338,179 +2634,211 @@ TARGET512 void Mul512(float* A, float B, int64 n)
 	}
 }
 
-TARGET512 void AddProd512(double* C, double* A, double* B, int64 n)
+TARGET512 void Div512(double* A, double B, double* C, int64 n)
 {
-	constexpr int N = 1;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d a[N];
+		__m512d b = _mm512_set1_pd(B);
 
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) { a[kk] = _mm512_mul_pd(a[kk], _mm512_loadu_pd(B)); B += sizeof(__m512d) / sizeof(double); }
-
-			double* C2 = C;
-
-			REP(N) { a[kk] = _mm512_add_pd(a[kk], _mm512_loadu_pd(C)); C += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) { _mm512_storeu_pd(C2, a[kk]); C2 += sizeof(__m512d) / sizeof(double); }
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_div_pd(b, _mm512_loadu_pd(C))); A += E512D; C += E512D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * *B++;
-		*C++ += v1;
+		volatile double v1 = B / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGET512 void AddProd512(float* C, float* A, float* B, int64 n)
+TARGET512 void Div512(float* A, float B, float* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m512 a[N];
-		ushort maskff = 0 - (n > -1);
+		__m512 b = _mm512_set1_ps(B);
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N) { a[kk] = _mm512_mul_ps(a[kk], _mm512_loadu_ps(B)); B += sizeof(__m512) / sizeof(float); }
-
-			float* C2 = C;
-
-			REP(N) { a[kk] = _mm512_mask_add_ps(a[kk], maskff, a[kk], _mm512_loadu_ps(C)); C += sizeof(__m512) / sizeof(float); }
-
-			REP(N) { _mm512_storeu_ps(C2, a[kk]); C2 += sizeof(__m512) / sizeof(float); }
+			UNROLL(N) { _mm512_storeu_ps(A, _mm512_div_ps(b, _mm512_loadu_ps(C))); A += E512F; C += E512F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * *B++;
-		*C++ += v1;
+		volatile float v1 = B / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGET512 void AddProd512(double* C, double* A, double B, int64 n)
+TARGET512 void Div512(double* A, double* B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m512d a[N], b = _mm512_set1_pd(B);
-
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512d) / sizeof(double); }
-
-			REP(N)  a[kk] = _mm512_mul_pd(a[kk], b);
-
-			double* C2 = C;
-
-			REP(N) { a[kk] = _mm512_add_pd(a[kk], _mm512_loadu_pd(C)); C += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) { _mm512_storeu_pd(C2, a[kk]); C2 += sizeof(__m512d) / sizeof(double); }
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_div_pd(_mm512_loadu_pd(B), _mm512_loadu_pd(C))); A += E512D; B += E512D; C += E512D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * B;
-		*C++ += v1;
+		volatile double v1 = *B++ / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGET512 void AddProd512(double* C, float* A, double B, int64 n)
+TARGET512 void Div512(float* A, float* B, float* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m512d) / sizeof(double))
+	if (n >= N * E512F)
 	{
-		__m512d a[N], b = _mm512_set1_pd(B);
-
-		for (int64 l1 = n - N * sizeof(__m512d) / sizeof(double); i <= l1; i += N * sizeof(__m512d) / sizeof(double))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm512_cvtps_pd(_mm256_loadu_ps(A)); A += sizeof(__m256) / sizeof(float); }
-
-			REP(N)  a[kk] = _mm512_mul_pd(a[kk], b);
-
-			double* C2 = C;
-
-			REP(N) { a[kk] = _mm512_add_pd(a[kk], _mm512_loadu_pd(C)); C += sizeof(__m512d) / sizeof(double); }
-
-			REP(N) { _mm512_storeu_pd(C2, a[kk]); C2 += sizeof(__m512d) / sizeof(double); }
+			UNROLL(N) { _mm512_storeu_ps(A, _mm512_div_ps(_mm512_loadu_ps(B), _mm512_loadu_ps(C))); A += E512F; B += E512F; C += E512F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * B;
-		*C++ += v1;
+		volatile float v1 = *B++ / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGET512 void AddProd512(float* C, float* A, float B, int64 n)
+TARGET512 void AddProd512(double* A, double* B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 1
 	int64 i = 0;
-	ushort maskff = 0 - (n > -1);
 
-	if (n >= N * sizeof(__m512) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m512 a[N], b = _mm512_set1_ps(B);
-
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(float); i <= l1; i += N * sizeof(__m512) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm512_loadu_ps(A); A += sizeof(__m512) / sizeof(float); }
-
-			REP(N)  a[kk] = _mm512_mul_ps(a[kk], b); 
-
-			float* C2 = C;
-
-			REP(N) { a[kk] = _mm512_mask_add_ps(a[kk], maskff, a[kk], _mm512_loadu_ps(C)); C += sizeof(__m512) / sizeof(float); }
-
-			REP(N) { _mm512_storeu_ps(C2, a[kk]); C2 += sizeof(__m512) / sizeof(float); }
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_fmaddx_pd(_mm512_loadu_pd(B), _mm512_loadu_pd(C), _mm512_loadu_pd(A))); A += E512D; B += E512D; C += E512D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * B;
-		*C++ += v1;
+		volatile double v1 = *B++ * *C++;
+		*A++ += v1;
+	}
+}
+
+TARGET512 void AddProd512(float* A, float* B, float* C, int64 n)
+{
+#define N 1
+	int64 i = 0;
+
+	if (n >= N * E512F)
+	{
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
+		{
+			UNROLL(N) { _mm512_storeu_ps(A, _mm512_fmaddx_ps(_mm512_loadu_ps(B), _mm512_loadu_ps(C), _mm512_loadu_ps(A))); A += E512F; B += E512F; C += E512F; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile float v1 = *B++ * *C++;
+		*A++ += v1;
+	}
+}
+
+TARGET512 void AddProd512(double* A, double* B, double C, int64 n)
+{
+#define N 1
+	int64 i = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d c = _mm512_set1_pd(C);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_fmaddx_pd(_mm512_loadu_pd(B), c, _mm512_loadu_pd(A))); A += E512D; B += E512D; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile double v1 = *B++ * C;
+		*A++ += v1;
+	}
+}
+
+TARGET512 void AddProd512(double* A, float* B, double C, int64 n)
+{
+#define N 1
+	int64 i = 0;
+
+	if (n >= N * E512D)
+	{
+		__m512d c = _mm512_set1_pd(C);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) { _mm512_storeu_pd(A, _mm512_fmaddx_pd(_mm512_cvtps_pd(_mm256_loadu_ps(B)), c, _mm512_loadu_pd(A))); A += E512D; B += E512D; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile double v1 = *B++ * C;
+		*A++ += v1;
+	}
+}
+
+TARGET512 void AddProd512(float* A, float* B, float C, int64 n)
+{
+#define N 1
+	int64 i = 0;
+
+	if (n >= N * E512F)
+	{
+		__m512 c = _mm512_set1_ps(C);
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
+		{
+			UNROLL(N) { _mm512_storeu_ps(A, _mm512_fmaddx_ps(_mm512_loadu_ps(B), c, _mm512_loadu_ps(A))); A += E512F; B += E512F; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile float v1 = *B++ * C;
+		*A++ += v1;
 	}
 }
 
 TARGET512 void Unify512(double* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	double invsum = 1.0 / (Sum512(A, n) + n * MIN_FREQ);
 
-	if (n >= N * sizeof(__m512) / sizeof(double))
+	if (n >= E512D)
 	{
-		__m512d a[N], minf = _mm512_set1_pd(MIN_FREQ), invs = _mm512_set1_pd(invsum);
+		__m512d b = _mm512_set1_pd(invsum), c = _mm512_set1_pd(MIN_FREQ * invsum);
 
-		for (int64 l1 = n - N * sizeof(__m512) / sizeof(double); i <= l1; i += N * sizeof(__m512) / sizeof(double))
+		UNROLLHEAD(N)
+		for (int64 l1 = n - E512D; i <= l1; i += E512D)
 		{
-			double* A2 = A;
-
-			REP(N) { a[kk] = _mm512_loadu_pd(A); A += sizeof(__m512) / sizeof(double); }
-
-			REP(N) a[kk] = _mm512_add_pd(a[kk], minf);
-
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], invs);
-
-			REP(N) { _mm512_storeu_pd(A2, a[kk]); A2 += sizeof(__m512) / sizeof(double); }
+			_mm512_storeu_pd(A, _mm512_fmaddx_pd(_mm512_loadu_pd(A), b, c)); 
+			A += E512D;
 		}
 	}
 
@@ -2523,25 +2851,19 @@ TARGET512 void Unify512(double* A, int64 n)
 
 TARGET512 void Unify512(float* A, int64 n)
 {
-	constexpr int N = 2;
+#define N 4
 	int64 i = 0;
 	double invsum = 1.0 / (Sum512(A, n) + n * MIN_FREQ);
 
-	if (n >= N * sizeof(__m256) / sizeof(float))
+	if (n >= E512D)
 	{
-		__m512d a[N], minf = _mm512_set1_pd(MIN_FREQ), invs = _mm512_set1_pd(invsum);
+		__m512d b = _mm512_set1_pd(invsum), c = _mm512_set1_pd(MIN_FREQ * invsum);
 
-		for (int64 l1 = n - N * sizeof(__m256) / sizeof(float); i <= l1; i += N * sizeof(__m256) / sizeof(float))
+		UNROLLHEAD(N)
+		for (int64 l1 = n - E512D; i <= l1; i += E512D)
 		{
-			float* A2 = A;
-
-			REP(N) { a[kk] = _mm512_cvtps_pd(_mm256_loadu_ps(A)); A += sizeof(__m256) / sizeof(float); }
-
-			REP(N) a[kk] = _mm512_add_pd(a[kk], minf);
-
-			REP(N) a[kk] = _mm512_mul_pd(a[kk], invs);
-
-			REP(N) { _mm256_storeu_ps(A2, _mm512_cvtpd_ps(a[kk])); A2 += sizeof(__m256) / sizeof(float); }
+			_mm256_storeu_ps(A, _mm512_cvtpd_ps(_mm512_fmaddx_pd(_mm512_cvtps_pd(_mm256_loadu_ps(A)), b, c))); 
+			A += E512D;
 		}
 	}
 
@@ -2557,24 +2879,26 @@ TARGET512 char* StrNextIdx512(char* A, char val, int64 rep, int64 n)
 	A++; n--;
 	int64 i = 0;
 
-	if (n >= 64)
+	if (n >= E512B)
 	{
 		__m512i v = _mm512_set1_epi8(val);
 
-		for (int64 l1 = n - 64; i <= l1; i += 64, A += 64)
+		UNROLL(N)
+		for (int64 l1 = n - E512B; i <= l1; i += E512B)
 		{
-			__m512i a = _mm512_loadu_si512(A);
-			__mmask64 mask = _mm512_cmpeq_epu8_mask(a, v);
+			char* Ab = A;
+			__mmask64 mask = _mm512_cmpeq_epu8_mask(_mm512_loadu_si512(A), v); A += E512B;
+
 			int64 count = (int64)_mm_popcnt_u64(mask);
 
-			if (rep > count)
+			if (rep > count) [[likely]]
 			{
 				rep -= count;
 				continue;
 			}
-			else for (;; A++, mask >>= 1)
+			else for (;; Ab++, mask >>= 1)
 				if ((mask & 1) && !--rep)
-					return A;
+					return Ab;
 		}
 	}
 
@@ -2587,17 +2911,19 @@ TARGET512 char* StrNextIdx512(char* A, char val, int64 rep, int64 n)
 
 TARGET512 int64 CountChar512(char* A, char val, int64 n)
 {
+#define N 4
 	uint64 re = 0;
 	int64 i = 0;
 
-	if (n >= 64)
+	if (n >= E512B)
 	{
 		__m512i v = _mm512_set1_epi8(val);
-
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		
+		UNROLLHEAD(N)
+		for (int64 l1 = n - E512B; i <= l1; i += E512B)
 		{
 			re += _mm_popcnt_u64(_mm512_cmpeq_epu8_mask(_mm512_loadu_si512(A), v));
-			A += 64;
+			A += E512B;
 		}
 	}
 
@@ -2605,6 +2931,599 @@ TARGET512 int64 CountChar512(char* A, char val, int64 n)
 		if (*A == val) re++;
 
 	return (int64)re;
+}
+
+TARGET512 void DiagQuadForm512x(double* res1, double* A, double* D, int64 m, int64 n)
+{
+#define NA 2
+#define NA8 16
+#define NB8 8
+
+    for (int64 i = 0; i < m; i += NA8)
+	{
+        for (int64 j = 0; j + NB8 <= i + NA8; j += NB8)
+		{
+			double* pA1 = A + i, *pA2 = A + j, *pD = D; 
+			__m512d r[NB8][NA] = { 0 };
+
+            for (int64 k = 0; k < n; k++, pA1 += m, pA2 += m, pD ++) 
+			{
+				 _mm_prefetch((const char*)(pA1 + m), _MM_HINT_T0);
+				 _mm_prefetch((const char*)(pA2 + m), _MM_HINT_T0);
+
+				__m512d d = _mm512_set1_pd(*pD);
+				__m512d ad[NA];
+
+				UNROLL(NA) ad[kk] = _mm512_mul_pd(_mm512_loadu_pd(pA1 + kk * 8), d);
+
+				UNROLL(NB8) 
+				{
+					__m512d a2 = _mm512_set1_pd(pA2[kk]);
+					UNROLLHEAD(NA) for (int ii = 0; ii < NA; ++ii)
+						r[kk][ii] = _mm512_fmadd_pd(a2, ad[ii], r[kk][ii]);
+				}
+			}
+
+			for (int jj = 0; jj < NB8; ++jj)
+				for (int ii = 0; ii < NA8; ++ii)
+					res1[i + ii + (j + jj) * m] = res1[j + jj + (i + ii) * m] = *((double*)&r[jj][0] + ii);
+        }
+    }
+}
+
+TARGET512 void DiagQuadForm512x(float* res1, float* A, float* D, int64 m, int64 n)
+{
+#define NA 1
+#define NB 1
+#define NA16 16
+#define NB16 16
+
+    for (int64 i = 0; i < m; i += NA16)
+	{
+        for (int64 j = 0; j + NB16 <= i + NA16; j += NB16)
+		{
+			float* pA1 = A + i, *pA2 = A + j, *pD = D; 
+			__m512 r[NB16][NA] = { 0 };
+
+            for (int64 k = 0; k < n; k++, pA1 += m, pA2 += m, pD ++) 
+			{
+				 _mm_prefetch((const char*)(pA1 + m), _MM_HINT_T0);
+				 _mm_prefetch((const char*)(pA2 + m), _MM_HINT_T0);
+
+				__m512 d = _mm512_set1_ps(*pD);
+				__m512 ad[NA];
+
+				UNROLL(NA) ad[kk] = _mm512_mul_ps(_mm512_loadu_ps(pA1 + kk * E512F), d);
+
+				UNROLL(NB16) 
+				{
+					__m512 a2 = _mm512_set1_ps(pA2[kk]);
+					UNROLLHEAD(NA) for (int ii = 0; ii < NA; ++ii)
+						r[kk][ii] = _mm512_fmadd_ps(a2, ad[ii], r[kk][ii]);
+				}
+			}
+
+			for (int jj = 0; jj < NB16; ++jj)
+				for (int ii = 0; ii < NA16; ++ii)
+					res1[i + ii + (j + jj) * m] = res1[j + jj + (i + ii) * m] = *((float*)&r[jj][0] + ii);
+        }
+    }
+}
+
+TARGET512 void DiagQuadForm512(double* res1, double* A, double* D, int64 m, int64 n)
+{
+#define N 4
+#define DECLARE			double* pA1 = (A + n * i), *pA2 = (A + n * j), *pD = D; __m512d a1[N], a2[N], r[N][N] = { 0 }
+#define ALOAD1(ii)		a1[ii] = _mm512_loadu_pd(pA1 + n * ii)
+#define ALOAD2(ii)		a2[ii] = _mm512_loadu_pd(pA2 + n * ii)
+#define ALOAD3(ii)		a1[ii] = a2[ii] = _mm512_loadu_pd(pA1 + n * ii)
+#define ADMUL(ii)		a1[ii] = _mm512_mul_pd(a1[ii], _mm512_loadu_pd(pD))
+#define FMADD(ii,jj)	r[ii][jj] = _mm512_fmaddx_pd(a1[ii], a2[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res1[(i+ii) * m + (j+jj)] = _mm512_reduce_add_pd(r[ii][jj])
+#define REMAIN(ii,jj)	res1[(i+ii) * m + (j+jj)] += A[(i+ii) * n + k] * A[(j+jj) * n + k] * D[k]
+#define FINAL(ii,jj)	res1[(i+ii) + (j+jj) * m] = res1[(i+ii) * m + (j+jj)]
+	
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512D <= n; k += E512D, pA1 += E512D, pA2 += E512D, pD += E512D) 
+			{ LOOP(ALOAD1); LOOP(ALOAD2); LOOP(ADMUL); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+
+			LOOP2(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512D <= n; k += E512D, pA1 += E512D, pD += E512D) 
+			{ LOOP(ALOAD3); LOOP(ADMUL); LOOP3(FMADD); }
+
+			LOOP3(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3(REMAIN); }
+
+			LOOP3(FINAL);
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512D <= n; k += E512D, pA1 += E512D, pA2 += E512D, pD += E512D) 
+			{ LOOPNa(ALOAD1); LOOP(ALOAD2); LOOPNa(ADMUL); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+
+			LOOP2Na(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512D <= n; k += E512D, pA1 += E512D, pD += E512D) 
+			{ LOOPNa(ALOAD3); LOOP(ADMUL); LOOP3Na(FMADD); }
+
+			LOOP3Na(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3Na(REMAIN); }
+
+			LOOP3Na(FINAL);
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD1
+#undef ALOAD2
+#undef ALOAD3
+#undef ADMUL
+#undef FMADD
+#undef RDUADD
+#undef REMAIN
+#undef FINAL
+}
+
+TARGET512 void DiagQuadForm512(double* res2, double* A, double* D, double* B, int64 m, int64 n)
+{
+#define N 8
+#define DECLARE			double* pA = (A + n * i), *pB = B, *pD = D; __m512d bd, r[N] = { 0 }
+#define BDMUL			bd = _mm512_mul_pd(_mm512_loadu_pd(pB), _mm512_loadu_pd(pD)); pB += E512D; pD += E512D
+#define FMADD(ii)		r[ii] = _mm512_fmaddx_pd(_mm512_loadu_pd(pA + n * ii), bd, r[ii]); 
+#define RDUADD(ii)		res2[(i+ii)] = _mm512_reduce_add_pd(r[ii])
+#define FINAL(ii)		res2[(i+ii)] += A[(i+ii) * n + k] * B[k] * D[k]
+
+    int64 i = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+		DECLARE;
+
+        for (k = 0; k + E512D <= n; k += E512D, pA += E512D) 
+		{ BDMUL; LOOP(FMADD); }
+			
+		LOOP(RDUADD);
+
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOP(FINAL); }
+	}
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+			
+		DECLARE;
+
+        for (k = 0; k + E512D <= n; k += E512D, pA += E512D) 
+		{ BDMUL; LOOPNa(FMADD); }
+			
+		LOOPNa(RDUADD);
+			
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOPNa(FINAL); }
+	}
+
+#undef DECLARE
+#undef BDMUL
+#undef FMADD
+#undef REDUCE2
+#undef FINAL
+}
+
+TARGET512 void DiagQuadForm512(double* res3, double* B, double* D, int64 n)
+{
+#define N 4
+	__m512d s[N] = { 0 };
+
+	int64 k = 0;
+    for (; k + N * E512D <= n; k += N * E512D) 
+	{
+		UNROLL(N)
+		{
+			s[kk] = _mm512_fmaddx_pd(_mm512_mul_pd(_mm512_loadu_pd(B), _mm512_loadu_pd(B)), _mm512_loadu_pd(D), s[kk]); 
+			B += E512D;
+			D += E512D;
+		}
+	}
+
+	REDUCE(s) s[kk] = _mm512_add_pd(s[kk], s[kk + KK]);
+			
+	res3[0] = _mm512_reduce_add_pd(s[0]);
+			
+	VECTORIZE
+    for (; k < n; k++, B++, D++) 
+		res3[0] += B[0] * B[0] * D[0];
+}
+
+TARGET512 void MatrixMul512(double* res, double* A, double* B, int64 m, int64 n, int64 p)
+{
+#define N 4
+#define DECLARE			double* pA = (A + n * i), *pB = (B + n * j); __m512d a[N], b[N], r[N][N] = { 0 }
+#define ALOAD(kk)		a[kk] = _mm512_loadu_pd(pA + n * kk)
+#define BLOAD(kk)		b[kk] = _mm512_loadu_pd(pB + n * kk)
+#define FMADD(ii,jj)	r[ii][jj] = _mm512_fmaddx_pd(a[ii], b[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res[(i+ii) + (j+jj) * m] = _mm512_reduce_add_pd(r[ii][jj])
+#define REMAIN(ii,jj)	res[(i+ii) + (j+jj) * m] += A[(i+ii) * n + k] * B[(j+jj) * n + k]
+
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512D <= n; k += E512D, pA += E512D, pB += E512D) 
+			{ LOOP(ALOAD); LOOP(BLOAD); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+        }
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E512D <= n; k += E512D, pA += E512D, pB += E512D) 
+			{ LOOP(ALOAD); LOOPNb(BLOAD); LOOP2Nb(FMADD); }
+			
+			LOOP2Nb(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Nb(REMAIN); }
+
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512D <= n; k += E512D, pA += E512D, pB += E512D) 
+			{ LOOPNa(ALOAD); LOOP(BLOAD); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+        }
+
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E512D <= n; k += E512D, pA += E512D, pB += E512D) 
+			{ LOOPNa(ALOAD); LOOPNb(BLOAD); LOOP2NaNb(FMADD); }
+			
+			LOOP2NaNb(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2NaNb(REMAIN); }
+
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD
+#undef BLOAD
+#undef FMADD
+#undef RDUADD
+#undef FINAL
+}
+
+TARGET512 void DiagQuadForm512(float* res1, float* A, float* D, int64 m, int64 n)
+{
+#define N 4
+#define DECLARE			float* pA1 = (A + n * i), *pA2 = (A + n * j), *pD = D; __m512 a1[N], a2[N], r[N][N] = { 0 }
+#define ALOAD1(ii)		a1[ii] = _mm512_loadu_ps(pA1 + n * ii)
+#define ALOAD2(ii)		a2[ii] = _mm512_loadu_ps(pA2 + n * ii)
+#define ALOAD3(ii)		a1[ii] = a2[ii] = _mm512_loadu_ps(pA1 + n * ii)
+#define ADMUL(ii)		a1[ii] = _mm512_mul_ps(a1[ii], _mm512_loadu_ps(pD))
+#define FMADD(ii,jj)	r[ii][jj] = _mm512_fmaddx_ps(a1[ii], a2[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res1[(i+ii) * m + (j+jj)] = _mm512_reduce_add_ps(r[ii][jj])
+#define REMAIN(ii,jj)	res1[(i+ii) * m + (j+jj)] += A[(i+ii) * n + k] * A[(j+jj) * n + k] * D[k]
+#define FINAL(ii,jj)	res1[(i+ii) + (j+jj) * m] = res1[(i+ii) * m + (j+jj)]
+	
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512F <= n; k += E512F, pA1 += E512F, pA2 += E512F, pD += E512F) 
+			{ LOOP(ALOAD1); LOOP(ALOAD2); LOOP(ADMUL); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+
+			LOOP2(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512F <= n; k += E512F, pA1 += E512F, pD += E512F) 
+			{ LOOP(ALOAD3); LOOP(ADMUL); LOOP3(FMADD); }
+
+			LOOP3(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3(REMAIN); }
+
+			LOOP3(FINAL);
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512F <= n; k += E512F, pA1 += E512F, pA2 += E512F, pD += E512F) 
+			{ LOOPNa(ALOAD1); LOOP(ALOAD2); LOOPNa(ADMUL); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+
+			LOOP2Na(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512F <= n; k += E512F, pA1 += E512F, pD += E512F) 
+			{ LOOPNa(ALOAD3); LOOP(ADMUL); LOOP3Na(FMADD); }
+
+			LOOP3Na(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3Na(REMAIN); }
+
+			LOOP3Na(FINAL);
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD1
+#undef ALOAD2
+#undef ALOAD3
+#undef ADMUL
+#undef FMADD
+#undef RDUADD
+#undef REMAIN
+#undef FINAL
+}
+
+TARGET512 void DiagQuadForm512(float* res2, float* A, float* D, float* B, int64 m, int64 n)
+{
+#define N 8
+#define DECLARE			float* pA = (A + n * i), *pB = B, *pD = D; __m512 bd, r[N] = { 0 }
+#define BDMUL			bd = _mm512_mul_ps(_mm512_loadu_ps(pB), _mm512_loadu_ps(pD)); pB += E512F; pD += E512F
+#define FMADD(ii)		r[ii] = _mm512_fmaddx_ps(_mm512_loadu_ps(pA + n * ii), bd, r[ii]); 
+#define RDUADD(ii)		res2[(i+ii)] = _mm512_reduce_add_ps(r[ii])
+#define FINAL(ii)		res2[(i+ii)] += A[(i+ii) * n + k] * B[k] * D[k]
+
+    int64 i = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+		DECLARE;
+
+        for (k = 0; k + E512F <= n; k += E512F, pA += E512F) 
+		{ BDMUL; LOOP(FMADD); }
+			
+		LOOP(RDUADD);
+
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOP(FINAL); }
+	}
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+			
+		DECLARE;
+
+        for (k = 0; k + E512F <= n; k += E512F, pA += E512F) 
+		{ BDMUL; LOOPNa(FMADD); }
+			
+		LOOPNa(RDUADD);
+			
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOPNa(FINAL); }
+	}
+
+#undef DECLARE
+#undef BDMUL
+#undef FMADD
+#undef REDUCE2
+#undef FINAL
+}
+
+TARGET512 void DiagQuadForm512(float* res3, float* B, float* D, int64 n)
+{
+#define N 4
+	__m512 s[N] = { 0 };
+
+	int64 k = 0;
+    for (; k + N * E512F <= n; k += N * E512F) 
+	{
+		UNROLL(N)
+		{
+			s[kk] = _mm512_fmaddx_ps(_mm512_mul_ps(_mm512_loadu_ps(B), _mm512_loadu_ps(B)), _mm512_loadu_ps(D), s[kk]); 
+			B += E512F; 
+			D += E512F; 
+		}
+	}
+
+	REDUCE(s) s[kk] = _mm512_add_ps(s[kk], s[kk + KK]);
+			
+	res3[0] = _mm512_reduce_add_ps(s[0]);
+			
+	VECTORIZE
+    for (; k < n; k++, B++, D++) 
+		res3[0] += B[0] * B[0] * D[0];
+}
+
+TARGET512 void MatrixMul512(float* res, float* A, float* B, int64 m, int64 n, int64 p)
+{
+#define N 4
+#define DECLARE			float* pA = (A + n * i), *pB = (B + n * j); __m512 a[N], b[N], r[N][N] = { 0 }
+#define ALOAD(kk)		a[kk] = _mm512_loadu_ps(pA + n * kk)
+#define BLOAD(kk)		b[kk] = _mm512_loadu_ps(pB + n * kk)
+#define FMADD(ii,jj)	r[ii][jj] = _mm512_fmaddx_ps(a[ii], b[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res[(i+ii) + (j+jj) * m] = _mm512_reduce_add_ps(r[ii][jj])
+#define REMAIN(ii,jj)	res[(i+ii) + (j+jj) * m] += A[(i+ii) * n + k] * B[(j+jj) * n + k]
+
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512F <= n; k += E512F, pA += E512F, pB += E512F) 
+			{ LOOP(ALOAD); LOOP(BLOAD); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+        }
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E512F <= n; k += E512F, pA += E512F, pB += E512F) 
+			{ LOOP(ALOAD); LOOPNb(BLOAD); LOOP2Nb(FMADD); }
+			
+			LOOP2Nb(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Nb(REMAIN); }
+
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E512F <= n; k += E512F, pA += E512F, pB += E512F) 
+			{ LOOPNa(ALOAD); LOOP(BLOAD); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+        }
+
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E512F <= n; k += E512F, pA += E512F, pB += E512F) 
+			{ LOOPNa(ALOAD); LOOPNb(BLOAD); LOOP2NaNb(FMADD); }
+			
+			LOOP2NaNb(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2NaNb(REMAIN); }
+
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD
+#undef BLOAD
+#undef FMADD
+#undef RDUADD
+#undef FINAL
 }
 
 #endif

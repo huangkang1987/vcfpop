@@ -9,10 +9,10 @@ template<typename REAL> struct WINDOW;
 
 struct CHROM_PROP
 {
-	uint max; 
-	uint min;
-	uint st;
-	uint ed;
+	uint64 max; 
+	uint64 min;
+	uint64 st;
+	uint64 ed;
 };
 
 template<typename REAL>
@@ -27,7 +27,7 @@ struct SWINDOW
 	double* slide_a2;
 	double* slide_c1;
 	double* slide_c2;
-	void* cpop_;
+	POP<REAL>* cpop_;
 	POP<REAL>** grps;
 	int ngrps;
 
@@ -77,13 +77,13 @@ struct SWINDOW
 	/* 1 Nucleotide diversity */
 	double _pi_sum;
 
-	/* 2 Watterson¡¯s thetaw */
+	/* 2 Watterson's thetaw */
 	double _thetaw_sum;
 
-	/* 3 Tajima¡¯s D */
+	/* 3 Tajima's D */
 	double _d_sum;
 	TABLE<HASH, int> _nhaplo_freq1;
-	map  <int,  int> _nhaplo_freq2;
+	umap  <int,  int> _nhaplo_freq2;
 
 	/* 4 r2 */
 	double _D2_sum;
@@ -137,14 +137,14 @@ struct SWINDOW
 	/* 1 Nucleotide diversity */
 	double* pi_sum;
 
-	/* 2 Watterson¡¯s thetaw */
+	/* 2 Watterson's thetaw */
 	double* thetaw_sum;
 
-	/* 3 Tajima¡¯s D */
+	/* 3 Tajima's D */
 	double* d_sum;
 	//double* vd_sum;
 	TABLE<HASH, int>* nhaplo_freq1;
-	map  <int,  int>* nhaplo_freq2;
+	umap  <int,  int>* nhaplo_freq2;
 
 	/* 4 r2 */
 	double* D2_sum;
@@ -192,7 +192,7 @@ struct SWINDOW
 	//TARGET void Settle2(int pst2, int st2);
 
 	/* Settle Tajima D denominator */
-	TARGET double SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int>& freq2);
+	TARGET double SettleTajimaD(TABLE<HASH, int>& freq1, umap<int, int>& freq2);
 
 	/* Settle a SWINDOW */
 	TARGET bool Settle(int i, int newid);
@@ -213,7 +213,7 @@ struct WINDOW
 	double* slide_a2;
 	double* slide_c1;
 	double* slide_c2;
-	void* cpop_;
+	POP<REAL>* cpop_;
 	POP<REAL>** grps;
 	int ngrps;
 
@@ -265,15 +265,15 @@ struct WINDOW
 	/* 1 Nucleotide diversity */
 	REAL* pi_sum;
 
-	/* 2 Watterson¡¯s thetaw */
+	/* 2 Watterson's thetaw */
 	REAL* thetaw_sum;
 
-	/* 3 Tajima¡¯s D */
+	/* 3 Tajima's D */
 	REAL* d_sum;
 	REAL* vd_sum;
 	int* N;
 	TABLE<HASH, int>* nhaplo_freq1;
-	map  <int,  int>* nhaplo_freq2;
+	umap  <int,  int>* nhaplo_freq2;
 
 	/* 4 r2 */
 	REAL* D2_sum;
@@ -318,8 +318,8 @@ struct WINDOW
 #pragma pack(pop)
 
 template<typename REAL> extern WINDOW<REAL> window;
-extern vector<char*> chroms;
-extern map<HASH, CHROM_PROP> chrom_sted;
+extern vector<char*> slide_chromas;
+extern umap<HASH, CHROM_PROP> slide_chrom_sted;
 
 /* Convert phased genotype into unphased genotype */
 THREAD2H(UpdateUnphaseGenotypes);

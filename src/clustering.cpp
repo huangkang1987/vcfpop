@@ -1,6 +1,5 @@
 /* Hierarchical Clustering Functions */
 
-#pragma once
 #include "vcfpop.h"
 
 template struct HCLUSTER<double>;
@@ -10,6 +9,9 @@ template struct HCLUSTERING<float >;
 
 template TARGET void CalcClustering<double>();
 template TARGET void CalcClustering<float >();
+
+template<> double* clustering_matrix<double>;
+template<> float * clustering_matrix<float >;
 
 #ifndef _HCLUSTERING
 /* Initialize for distance matrix between individuals */
@@ -24,17 +26,17 @@ TARGET HCLUSTERING<REAL>::HCLUSTERING(REAL* d, IND<REAL>** obj, int n, int m, ME
 	memory->Alloc(dcur, n * n);
 	memory->Alloc(dnew, n * n);
 	SetVal(dcur, d, n * n);
-	if constexpr (sizeof(REAL) == 8)
+	if constexpr (std::is_same_v<REAL, double>)
 		SetVal(dcur, DBL_MAX, n, n + 1);
 	else
 		SetVal(dcur, FLT_MAX, n, n + 1);
 
 	// add some value to avoid float point error or same values of distance
-	RNG<REAL> rng(1, RNG_SALT_CLUSTERING);
+	RNG<double> rng(1, RNG_SALT_CLUSTERING);
 	for (int i = 0; i < n; ++i)
 		for (int j = 0; j < i; ++j)
 			dcur[i * n + j] = dcur[j * n + i] = 
-				dcur[i * n + j] + dcur[i * n + j] * rng.Uniform() * 1e-6;
+			(REAL)(dcur[i * n + j] + dcur[i * n + j] * rng.Uniform() * 1e-6);
 
 	node.SetSize(n);
 	for (int i = 0; i < n; ++i)
@@ -68,17 +70,17 @@ TARGET HCLUSTERING<REAL>::HCLUSTERING(REAL* d, POP<REAL>** obj, int n, int m, ME
 	memory->Alloc(dnew, n * n);
 	SetVal(dcur, d, n * n);
 
-	if constexpr (sizeof(REAL) == 8)
+	if constexpr (std::is_same_v<REAL, double>)
 		SetVal(dcur, DBL_MAX, n, n + 1);
 	else
 		SetVal(dcur, FLT_MAX, n, n + 1);
 
 	// add some value to avoid float point error or same values of distance
-	RNG<REAL> rng(1, RNG_SALT_CLUSTERING);
+	RNG<double> rng(1, RNG_SALT_CLUSTERING);
 	for (int i = 0; i < n; ++i)
 		for (int j = 0; j < i; ++j)
 			dcur[i * n + j] = dcur[j * n + i] =
-			dcur[i * n + j] + dcur[i * n + j] * rng.Uniform() * 1e-6;
+			(REAL)(dcur[i * n + j] + dcur[i * n + j] * rng.Uniform() * 1e-6);
 
 	node.SetSize(n);
 	for (int i = 0; i < n; ++i)
@@ -145,8 +147,8 @@ TARGET REAL HCLUSTERING<REAL>::FindMinIdx(int& a, int& b)
 	int id = GetMinIdx(dcur, ncur * ncur, minv);
 	int a1 = id / ncur;
 	int b1 = id % ncur;
-	a = Min(a1, b1);
-	b = Max(a1, b1);
+	a = std::min(a1, b1);
+	b = std::max(a1, b1);
 	return minv;
 }
 
@@ -155,7 +157,7 @@ template<typename REAL>
 TARGET void HCLUSTERING<REAL>::ReduceMatrix(int _a, int _b)
 {
 	int nnew = ncur - 1;
-	int a = Min(_a, _b), b = Max(_a, _b);
+	int a = std::min(_a, _b), b = std::max(_a, _b);
 
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 	for (int i = 0; i < ncur; ++i)
@@ -174,7 +176,7 @@ TARGET void HCLUSTERING<REAL>::ReduceMatrix(int _a, int _b)
 			if (c == a || c == b) continue;
 			int cnew = c > b ? c - 1 : c;
 			REAL dac = dcur[a * ncur + c], dbc = dcur[b * ncur + c];
-			dnew[cnew * nnew + a] = dnew[a * nnew + cnew] = Min(dac, dbc);
+			dnew[cnew * nnew + a] = dnew[a * nnew + cnew] = std::min(dac, dbc);
 		}
 	}
 
@@ -186,7 +188,7 @@ TARGET void HCLUSTERING<REAL>::ReduceMatrix(int _a, int _b)
 			if (c == a || c == b) continue;
 			int cnew = c > b ? c - 1 : c;
 			REAL dac = dcur[a * ncur + c], dbc = dcur[b * ncur + c];
-			dnew[cnew * nnew + a] = dnew[a * nnew + cnew] = Max(dac, dbc);
+			dnew[cnew * nnew + a] = dnew[a * nnew + cnew] = std::max(dac, dbc);
 		}
 	}
 
@@ -254,9 +256,9 @@ TARGET void HCLUSTERING<REAL>::ReduceMatrix(int _a, int _b)
 	}
 }
 
-/* Print clustering results */
+/* Write clustering results */
 template<typename REAL>
-TARGET void HCLUSTERING<REAL>::PrintClustering(FILE* fout, HCLUSTER<REAL>* c, REAL cy)
+TARGET void HCLUSTERING<REAL>::WriteClustering(FILE* fout, HCLUSTER<REAL>* c, REAL cy)
 {
 	if (c == NULL)
 	{
@@ -269,9 +271,9 @@ TARGET void HCLUSTERING<REAL>::PrintClustering(FILE* fout, HCLUSTER<REAL>* c, RE
 		else
 		{
 			fprintf(fout, "(");
-			PrintClustering(fout, c->left, c->y);
+			WriteClustering(fout, c->left, c->y);
 			fprintf(fout, ",");
-			PrintClustering(fout, c->right, c->y);
+			WriteClustering(fout, c->right, c->y);
 			fprintf(fout, ");%s", g_linebreak_val);
 		}
 	}
@@ -283,9 +285,9 @@ TARGET void HCLUSTERING<REAL>::PrintClustering(FILE* fout, HCLUSTER<REAL>* c, RE
 	else
 	{
 		fprintf(fout, "(");
-		PrintClustering(fout, c->left, c->y);
+		WriteClustering(fout, c->left, c->y);
 		fprintf(fout, ",");
-		PrintClustering(fout, c->right, c->y);
+		WriteClustering(fout, c->right, c->y);
 		fprintf(fout, "):");
 		WriteReal(fout, cy - c->y);
 	}
@@ -294,8 +296,8 @@ TARGET void HCLUSTERING<REAL>::PrintClustering(FILE* fout, HCLUSTER<REAL>* c, RE
 
 #define extern 
 extern MEMORY* clustering_memory;						//Genetic distance memory class
-extern void* clustering_matrix_;						//Genetic distance array of genetic distance to perform PCoA
-#define clustering_matrix (*(REAL**)&clustering_matrix_)
+template<typename REAL>
+extern REAL* clustering_matrix;							//Genetic distance array of genetic distance to perform PCoA
 #undef extern 
 
 /* Calculate hierarchical clustering */
@@ -336,8 +338,8 @@ TARGET void CalcClustering()
 				if (cluster_estimator_val[k])
 					gdindex[k] = nestimator++;
 
-			clustering_matrix = new REAL[n * n * nestimator];
-			SetZero(clustering_matrix, n * n * nestimator);
+			clustering_matrix<REAL> = new REAL[n * n * nestimator];
+			SetZero(clustering_matrix<REAL>, n * n * nestimator);
 
 			RunThreads(&ClusteringThread<REAL>, NULL, NULL, ntot, n * (n - 1) / 2,
 				"\nPerforming hierarchical clustering:\n", g_nthread_val, isfirst);
@@ -355,15 +357,15 @@ TARGET void CalcClustering()
 					case 1:
 					{
 						fprintf(FRES, "#Level: %s, genetic distance: %s, method: %s%s", level[m], GD_ESTIMATOR[k], CLUSTER_METHOD[l], g_linebreak_val);
-						HCLUSTERING<REAL> tcluster(clustering_matrix + gdindex[k] * n * n, ainds, n, l, clustering_memory);
-						tcluster.PrintClustering(FRES);
+						HCLUSTERING<REAL> tcluster(clustering_matrix<REAL> + gdindex[k] * n * n, ainds<REAL>, n, l, clustering_memory);
+						tcluster.WriteClustering(FRES);
 						break;
 					}
 					case 2:
 					{
 						fprintf(FRES, "#Level: %s, genetic distance: %s, method: %s%s", level[m], GD_ESTIMATOR[k], CLUSTER_METHOD[l], g_linebreak_val);
-						HCLUSTERING<REAL> tcluster(clustering_matrix + gdindex[k] * n * n, apops, n, l, clustering_memory);
-						tcluster.PrintClustering(FRES);
+						HCLUSTERING<REAL> tcluster(clustering_matrix<REAL> + gdindex[k] * n * n, apops<REAL>, n, l, clustering_memory);
+						tcluster.WriteClustering(FRES);
 						break;
 					}
 					case 3:
@@ -371,8 +373,8 @@ TARGET void CalcClustering()
 						for (int rl2 = 0; rl2 < lreg; ++rl2)
 						{
 							fprintf(FRES, "#Level: %s %d, genetic distance: %s, method: %s%s", level[m], rl2 + 1, GD_ESTIMATOR[k], CLUSTER_METHOD[l], g_linebreak_val);
-							HCLUSTERING<REAL> tcluster(clustering_matrix + gdindex[k] * n * n, aregs[rl2], n, l, clustering_memory);
-							tcluster.PrintClustering(FRES);
+							HCLUSTERING<REAL> tcluster(clustering_matrix<REAL> + gdindex[k] * n * n, aregs<REAL>[rl2], n, l, clustering_memory);
+							tcluster.WriteClustering(FRES);
 						}
 						break;
 					}
@@ -382,12 +384,12 @@ TARGET void CalcClustering()
 
 			if (m == 1)
 			{
-				delete[] gd_tab[0];
-				delete[] gd_tab;
+				DEL(gd_tab<REAL>[0]);
+				DEL(gd_tab<REAL>);
 			}
 
-			delete[] clustering_memory;
-			delete[] clustering_matrix;
+			DEL(clustering_memory);
+			DEL(clustering_matrix<REAL>);
 		}
 	}
 
@@ -420,16 +422,16 @@ THREAD2(ClusteringThread)
 			if (progress++ % nthread != threadid) continue;
 			switch (type)
 			{
-			case 1:  tbuf.CalcGD(ainds[i], ainds[j], p1, p2); break;
-			case 2:  tbuf.CalcGD(apops[i], apops[j], (double*)p1); break;
+			case 1:  tbuf.CalcGD(ainds<REAL>[i], ainds<REAL>[j], p1, p2); break;
+			case 2:  tbuf.CalcGD(apops<REAL>[i], apops<REAL>[j], (double*)p1); break;
 			case 3:
-			default: tbuf.CalcGD(aregs[type - 3][i], aregs[type - 3][j], (double*)p1);  break;
+			default: tbuf.CalcGD(aregs<REAL>[type - 3][i], aregs<REAL>[type - 3][j], (double*)p1);  break;
 			}
 
 			for (int k = 1; k <= (type == 1 ? N_GD_ESTIMATOR - 2 * N_FST_ESTIMATOR : N_GD_ESTIMATOR); ++k)
 				if (estimator[k])
-					*(clustering_matrix + n * n * gdindex[k] + j * n + i) =
-					*(clustering_matrix + n * n * gdindex[k] + i * n + j) =
+					*(clustering_matrix<REAL> + n * n * gdindex[k] + j * n + i) =
+					*(clustering_matrix<REAL> + n * n * gdindex[k] + i * n + j) =
 					*(&tbuf.Nei1972 + k - 1);
 
 			PROGRESS_VALUE++;

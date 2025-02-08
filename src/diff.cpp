@@ -1,6 +1,5 @@
 /* Genetic Differentiation Functions */
 
-#pragma once
 #include "vcfpop.h"
 
 template struct FST<double>;
@@ -10,6 +9,9 @@ template TARGET void CalcDiff<double>();
 template TARGET void CalcDiff<float >();
 template TARGET double FST<double>::dxy(POP<double>** grps, int n, double* buf, int64 l);
 template TARGET double FST<float >::dxy(POP<float >** grps, int n, double* buf, int64 l);
+
+template<> FST<double>* fst_buf<double>[6];
+template<> FST<float >* fst_buf<float >[6];
 
 #ifndef _FST
 /* Fst estimator warpper */
@@ -117,7 +119,7 @@ TARGET void FST<REAL>::CalcFst(POP<REAL>** grps, int n)
 		}
 		VLA_DELETE(obs);
 		VLA_DELETE(rowsum);
-		Genotype_PT = Genotype_DFT > 0 ? ChiSquareProb(Genotype_GT, Genotype_DFT) : NAN;
+		Genotype_PT = Genotype_DFT > 0 ? 1 - ChiSquareDistCDF(Genotype_GT, Genotype_DFT) : NAN;
 	}
 
 	if ((fst_locus_val[1] || fst_locus_val[2]) && fst_test_val[2])
@@ -157,7 +159,7 @@ TARGET void FST<REAL>::CalcFst(POP<REAL>** grps, int n)
 				Allele_P[l] = NAN;
 			}
 		}
-		Allele_PT = Allele_DFT > 0 ? ChiSquareProb(Allele_GT, Allele_DFT) : NAN;
+		Allele_PT = Allele_DFT > 0 ? 1 - ChiSquareDistCDF(Allele_GT, Allele_DFT) : NAN;
 		VLA_DELETE(obs);
 	}
 
@@ -171,21 +173,21 @@ TARGET void FST<REAL>::CalcFst(POP<REAL>** grps, int n)
 template<typename REAL>
 TARGET void FST<REAL>::Uninitialize()
 {
-	if (Nei1973)		delete[] Nei1973;		 Nei1973 = NULL;
-	if (Weir1984)		delete[] Weir1984;		 Weir1984 = NULL;
-	if (Hudson1992)		delete[] Hudson1992;	 Hudson1992 = NULL;
-	if (Slatkin1995)	delete[] Slatkin1995;	 Slatkin1995 = NULL;
-	if (Hedrick2005)	delete[] Hedrick2005;	 Hedrick2005 = NULL;
-	if (Jost2008)		delete[] Jost2008;		 Jost2008 = NULL;
-	if (Huang2021_homo)	delete[] Huang2021_homo; Huang2021_homo = NULL;
-	if (Huang2021_aneu)delete[] Huang2021_aneu;  Huang2021_aneu = NULL;
+	DEL(Nei1973);
+	DEL(Weir1984);
+	DEL(Hudson1992);
+	DEL(Slatkin1995);
+	DEL(Hedrick2005);
+	DEL(Jost2008);
+	DEL(Huang2021_homo);
+	DEL(Huang2021_aneu);
 
-	if (Genotype_G)		delete[] Genotype_G;	Genotype_G = NULL;
-	if (Genotype_DF)	delete[] Genotype_DF;	Genotype_DF = NULL;
-	if (Genotype_P)		delete[] Genotype_P;	Genotype_P = NULL;
-	if (Allele_G)		delete[] Allele_G;		Allele_G = NULL;
-	if (Allele_DF)		delete[] Allele_DF;		Allele_DF = NULL;
-	if (Allele_P)		delete[] Allele_P;		Allele_P = NULL;
+	DEL(Genotype_G);
+	DEL(Genotype_DF);
+	DEL(Genotype_P);
+	DEL(Allele_G);
+	DEL(Allele_DF);
+	DEL(Allele_P);
 }
 
 /* Nei 1973 Gst estimator based on heterozgysotiy */
@@ -666,7 +668,7 @@ TARGET double FST<REAL>::Fst_Huang2021_homo(POP<REAL>** grps, int n, int layer, 
 			sstot += gd * invt;
 		}
 	}
-	delete[] hap_bucket;
+	DEL(hap_bucket);
 	VLA_DELETE(hap);
 
 	if (each) for (int64 l = 0; l < nloc; ++l)
@@ -892,7 +894,7 @@ TARGET double FST<REAL>::dxy(POP<REAL>** grps, int n, double* buf, int64 l)
 
 /* Write results file in column format */
 template<typename REAL>
-TARGET void FST<REAL>::ColumnPrint(FILE* fout)
+TARGET void FST<REAL>::ColumnFormat(FILE* fout)
 {
 	byte* estimator = fst_estimator_val;
 	char name_buf[NAME_BUF_LEN];
@@ -901,7 +903,7 @@ TARGET void FST<REAL>::ColumnPrint(FILE* fout)
 		{\
 			if (fst_level_val[type] == 0) continue;\
 			if ((type == 1 || type == 4 || type == 3) && lreg == 0) continue;\
-			FST<REAL>* Fst = (FST<REAL>*)fst_buf_[type];\
+			FST<REAL>* Fst = fst_buf<REAL>[type];\
 			int n0 = 0, n1 = 0, n2 = 0;\
 			switch (type)\
 			{\
@@ -934,11 +936,11 @@ TARGET void FST<REAL>::ColumnPrint(FILE* fout)
 		case 1: fprintf(fout, "%cAmong all regL%d", g_delimiter_val, rl + 1); break;
 		case 2: fprintf(fout, "%cAmong all pops", g_delimiter_val); break;
 		case 3:
-			if (rl == 0) fprintf(fout, "%cAmong pops in %s", g_delimiter_val, aregs[rl][j]->name);
-			else		 fprintf(fout, "%cAmong regsL%d in %s", g_delimiter_val, rl, aregs[rl][j]->name);
+			if (rl == 0) fprintf(fout, "%cAmong pops in %s", g_delimiter_val, aregs<REAL>[rl][j]->name);
+			else		 fprintf(fout, "%cAmong regsL%d in %s", g_delimiter_val, rl, aregs<REAL>[rl][j]->name);
 			break;
-		case 4:  fprintf(fout, "%c%s", g_delimiter_val, aregs[rl][i]->name); break;
-		case 5:  fprintf(fout, "%c%s", g_delimiter_val, apops[i]->name); break;
+		case 4:  fprintf(fout, "%c%s", g_delimiter_val, aregs<REAL>[rl][i]->name); break;
+		case 5:  fprintf(fout, "%c%s", g_delimiter_val, apops<REAL>[i]->name); break;
 		}
 	FOREND
 		fprintf(fout, "%s", g_linebreak_val);
@@ -954,8 +956,8 @@ TARGET void FST<REAL>::ColumnPrint(FILE* fout)
 			if (rl == 0) fprintf(fout, "%c", g_delimiter_val);
 			else		 fprintf(fout, "%c", g_delimiter_val);
 			break;
-		case 4:  fprintf(fout, "%c%s", g_delimiter_val, aregs[rl][j]->name); break;
-		case 5:  fprintf(fout, "%c%s", g_delimiter_val, apops[j]->name); break;
+		case 4:  fprintf(fout, "%c%s", g_delimiter_val, aregs<REAL>[rl][j]->name); break;
+		case 5:  fprintf(fout, "%c%s", g_delimiter_val, apops<REAL>[j]->name); break;
 		}
 	FOREND
 		fprintf(fout, "%s", g_linebreak_val);
@@ -1096,7 +1098,7 @@ TARGET void FST<REAL>::ColumnPrint(FILE* fout)
 
 /* Write results file in matrix format */
 template<typename REAL>
-TARGET void FST<REAL>::MatrixPrint(FILE* fout, FST* Fst, int n, int type)
+TARGET void FST<REAL>::MatrixFormat(FILE* fout, FST* Fst, int n, int type)
 {
 	byte* estimator = fst_estimator_val;
 	for (int rl = type == 4 ? lreg - 1 : 0; rl >= 0; --rl)
@@ -1112,8 +1114,8 @@ TARGET void FST<REAL>::MatrixPrint(FILE* fout, FST* Fst, int n, int type)
 			{
 				switch (type)
 				{
-				case 4: fprintf(fout, "%c%s", g_delimiter_val, aregs[rl][i]->name);  break;
-				case 5: fprintf(fout, "%c%s", g_delimiter_val, apops[i]->name);  break;
+				case 4: fprintf(fout, "%c%s", g_delimiter_val, aregs<REAL>[rl][i]->name);  break;
+				case 5: fprintf(fout, "%c%s", g_delimiter_val, apops<REAL>[i]->name);  break;
 				}
 			}
 
@@ -1122,8 +1124,8 @@ TARGET void FST<REAL>::MatrixPrint(FILE* fout, FST* Fst, int n, int type)
 			{
 				switch (type)
 				{
-				case 4: fprintf(fout, "%s%s", g_linebreak_val, aregs[rl][i]->name);  break;
-				case 5: fprintf(fout, "%s%s", g_linebreak_val, apops[i]->name);  break;
+				case 4: fprintf(fout, "%s%s", g_linebreak_val, aregs<REAL>[rl][i]->name);  break;
+				case 5: fprintf(fout, "%s%s", g_linebreak_val, apops<REAL>[i]->name);  break;
 				}
 
 				for (int j = 0; j < n1; ++j)
@@ -1140,8 +1142,8 @@ TARGET void FST<REAL>::MatrixPrint(FILE* fout, FST* Fst, int n, int type)
 #endif
 
 #define extern 
-extern void* fst_buf_[6];								//Read/Write buffer for each type of fst
-#define fst_buf ((FST<REAL>**)fst_buf_)
+template<typename REAL>
+extern FST<REAL>* fst_buf[6];							//Read/Write buffer for each type of fst
 extern int fst_type;									//1 Among regions, 2 among pops, 3 among pops/regs in region, 4 between regions, 5 between pops 
 #undef extern 
 
@@ -1180,17 +1182,17 @@ TARGET void CalcDiff()
 
 		if (n1 == 0 || n2 == 0) continue;
 
-		fst_buf[fst_type] = new FST<REAL>[n1];
-		SetZero(fst_buf[fst_type], n1);
+		fst_buf<REAL>[fst_type] = new FST<REAL>[n1];
+		SetZero(fst_buf<REAL>[fst_type], n1);
 		RunThreads(&GeneticDifferentiationThread<REAL>, NULL, NULL, ntot, n2,
 			"\nCalculating genetic differentiation:\n", g_nthread_val, isfirst);
 		isfirst = false;
 
 		if ((fst_type == 4 || fst_type == 5) && fst_fmt_val[1])
-			FST<REAL>::MatrixPrint(TEMP_FILES[0], fst_buf[fst_type], npop, fst_type);
+			FST<REAL>::MatrixFormat(TEMP_FILES[0], fst_buf<REAL>[fst_type], npop, fst_type);
 	}
 
-	FST<REAL>::ColumnPrint(FRES);
+	FST<REAL>::ColumnFormat(FRES);
 
 	JoinTempFiles(1);
 	CloseResFile();
@@ -1213,11 +1215,11 @@ TARGET void CalcDiff()
 		if (fst_type <= 3)
 		{
 			for (int ni = 0; ni < n1; ++ni)
-				fst_buf[fst_type][ni].Uninitialize();
+				fst_buf<REAL>[fst_type][ni].Uninitialize();
 		}
 		else if (fst_type == 4)
 		{
-			auto fst_buf2 = fst_buf[fst_type];
+			auto fst_buf2 = fst_buf<REAL>[fst_type];
 			for (int rl = lreg - 1; rl >= 0; --rl)
 			{
 				for (int i = 0; i < nreg[rl]; ++i)
@@ -1228,13 +1230,12 @@ TARGET void CalcDiff()
 		}
 		else if (fst_type == 5)
 		{
-			auto fst_buf2 = fst_buf[fst_type];
+			auto fst_buf2 = fst_buf<REAL>[fst_type];
 			for (int i = 0; i < npop; ++i)
 				for (int j = i + 1; j < npop; ++j)
 					fst_buf2[i * npop + j].Uninitialize();
 		}
-		delete[] fst_buf[fst_type];
-		fst_buf[fst_type] = NULL;
+		DEL(fst_buf<REAL>[fst_type]);
 	}
 
 	EvaluationEnd("Genetic differentiation estimation");
@@ -1250,19 +1251,19 @@ THREAD2(GeneticDifferentiationThread)
 	int nthread = g_nthread_val;
 	int64 progress = 0;
 
-	FST<REAL>* fst_buf2 = fst_buf[fst_type];
+	FST<REAL>* fst_buf2 = fst_buf<REAL>[fst_type];
 	if (fst_type == 1)
 	{
 		//among regions
 		for (int rl = 0; rl < lreg; ++rl)
 			if (progress++ % nthread == threadid)
-				fst_buf2[lreg - 1 - rl].CalcFst(aregs[rl], nreg[rl]);
+				fst_buf2[lreg - 1 - rl].CalcFst(aregs<REAL>[rl], nreg[rl]);
 	}
 	if (fst_type == 2)
 	{
 		//among pops
 		if (progress++ % nthread == threadid)
-			fst_buf2[0].CalcFst(apops, npop);
+			fst_buf2[0].CalcFst(apops<REAL>, npop);
 	}
 	if (fst_type == 3)
 	{
@@ -1270,7 +1271,7 @@ THREAD2(GeneticDifferentiationThread)
 		for (int rl = lreg - 1, p = 0; rl >= 0; --rl)
 			for (int i = 0; i < nreg[rl]; ++i, ++p)
 				if (progress++ % nthread == threadid)
-					fst_buf2[p].CalcFst(aregs[rl][i]->vpop, aregs[rl][i]->npop);
+					fst_buf2[p].CalcFst(aregs<REAL>[rl][i]->vpop, aregs<REAL>[rl][i]->npop);
 	}
 	if (fst_type == 4)
 	{
@@ -1282,7 +1283,7 @@ THREAD2(GeneticDifferentiationThread)
 				for (int j = i + 1; j < n; ++j)
 					if (progress++ % nthread == threadid)
 					{
-						fst_buf2[i * n + j].CalcFst(aregs[rl][i], aregs[rl][j]);
+						fst_buf2[i * n + j].CalcFst(aregs<REAL>[rl][i], aregs<REAL>[rl][j]);
 						fst_buf2[j * n + i] = fst_buf2[i * n + j];
 					}
 			fst_buf2 += n * n;
@@ -1296,7 +1297,7 @@ THREAD2(GeneticDifferentiationThread)
 			for (int j = i + 1; j < n; ++j)
 				if (progress++ % nthread == threadid)
 				{
-					fst_buf2[i * n + j].CalcFst(apops[i], apops[j]);
+					fst_buf2[i * n + j].CalcFst(apops<REAL>[i], apops<REAL>[j]);
 					fst_buf2[j * n + i] = fst_buf2[i * n + j];
 				}
 	}

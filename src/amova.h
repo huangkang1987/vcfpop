@@ -1,6 +1,5 @@
 /* Analysis of Molecular Variances Functions */
 
-
 #pragma once
 #include "vcfpop.h"
 
@@ -92,7 +91,7 @@ struct VESSEL
 	TARGET int Replace(VESSEL<REAL>** vs, int& nvessels, int fa, int method);
 
 	/* Shuffle fa level vessels among fb level vessels */
-	TARGET void Shuffle(RNG<REAL>& rng, int fa, int fb, int method, VESSEL<REAL>** buf);
+	TARGET void Shuffle(RNG<double>& rng, int fa, int fb, int method, VESSEL<REAL>** buf);
 
 	/* Calculate matrix C for maximum-likelihood method */
 	TARGET void GetCML(double* C, int64 l, int* tid, double* tw, int Nh, int nlay, double** W);
@@ -128,6 +127,16 @@ struct VESSEL
 	TARGET static void GetF(double* Fi, double* F, int nlay);
 };
 
+/* Optimizer paramers */
+template<typename REAL>
+struct AMOVA_PARAM
+{
+	int clay;
+	int nlay;
+	VESSEL_ITERATOR<REAL>* ve;
+
+	TARGET void Unc2Real_AMOVA(CPOINT& xx);
+};
 
 template<typename REAL>
 struct AMOVA
@@ -164,7 +173,7 @@ struct AMOVA
 	TARGET void CalcAMOVA_aneu();
 
 	/* Calculate likelihood for permuated data */
-	TARGET static double Likelihood(CPOINT& xx, void** Param);
+	TARGET static double AMOVA_Likelihood(void* Param, CPOINT& xx, rmat& G, rmat& H);
 
 	/* Perform AMOVA using maximum-likelihood method */
 	TARGET void CalcAMOVA_ml();
@@ -173,14 +182,14 @@ struct AMOVA
 	TARGET ~AMOVA();
 
 	/* Write results */
-	TARGET void PrintAMOVA(FILE* fout);
+	TARGET void WriteAMOVA(FILE* fout);
 };
 
 #pragma pack(pop)
 
-extern _thread MEMORY* amova_memory;				//memory class for amova vessels
-extern void* amova_buf_;							//Read/Write buffer, nthread
-#define amova_buf (*(AMOVA<REAL>**)&amova_buf_)
+extern thread_local MEMORY* amova_memory;				//memory class for amova vessels
+template<typename REAL>
+extern AMOVA<REAL>* amova_buf;						//Read/Write buffer, nthread
 
 /* Calculate analysis of molecular variance */
 template<typename REAL>

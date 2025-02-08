@@ -1,11 +1,12 @@
 -g_output=polygene\out
 -g_decimal=6
 -g_eval=yes
--g_nthread=16
+-g_nthread=8
 -g_gpu=none
 -g_seed=1
 -g_progress=80
 -g_indtext="pop1:#1-#30 pop2:#31-#60 pop3:#61-#90 pop4:#91-#120 #REG reg1:#1-#2 reg2:#3-#4"
+-g_replot=no
 
 -g_input=data.polygene.txt
 -g_format=polygene
@@ -29,6 +30,7 @@
 -indstat_estimator=Ritland1996,Loiselle1995,Weir1996
 
 -fst
+-fst_plot=yes
 -fst_estimator=Nei1973,Hudson1992,Slatkin1995,Hedrick2005,Jost2008,Huang2021_homo,Huang2021_aneu
 -fst_level=regXtot,popXtot,popXreg,reg,pop
 -fst_locus=all
@@ -36,6 +38,7 @@
 -fst_fmt=matrix
 
 -gdist
+-gdist_plot=yes
 -gdist_level=ind,pop,reg
 -gdist_estimator=Nei1972,Cavalli-Sforza1967,Reynolds1983,Nei1983,Euclidean,Goldstein1995,Nei1974,Roger1972,Slatkin_Nei1973,Slatkin_Hudson1992,Slatkin_Slatkin1995,Slatkin_Hedrick2005,Slatkin_Jost2008,Slatkin_Huang2021_homo,Slatkin_Huang2021_aneu,Reynolds_Nei1973,Reynolds_Hudson1992,Reynolds_Slatkin1995,Reynolds_Hedrick2005,Reynolds_Jost2008,Reynolds_Huang2021_homo,Reynolds_Huang2021_aneu
 -gdist_fmt=matrix
@@ -49,31 +52,37 @@
 -amova_printss=no
 
 -popas
+-popas_plot=yes
 -popas_model=prcs
 -popas_level=pop,reg
 -popas_error=0.05
 
 -relatedness
+-relatedness_plot=yes
 -relatedness_range=pop
 -relatedness_fmt=matrix
 -relatedness_estimator=Huang2015
 Huang2014,Huang2015,Ritland1996_modified,Loiselle1995_modified,Ritland1996,Loiselle1995,Weir1996
 
 -kinship
+-kinship_plot=yes
 -kinship_fmt=matrix
 -kinship_range=pop
 -kinship_estimator=Ritland1996,Loiselle1995,Weir1996
 
 -pcoa
+-pcoa_plot=yes
 -pcoa_level=ind,pop
 -pcoa_estimator=Euclidean
 
 -cluster
+-cluster_plot=yes
 -cluster_method=NEAREST,FURTHEST,UPGMA,WPGMA,UPGMC,WPGMC,WARD
 -cluster_level=ind,pop
 -cluster_estimator=Nei1972,Cavalli-Sforza1967
 
 -structure
+-structure_plot=yes
 -structure_admix=yes
 -structure_locpriori=yes
 -structure_f=yes

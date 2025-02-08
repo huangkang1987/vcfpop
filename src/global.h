@@ -7,16 +7,10 @@ struct OFFSET;
 struct LOADLINE;
 struct FILEINFO;
 
-#ifdef _WIN64
-#define _thread __declspec(thread)
-#else 
-#define _thread __thread
-#endif
+#define VERSION						("1.08")
+#define DATE						("2025-02-01")
 
-#define VERSION						("1.07b")
-#define DATE						("2023-5-15")
-
-#define N_FUNC						(18)						//Number of main options
+#define N_FUNC						(21)						//Number of main options
 #define N_MAX_OPTION				(35)						//Maximum options
 #define N_MAX_SLIDEPLOT				(5)							//Maximum number of circles for sliding window plot
 #define N_MAX_REG					(10)						//Maximum region levels
@@ -26,15 +20,32 @@ struct FILEINFO;
 #define N_INDGD						(11)						//Number of genetic distances in individual gd structure
 #define N_CLUSTER_METHOD			(7)							//Number of hierarchical clustering estimators
 #define N_FST_ESTIMATOR				(8)							//Number of Fst estimators
-#define N_RELATEDNESS_ESTIMATOR 	(16)						//Number of relatedness estimators
-#define N_KINSHIP_ESTIMATOR			(3)							//Number of kinship estimators
+#define N_RELATEDNESS_ESTIMATOR 	(17)						//Number of relatedness estimators
+#define N_KINSHIP_ESTIMATOR			(4)							//Number of kinship estimators
 #define N_DRE_MODEL					(4)							//Number of double-reductio models
 #define N_DRE_MODELT				(104)						//Number of double-reductio models with additional 1% gridents for PES models
 #define N_MAX_PLOIDY				(10)						//Maximum ploidy level supported
 #define N_MAXGAMMALN				(1024)						//Number of gammaln bufferred 
 #define N_PATTERN_END				(139)						//Number of patterns, for pid>=139, pid-139 is ploidy level
 
-#define M_PI						(3.14159265358979323846)
+#define M_E							2.71828182845904523536028747135      /* e */
+#define M_LOG2E    					1.44269504088896340735992468100      /* log_2 (e) */
+#define M_LOG10E   					0.43429448190325182765112891892      /* log_10 (e) */
+#define M_SQRT2    					1.41421356237309504880168872421      /* sqrt(2) */
+#define M_SQRT1_2  					0.70710678118654752440084436210      /* sqrt(1/2) */
+#define M_SQRT3    					1.73205080756887729352744634151      /* sqrt(3) */
+#define M_PI       					3.14159265358979323846264338328      /* pi */
+#define M_PI_2     					1.57079632679489661923132169164      /* pi/2 */
+#define M_PI_4     					0.78539816339744830961566084582      /* pi/4 */
+#define M_SQRTPI   					1.77245385090551602729816748334      /* sqrt(pi) */
+#define M_2_SQRTPI 					1.12837916709551257389615890312      /* 2/sqrt(pi) */
+#define M_1_PI     					0.31830988618379067153776752675      /* 1/pi */
+#define M_2_PI     					0.63661977236758134307553505349      /* 2/pi */
+#define M_LN10     					2.30258509299404568401799145468      /* ln(10) */
+#define M_LN2     					0.69314718055994530941723212146      /* ln(2) */
+#define M_LNPI     					1.14472988584940017414342735135      /* ln(pi) */
+#define M_EULER    					0.57721566490153286060651209008      /* Euler constant */
+
 #define TWODIVPISQ2					(0.900316316157106)
 #define NZERO						(-1e-10)
 #define LIKELIHOOD_TERM				(1e-8)						//Threshold of likelihood difference to terminate iteration
@@ -49,7 +60,7 @@ struct FILEINFO;
 #define MIN_FREQ					(1e-10)						//Minimum allele freq to avoid being zero in unify
 
 #define PATH_LEN					(8192)						//Buffer size for file name
-#define NAME_BUF_LEN				(2048)						//Buffer size for locus name
+#define NAME_BUF_LEN				(512)						//Buffer size for locus name
 #define IND_NAME_LEN				(256)						//Buffer size for individual identifier
 #define CALC_THREAD_BUFFER			(512)						//Buffer size for kinship, relatedness, distance threads
 #define LINE_BUFFER					(1048576)					//Buffer size for a line
@@ -73,6 +84,10 @@ struct FILEINFO;
 #define RNG_SALT_CLUSTERING			0xC1BE4D107D3A8DA9
 #define RNG_SALT_SIMDBENCHMARK		0x2EC7FCD12D417E90
 #define RNG_SALT_CONVERT			0xFB768FFE7CB91E61
+#define RNG_SALT_LDDECAY			0x430893E5DB6446BF
+#define RNG_SALT_LDBLOCK			0x35C11598D490DF19
+#define RNG_SALT_GWAS			    0x3EDE9294F8B47A2D
+
 
 
 enum FILE_FORMAT
@@ -90,11 +105,14 @@ extern int GDIST_METHOD;										//Current GD method, 1 genetic distance, 2 pco
 
 extern string EXEDIR;											//Executable directory
 extern string CURDIR;											//Current directory
+extern string PARFILE;											//Parameter file absoulte path
 extern string OUTDIR;											//Output directory
 extern string OUTFILE;											//Output file
+extern vector<thread> PLOT_THREAD;								//Figure plotting threads
 
 extern double ALPHA[N_DRE_MODELT + 1][N_MAX_PLOIDY + 1][3];		//Double reduction rates
 extern double BINOMIAL[N_MAX_PLOIDY + 1][N_MAX_PLOIDY + 1];		//Binomial coefficients
+
 
 extern atomic<int64> PROGRESS_VALUE;							//Progress value 
 extern int64 PROGRESS_TOTAL;									//Total tasks in this function
@@ -109,6 +127,7 @@ extern const char* FST_ESTIMATOR[];								//Fst estimator names
 extern const char* RELATEDNESS_ESTIMATOR[];						//Relatedness estimator names
 extern const char* KINSHIP_ESTIMATOR[];							//Kinship estimator names
 extern const char* DRE_MODEL[];									//Double-reduction model names
+extern const char* PLOIDY_NAME[];
 
 
 /* Virtual Memory */
@@ -142,22 +161,22 @@ extern uint* cryptTable;										//crypt table for calculate hash for genotypes
 extern int64 progress1, progress2;								//Progress value for read / write in a circle buffer
 extern atomic<int64>* state_lock;								//State of circle buffer
 extern int NBUF;												//CALC_THREAD_BUFFER * g_nthread_val;
-extern _thread int threadid;									//Thread index
+extern thread_local int threadid;									//Thread index
 
 
 /* Population info */
 
-extern void* ainds_;											//Individuals
-#define ainds (*(IND<REAL>***)&ainds_)
+template<typename REAL>
+extern IND<REAL>** ainds;										//Individuals
 
-extern void* apops_;											//Rearranged populations
-#define apops (*(POP<REAL>***)&apops_)
+template<typename REAL>
+extern POP<REAL>** apops;										//Rearranged populations
 
-extern void* aregs_;											//Rearranged regions
-#define aregs (*(POP<REAL>****)&aregs_)
+template<typename REAL>
+extern POP<REAL>*** aregs;										//Rearranged regions
 
-extern void* total_pop_;										//Total population
-#define total_pop (*(POP<REAL>**)&total_pop_)
+template<typename REAL>
+extern POP<REAL>* total_pop;									//Total population
 
 extern int npop;												//Number of populations
 extern int lreg;												//Level of regions

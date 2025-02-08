@@ -1,7 +1,7 @@
 /* Misc */
 
-#pragma once
 #include "vcfpop.h"
+
 #pragma pack(push, 1)
 
 struct CPOINT;
@@ -147,11 +147,26 @@ TARGET int GetNalleles(ushort* alleles, int ploidy);
 /* Get current directory */
 TARGET string GetCurDir();
 
+/* Set current directory */
+TARGET void SetCurDir(string dir);
+
+/* Get absoulte path */
+TARGET string GetAbsPath(string file);
+
+/* Get parent path */
+TARGET string GetParentPath(string file);
+
 /* Clear temp files */
-TARGET void ClearTempFiles(string& path);
+TARGET void ClearTempFiles(string& dir);
 
 /* Pause console */
 TARGET void Pause(void);
+
+/* Start a timer */
+TARGET void tic();
+
+/* Show elapse time */
+TARGET void toc();
 
 /* Get time */
 TARGET timepoint GetNow();
@@ -180,148 +195,14 @@ TARGET void RunRscript(string script);
 /* Exit program with a message */
 TARGET void Exit(const char* fmt, ...);
 
-#ifdef _UNUSUED
-/* Atomic add val to ref *
-template<typename T>
-TARGET inline void AtomicAdd4(volatile T& ref, T val)
-{
-#if defined(__clang__) || defined(__GNUC__)
-	__sync_fetch_and_add(&ref, (int)val);
-#else
-	InterlockedAdd((volatile int*)&ref, (int)val);
-#endif
-}
-
-/* Atomic add val to ref */
-template<typename T>
-TARGET inline void AtomicAdd4(volatile T* ref, T* val, int len)
-{
-	for (int i = 0; i < len; ++i)
-#if defined(__clang__) || defined(__GNUC__)
-		__sync_fetch_and_add(&ref[i], (int)val[i]);
-#else
-		InterlockedAdd((volatile int*)&ref[i], (int)val[i]);
-#endif
-}
-
-/* Atomic add val to ref */
-template<typename T>
-TARGET inline void AtomicAdd8(volatile T& ref, T val)
-{
-#if defined(__clang__) || defined(__GNUC__)
-	__sync_fetch_and_add(&ref, (int64)val);
-#else
-	//InterlockedAdd64((volatile int64*)&ref, (int64)val);
-	* ((atomic<int64>*)&ref) += val;
-#endif
-}
-
-/* Atomic add val to ref */
-template<typename T>
-TARGET inline void AtomicAdd8(volatile T* ref, T* val, int len)
-{
-	for (int i = 0; i < len; ++i)
-#if defined(__clang__) || defined(__GNUC__)
-		__sync_fetch_and_add(&ref[i], (int64)val[i]);
-#else
-		//InterlockedAdd64((volatile int64*)&ref[i], (int64)val[i]);
-		* ((atomic<int64>*) & ref[i]) += val[i];
-#endif
-}
-
-/* Atomic set minmum */
-TARGET inline void AtomicMin1(volatile byte& ref, byte val)
-{
-#if defined(__clang__) || defined(__GNUC__)
-	for (byte ov = ref, nv = Min(ov, val);
-		!__sync_bool_compare_and_swap((char*)&ref, (char)ov, (char)nv);
-		ov = ref, nv = Max(ov, val));
-#else
-	for (uint ov = *(volatile uint*)&ref,
-		nv = Min(ov & 0xFF, (uint)val) | (ov & 0xFFFFFF00);
-		ov != InterlockedCompareExchange((uint*)&ref, nv, ov);
-		ov = *(uint*)&ref,
-		nv = Max(ov & 0xFF, (uint)val) | (ov & 0xFFFFFF00));
-#endif
-}
-
-/* Atomic set maximum */
-TARGET inline void AtomicMax1(volatile byte& ref, byte val)
-{
-#if defined(__clang__) || defined(__GNUC__)
-	for (byte ov = ref, nv = Max(ov, val);
-		!__sync_bool_compare_and_swap((char*)&ref, (char)ov, (char)nv);
-		ov = ref, nv = Max(ov, val));
-#else
-	for (uint ov = *(volatile uint*)&ref,
-		nv = Max(ov & 0xFF, (uint)val) | (ov & 0xFFFFFF00);
-		ov != InterlockedCompareExchange((uint*)&ref, nv, ov);
-		ov = *(uint*)&ref,
-		nv = Max(ov & 0xFF, (uint)val) | (ov & 0xFFFFFF00));
-#endif
-}
-
-
-/* Atomic add float number */
-template<typename T>
-TARGET inline void AtomicAddFloat(atomic<T>& ref, T val)
-{
-	for (T prev_value = ref;
-		!ref.compare_exchange_weak(prev_value, prev_value + val););
-}
-
-/* Atomic add float number */
-template<typename T>
-TARGET inline void AtomicAddFloat(atomic<T>* ref, T* val, int len)
-{
-	for (int i = 0; i < len; ++i)
-		AtomicAddFloat(ref[i], val[i]);
-}
-#endif
-
-/* Atomic multiply val to ref */
-TARGET void AtomicMulFloat(volatile double& ref, double val);
-
-/* Atomic multiply val to ref */
-TARGET void AtomicMulFloat(volatile float& ref, float val);
-
-/* Atomic add val to ref */
-TARGET void AtomicAddFloat(volatile double& ref, double val);
-
-/* Atomic add val to ref */
-TARGET void AtomicAddFloat(volatile float& ref, float val);
-
-/* Atomic add val to ref */
-TARGET void AtomicAddFloat(volatile double* ref, double* val, int len);
-
-/* Atomic add val to ref */
-TARGET void AtomicAddFloat(volatile float* ref, float* val, int len);
-
-/* Atomic set max */
-template<typename T>
-TARGET void AtomicMax(atomic<T>& ref, T value)
-{
-	for (T prev_value = ref; 
-		prev_value < value && !ref.compare_exchange_weak(prev_value, value););
-}
-
-/* Atomic set min */
-template<typename T>
-TARGET void AtomicMin(atomic<T>& ref, T value)
-{
-	for (T prev_value = ref; 
-		prev_value > value && !ref.compare_exchange_weak(prev_value, value););
-}
-
-/* Point in a simplex to optimize by Down-Hill Simplex algorithm */
+/* Point in a simplex to optimize by Down-Hill Simplex algorithm */	
 struct CPOINT
 {
-	double image[8];				//Coordinates in converted image space
-	double real[9];					//Coordinates in real space
-	double li;						//Logarithm of likelihood
+	double unc_space[8];			//Unconstrained optimized parameter
+	double real_space[9];			//Constrained real coefficients
+	double lnL;						//Logarithm of likelihood
 	int dim;						//Dimensions
-	int diff;						//Different ploidy levels
-	bool confine;					//Subject to an additioanl constraint in Anderson 2007 relatedness estimator
+	int neval;						//Different ploidy levels
 
 	TARGET CPOINT(int de = 4);
 
@@ -358,23 +239,22 @@ struct CPOINT
 	/* Distance in real space */
 	TARGET double DistanceReal(CPOINT& a);
 
-	/* Distance in image space */
-	TARGET double DistanceImage(CPOINT& a);
-
-	/* Calculate real points */
-	TARGET void Image2Real();
-
-	/* Calculate real points */
-	TARGET void Image2RealSelfing();
+	/* Distance in unconstrained space */
+	TARGET double DistanceUnc(CPOINT& a);
 
 	/* Break iteration if distance between points are smaller than eps */
-	TARGET bool static IsBreak(CPOINT xx[9], double eps = 1e-7);
+	TARGET bool static IsBreak(CPOINT* xx, int dim, double eps = 1e-7);
 
 	/* Sort points */
-	TARGET void static Order(CPOINT xx[9]);
+	TARGET void static Order(CPOINT* xx, int dim);
 
-	/* Down-Hill Simplex algorithm */
-	TARGET CPOINT static DownHillSimplex(int dim, int diff, bool confine, double sep, int nrep, double (*Likelihood)(CPOINT&, void**), void** Param);
+	/* Gradient descent algorithm, need G and H */
+	template<typename REAL>
+	TARGET CPOINT static GradientDescent(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), int dim, bool IsMinimize = false, double* Init = NULL);
+
+	/* Downhill Simplex algorithm, do not need G and H*/
+	template<typename REAL>
+	TARGET CPOINT static DownHillSimplex(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), int dim, double sep = 0.0001, int nrep = 15, bool IsMinimize = false);
 };
 
 /* Block of local memory management class */
@@ -416,7 +296,7 @@ struct MEMORY
 			if (++cblock == nblocks) Expand();
 			if (!blocks[cblock].bucket)
 			{
-				blocks[cblock].size = Max(Min(blocks[cblock - 1].size << 1, BIG_FILE ? 256 * 1024 * 1024 : 8 * 1024 * 1024), size);
+				blocks[cblock].size = std::max(std::min(blocks[cblock - 1].size << 1, BIG_FILE ? 256 * 1024 * 1024 : 8 * 1024 * 1024), size);
 				blocks[cblock].bucket = new bool[blocks[cblock].size];
 			}
 		}
@@ -548,7 +428,7 @@ struct LIST
 	/* Expand list */
 	TARGET void Expand()
 	{
-		uint nsize = Max(bucket_size * 2, 4);
+		uint nsize = std::max(bucket_size * 2, 4u);
 		T* nbucket = bucket;
 
 		if (memory)
@@ -627,7 +507,7 @@ struct LIST
 	/* Alloc memory */
 	TARGET void SetSize(uint nsize)
 	{
-		nsize = Max(bucket_size, nsize);
+		nsize = std::max(bucket_size, nsize);
 		T* nbucket = bucket;
 
 		if (memory)
@@ -717,11 +597,11 @@ struct TABLE
 		if (memory && bucket)
 			memory->Free((byte*)bucket, (sizeof(TABLE_ENTRY<T, T2>) + (index ? sizeof(uint) : 0)) * (mask + 1));
 
-		memory = NULL;
 		bucket = NULL;
 		index = NULL;
-		size = 0;
 		mask = 0;
+		size = 0;
+		memory = NULL;
 	}
 
 	/* Expand table */
@@ -856,6 +736,48 @@ struct TABLE
 			if (k == key) return true;
 		}
 		return false;
+	}
+
+	/* Add one to the entry, if not exists then create this entry */
+	TARGET void AddCount(T key)
+	{
+	restart:
+		//search from hash % (mask + 1)
+		uint st = key & mask;
+
+		for (uint i = 0; i <= mask; i++)
+		{
+			uint id1 = (i + st + 0) & mask;
+			T k1 = bucket[id1].key;
+
+			if (k1 == (T)-1)
+			{
+				//insert a new entry
+				if (mask != 3 && (uint)(size + (size >> 1)) > mask)
+				{
+					Expand();
+					goto restart;
+				}
+				bucket[id1].key = key;
+				bucket[id1].val = 1;
+				if (index) index[size] = id1;
+				size++;
+				return;
+			}
+			if (k1 == key)
+			{
+				bucket[id1].val++;
+				return;
+			}
+		}
+
+		if (mask == 3 && size == 4)
+		{
+			Expand();
+			goto restart;
+		}
+
+		Exit("\nError: key not found.\n");
 	}
 
 	/* Access entry by index */
@@ -1056,14 +978,6 @@ struct VCFBUFFER : public INCBUFFER
 
 /* Initialize double reduction rates */
 TARGET void InitAlpha();
-
-/* Get aligned vector address for SIMD instructions */
-template<typename T>
-TARGET T* AlignSIMD(T* addr)
-{
-	return addr;
-	//return (T*)(((uint64)addr + sizeof(T) - 1) & (~(sizeof(T) - 1)));
-}
 
 /* Get aligned 32 bytes address */
 template<typename T>

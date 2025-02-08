@@ -28,15 +28,14 @@ struct PCOA
 	/* Perform PCoA */
 	TARGET int CalcPCoA(int _maxp);
 
-	/* Print PCOA */
-	TARGET void PrintPCoA(FILE* fout, REAL* d, int n, int _est, int _type);
+	/* Write PCOA */
+	TARGET void WritePCoA(FILE* fout, REAL* d, int n, int _est, int _type);
 };
 
 #pragma pack(pop)
 
-extern MEMORY* pcoa_memory;					//Genetic distance memory class
-extern void* pcoa_matrix_;					//Genetic distance array of genetic distance to perform PCoA
-#define pcoa_matrix (*(REAL**)&pcoa_matrix_)
+template<typename REAL>
+extern REAL* pcoa_matrix;					//Genetic distance array of genetic distance to perform PCoA
 
 /* Calculate principal coordinate analysis */
 template<typename REAL>

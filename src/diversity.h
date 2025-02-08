@@ -23,7 +23,7 @@ struct DIVERSITY
 	REAL pi;								//Total number of non-IBS of allele pairs (without replacement) within populations
 	REAL pic;								//Polymorphic information contents
 	REAL ae;								//Effective number of alleles
-	REAL I;									//Shannon¡¯s Information Index
+	REAL I;									//Shannon's Information Index
 
 	REAL how;								//Total number of allele pairs (without replacement) within genotypes
 	REAL hew;								//Total number of allele pairs (with replacement) within populations
@@ -59,10 +59,10 @@ struct DIVERSITY
 	TARGET void CalcDiversity(int64 _l);
 
 	/* Write header to the result file */
-	TARGET static void WriteHeader(FILE* f);
+	TARGET static void WriteHeader(FILE* fout);
 
 	/* Write diversity of a locus to the result file */
-	TARGET void WriteLocus(FILE* f, const char* name);
+	TARGET void WriteLocus(FILE* fout, const char* name);
 };
 
 template<typename REAL>
@@ -81,7 +81,7 @@ struct DIVSUM
 	REAL pi;								//Nucleotide diversity
 	REAL pic;								//Polymorphic information contents
 	REAL ae;								//Effective number of alleles
-	REAL I;									//Shannon¡¯s Information Index
+	REAL I;									//Shannon's Information Index
 
 	int minploidy;							//Min ploidy
 	int maxploidy;							//Max ploidy
@@ -98,7 +98,7 @@ struct DIVSUM
 	REAL piw;								//Nucleotide diversity
 	REAL picw;								//Polymorphic information contents
 	REAL aew;								//Effective number of alleles
-	REAL Iw;								//Shannon¡¯s Information Index
+	REAL Iw;								//Shannon's Information Index
 
 	/* Multiply */
 	REAL NE1P;								//Exclusion rate without known parent
@@ -119,17 +119,15 @@ struct DIVSUM
 	TARGET void Add(DIVERSITY<REAL>& loc);
 
 	/* Write sum */
-	TARGET void Write(FILE* f, const char* name);
+	TARGET void Write(FILE* fout, const char* name);
 };
 
 #pragma pack(pop)
 
-extern void* diversity_buf_;						//Circle buffer for diversity estimation, NBUF
-#define diversity_buf (*(DIVERSITY<REAL>**)&diversity_buf_)
-
+template<typename REAL>
+extern DIVERSITY<REAL>* diversity_buf;				//Circle buffer for diversity estimation, NBUF
 template<typename REAL>
 extern DIVSUM<REAL> diversity_sum; 					//Diversity sum
-
 extern int diversity_stage;							//Diversity level, 3 total, 2 pop, 1 reg
 
 /* Add and write genetic diversity */

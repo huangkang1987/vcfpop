@@ -1,6 +1,5 @@
 /* Allelic Depth Analysis Functions, TEST, DO NOT USE */
 
-#pragma once
 #include "vcfpop.h"
 
 #define extern 

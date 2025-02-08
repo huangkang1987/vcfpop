@@ -28,8 +28,8 @@ struct HAPLO_DUMMY_HAPLOTYPE
 	template<typename REAL>
 	TARGET void ExtractHaplotype(int vi, IND<REAL>* ti, int64 st, int64 ed, int nvar, ushort aid, MEMORY& haplo_memory);
 
-	/* Print information for an extracted locus */
-	TARGET void PrintHaplotype(FILE* f1, int64 st, int64 ed);
+	/* Write information for an extracted locus */
+	TARGET void WriteHaplotype(FILE* f1, int64 st, int64 ed);
 };
 
 struct HAPLO_DUMMY_LOCUS

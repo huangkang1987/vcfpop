@@ -1,4 +1,4 @@
-/* Principal Coordinate Analysis Functions */
+/* Genome-Wide Association Studies Functions */
 
 #include "vcfpop.h"
 
@@ -7,6 +7,9 @@ template struct PCOA<float >;
 
 template TARGET void CalcPCOA<double>();
 template TARGET void CalcPCOA<float >();
+
+template<> double* pcoa_matrix<double>;
+template<> float * pcoa_matrix<float >;
 
 #ifndef _PCOA
 /* Do nothing */
@@ -78,10 +81,33 @@ TARGET int PCOA<REAL>::CalcPCoA(int _maxp)
 	for (int i = 0; i < N; ++i)
 		C[i * N + i] = 1 - 1.0 / N;
 
-	MatrixMul2(C, D1, N, G);
+	//MatrixMul2(C, D1, N, G);
+	REAL* tU = new REAL[N * N];
+	REAL* tV = new REAL[N];
+
+	rmat mC(C, N, N, false, true);
+	rmat mD(D1,N, N, false, true);
+	rmat mG(G, N, N, false, true);
+	rmat mU(tU, N, N, false, true);
+	rcol cV(tV, N, false, true);
+	mG = mC * mD * mC;
 
 	if (N > 2)
-		EigenValueDecomp(G, N, U, V, maxp, (int*)C);
+	{
+		int* idx = (int*)C;
+		Evd(mG, mU, cV);
+		int nz = sum(cV > 0), ncols = mU.n_cols;
+		maxp = std::min(maxp, nz);
+
+		U = new REAL[N * maxp];
+		V = new REAL[maxp];
+		for (int i = 0; i < maxp; ++i)
+		{
+			V[i] = cV(i, 0);
+			SetVal(U + i * N, mU.memptr() + i * N, N);
+			Mul(U + i * N, MySqrt(V[i]) * (U[i * N] >= 0 ? 1 : -1), N);
+		}
+	}
 	else if (N == 2)
 	{
 		REAL b = abs(G[0]);
@@ -100,15 +126,17 @@ TARGET int PCOA<REAL>::CalcPCoA(int _maxp)
 		V[0] = U[0] = 0;
 	}
 
-	delete[] D1;
-	delete[] C;
-	delete[] G;
+	DEL(D1);
+	DEL(C);
+	DEL(G);
+	DEL(tU);
+	DEL(tV);
 	return maxp;
 }
 
-/* Print PCoA */
+/* Write PCoA */
 template<typename REAL>
-TARGET void PCOA<REAL>::PrintPCoA(FILE* fout, REAL* d, int n, int _est, int _type)
+TARGET void PCOA<REAL>::WritePCoA(FILE* fout, REAL* d, int n, int _est, int _type)
 {
 	D = d;
 	N = n;
@@ -145,11 +173,11 @@ TARGET void PCOA<REAL>::PrintPCoA(FILE* fout, REAL* d, int n, int _est, int _typ
 		int nn = nind;
 		for (int i = 0; i < nn; ++i)
 		{
-			fprintf(fout, "%s%s%c%s", g_linebreak_val, ainds[i]->name, g_delimiter_val, apops[ainds[i]->popid]->name);
+			fprintf(fout, "%s%s%c%s", g_linebreak_val, ainds<REAL>[i]->name, g_delimiter_val, apops<REAL>[ainds<REAL>[i]->popid]->name);
 			for (int j = 0; j < maxp; ++j)
 			{
 				fprintf(fout, "%c", g_delimiter_val);
-				WriteReal(fout, U[i * maxp + j]);
+				WriteReal(fout, U[i + j * nn]);
 			}
 		}
 	}
@@ -159,12 +187,12 @@ TARGET void PCOA<REAL>::PrintPCoA(FILE* fout, REAL* d, int n, int _est, int _typ
 		int nn = npop;
 		for (int i = 0; i < nn; ++i)
 		{
-			fprintf(fout, "%s%s%c%s", g_linebreak_val, apops[i]->name, g_delimiter_val,
-				apops[i]->rid == -1 ? "Total" : aregs[0][apops[i]->rid]->name);
+			fprintf(fout, "%s%s%c%s", g_linebreak_val, apops<REAL>[i]->name, g_delimiter_val,
+				apops<REAL>[i]->rid == -1 ? "Total" : aregs<REAL>[0][apops<REAL>[i]->rid]->name);
 			for (int j = 0; j < maxp; ++j)
 			{
 				fprintf(fout, "%c", g_delimiter_val);
-				WriteReal(fout, U[i * maxp + j]);
+				WriteReal(fout, U[i + j * nn]);
 			}
 		}
 	}
@@ -174,25 +202,24 @@ TARGET void PCOA<REAL>::PrintPCoA(FILE* fout, REAL* d, int n, int _est, int _typ
 		int nn = nreg[type - 3];
 		for (int i = 0; i < nn; ++i)
 		{
-			fprintf(fout, "%s%s%c%s", g_linebreak_val, aregs[type - 3][i]->name, g_delimiter_val,
-				aregs[type - 3][i]->rid == -1 ? "Total" : aregs[type - 2][apops[i]->rid]->name);
+			fprintf(fout, "%s%s%c%s", g_linebreak_val, aregs<REAL>[type - 3][i]->name, g_delimiter_val,
+				aregs<REAL>[type - 3][i]->rid == -1 ? "Total" : aregs<REAL>[type - 2][apops<REAL>[i]->rid]->name);
 			for (int j = 0; j < maxp; ++j)
 			{
 				fprintf(fout, "%c", g_delimiter_val);
-				WriteReal(fout, U[i * maxp + j]);
+				WriteReal(fout, U[i + j * nn]);
 			}
 		}
 	}
 
-	if (U) { delete[] U; U = NULL; }
-	if (V) { delete[] V; V = NULL; }
+	DEL(U);
+	DEL(V);
 }
 #endif
 
 #define extern 
-extern MEMORY* pcoa_memory;					//Genetic distance memory class
-extern void* pcoa_matrix_;					//Genetic distance array of genetic distance to perform PCoA
-#define pcoa_matrix (*(REAL**)&pcoa_matrix_)
+template<typename REAL>
+extern REAL* pcoa_matrix;					//Genetic distance array of genetic distance to perform PCoA
 #undef extern 
 
 /* Calculate principal coordinate analysis */
@@ -227,8 +254,8 @@ TARGET void CalcPCOA()
 				if (pcoa_estimator_val[k])
 					gdindex[k] = nestimator++;
 
-			pcoa_matrix = new REAL[n * n * nestimator];
-			SetZero(pcoa_matrix, n * n * nestimator);
+			pcoa_matrix<REAL> = new REAL[n * n * nestimator];
+			SetZero(pcoa_matrix<REAL>, n * n * nestimator);
 
 			//Calculate genetic distance table between any two genotypes
 			if (m == 1) GDIST<REAL>::CacheIndGD();
@@ -239,14 +266,14 @@ TARGET void CalcPCOA()
 
 			for (int k = 1; k <= (m == 1 ? N_GD_ESTIMATOR - 2 * N_FST_ESTIMATOR : N_GD_ESTIMATOR); ++k)
 				if (pcoa_estimator_val[k])
-					tpcoa.PrintPCoA(FRES, pcoa_matrix + gdindex[k] * n * n, n, k, m + rl);
+					tpcoa.WritePCoA(FRES, pcoa_matrix<REAL> + gdindex[k] * n * n, n, k, m + rl);
 
 			if (m == 1)
 			{
-				delete[] gd_tab[0];
-				delete[] gd_tab;
+				DEL(gd_tab<REAL>[0]);
+				DEL(gd_tab<REAL>);
 			}
-			delete[] pcoa_matrix;
+			DEL(pcoa_matrix<REAL>);
 		}
 	}
 
@@ -279,16 +306,16 @@ THREAD2(PCoAThread)
 			if (progress++ % nthread != threadid) continue;
 			switch (type)
 			{
-			case 1:  tbuf.CalcGD(ainds[i], ainds[j], p1, p2); break;
-			case 2:  tbuf.CalcGD(apops[i], apops[j], (double*)p1); break;
+			case 1:  tbuf.CalcGD(ainds<REAL>[i], ainds<REAL>[j], p1, p2); break;
+			case 2:  tbuf.CalcGD(apops<REAL>[i], apops<REAL>[j], (double*)p1); break;
 			case 3:
-			default: tbuf.CalcGD(aregs[type - 3][i], aregs[type - 3][j], (double*)p1);  break;
+			default: tbuf.CalcGD(aregs<REAL>[type - 3][i], aregs<REAL>[type - 3][j], (double*)p1);  break;
 			}
 
 			for (int k = 1; k <= (type == 1 ? N_GD_ESTIMATOR - 2 * N_FST_ESTIMATOR : N_GD_ESTIMATOR); ++k)
 				if (estimator[k])
-					*(pcoa_matrix + n * n * gdindex[k] + j * n + i) =
-					*(pcoa_matrix + n * n * gdindex[k] + i * n + j) =
+					*(pcoa_matrix<REAL> + n * n * gdindex[k] + j * n + i) =
+					*(pcoa_matrix<REAL> + n * n * gdindex[k] + i * n + j) =
 					*(&tbuf.Nei1972 + k - 1);
 
 			PROGRESS_VALUE++;

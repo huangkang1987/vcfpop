@@ -4,12 +4,16 @@
 
 #ifndef __aarch64__
 
-template TARGETSSE void RNGSSE<double>::Poly<32>(__m128d* arr, int n, __m128i* re);
-template TARGETSSE void RNGSSE<double>::Poly<64>(__m128d* arr, int n, __m128i* re);
-template TARGETSSE void RNGSSE<float >::Poly<32>(__m128*  arr, int n, __m128i* re);
-template TARGETSSE void RNGSSE<float >::Poly<64>(__m128*  arr, int n, __m128i* re);
+template struct RNGSSE<double>;
+template struct RNGSSE<float >;
+template TARGETSSE void RNGSSE<double>::Integer<uint  >(uint  * re, int64 n, uint   minv, uint   maxv);
+template TARGETSSE void RNGSSE<double>::Integer<uint64>(uint64* re, int64 n, uint64 minv, uint64 maxv);
+template TARGETSSE void RNGSSE<float >::Integer<uint  >(uint  * re, int64 n, uint   minv, uint   maxv);
+template TARGETSSE void RNGSSE<float >::Integer<uint64>(uint64* re, int64 n, uint64 minv, uint64 maxv);
 
 #ifndef _RNGSSE_FP64
+#define XS 32
+
 /* Initialize rng */
 TARGETSSE RNGSSE<double>::RNGSSE()
 {
@@ -19,135 +23,265 @@ TARGETSSE RNGSSE<double>::RNGSSE()
 /* Initialize rng */
 TARGETSSE RNGSSE<double>::RNGSSE(uint64 seed, uint64 salt)
 {
-	__m128i a[32], s, m;
+	__m128i a[XS], s, m;
 
-	REP(32) { a[kk] = _mm_set_epi64x(seed + 1, seed + 0); seed += 2; }
+	UNROLL(XS) { a[kk] = _mm_set_epi64x(seed + 1, seed + 0); seed += 2; }
 
 	s = _mm_set1_epi64x(salt);
 	m = _mm_set1_epi32(0x5bd1e995);
 
-	REP(32) a[kk] = _mm_xor_si128(a[kk], _mm_slli_epi64(_mm_andnot_si128(a[kk], _mm_set1_epi64x(0xFFFFFFFF)), 32));
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_slli_epi64(_mm_andnot_si128(a[kk], _mm_set1_epi64x(0xFFFFFFFF)), 32));
 
 	s             = _mm_xor_si128(s    , _mm_slli_epi64(_mm_andnot_si128(s    , _mm_set1_epi64x(0xFFFFFFFF)), 32));
 
-	// uint s = s ^ sizeof(uint);
-	s = _mm_xor_si128(s, _mm_set1_epi32(sizeof(uint)));
+	// uint s = s ^ 4;
+	s = _mm_xor_si128(s, _mm_set1_epi32(4));
 
 	// a *= m;
-	REP(32) a[kk] = _mm_mullo_epi32(a[kk], m);
+	UNROLL(XS) a[kk] = _mm_mullo_epi32(a[kk], m);
 
 	// a ^= a >> 24;
-	REP(32) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 24));
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 24));
 
 	// a *= m;
-	REP(32) a[kk] = _mm_mullo_epi32(a[kk], m);
+	UNROLL(XS) a[kk] = _mm_mullo_epi32(a[kk], m);
 
 	// s *= m;
 	s = _mm_mullo_epi32(s, m);
 
 	// a ^= s;
-	REP(32) a[kk] = _mm_xor_si128(a[kk], s);
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], s);
 
 	// a ^= a >> 13;
-	REP(32) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 13));
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 13));
 
 	// a *= m;
-	REP(32) a[kk] = _mm_mullo_epi32(a[kk], m);
+	UNROLL(XS) a[kk] = _mm_mullo_epi32(a[kk], m);
 
 	// a ^= a >> 15;
-	REP(32) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 15));
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 15));
 
 	// original
-	REP(32) x[kk] = _mm_xor_si128(_mm_set1_epi64x(0x159A55E5075BCD15), a[kk]);
+	UNROLL(XS) x[kk] = _mm_xor_si128(_mm_set1_epi64x(0x159A55E5075BCD15), a[kk]);
 
-	REP(32) a[kk] = _mm_slli_epi64(a[kk], 6);
+	UNROLL(XS) a[kk] = _mm_slli_epi64(a[kk], 6);
 
-	REP(32) y[kk] = _mm_xor_si128(_mm_set1_epi64x(0x054913331F123BB5), a[kk]);
+	UNROLL(XS) y[kk] = _mm_xor_si128(_mm_set1_epi64x(0x054913331F123BB5), a[kk]);
 }
 
-/* Draw a uniform distriubted real number */
-template<int nbits>
+/* Draw 64 64-bit integers in [0,n), 64*n frequencies are in arr */
 TARGETSSE void RNGSSE<double>::Poly(__m128d* arr, int n, __m128i* re)
 {
-	__m128d t[32], s[32];
+	__m128d t[XS], s[XS];
 	__m128d one = _mm_set1_pd(1.0);
 	__m128i mask1 = _mm_set1_epi64x(0x000FFFFFFFFFFFFF);
 	__m128i mask2 = _mm_set1_epi64x(0x3FF0000000000000);
 	__m128i* r = (__m128i*)t;
 
-	REP(32) s[kk] = _mm_setzero_pd();
+	UNROLL(XS) s[kk] = _mm_setzero_pd();
 
-	for (int i32 = 0; i32 < n * 32; i32 += 32)
-		REP(32) s[kk] = _mm_add_pd(s[kk], arr[kk + i32]);
+	for (int i = 0; i < n * XS; i += XS)
+		UNROLL(XS) s[kk] = _mm_add_pd(s[kk], arr[kk + i]);
 
+	XorShift();
+
+	UNROLL(XS) r[kk] = _mm_add_epi64(x[kk], y[kk]);
+
+	UNROLL(XS) r[kk] = _mm_and_si128(r[kk], mask1);
+
+	UNROLL(XS) r[kk] = _mm_or_si128(r[kk], mask2);
+
+	UNROLL(XS) t[kk] = _mm_sub_pd(t[kk], one);
+
+	UNROLL(XS) t[kk] = _mm_mul_pd(t[kk], s[kk]);
+
+	__m128i midx[XS], nidx = _mm_setzero_si128(), ninc = _mm_set1_epi64x(1);
+	__m128d f[XS], b[XS];
+	UNROLL(XS) midx[kk] = _mm_set1_epi64x(n - 1);
+	UNROLL(XS) f[kk] = _mm_setzero_pd();
+
+	for (int i = 0; i < n * XS; i += XS)
 	{
-		__m128i a[32], b[32];
+		UNROLL(XS) b[kk] = _mm_cmplt_pd(t[kk], arr[kk + i]);
 
-		REP(32) a[kk] = x[kk];
+		UNROLL(XS) t[kk] = _mm_sub_pd(t[kk], arr[kk + i]);
 
-		REP(32) b[kk] = y[kk];
+		UNROLL(XS) b[kk] = _mm_andnot_pd(f[kk], b[kk]);
 
-		REP(32) x[kk] = b[kk];
-
-		REP(32) a[kk] = _mm_xor_si128(a[kk], _mm_slli_epi64(a[kk], 23));
-
-		REP(32) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi64(a[kk], 18));
-
-		REP(32) a[kk] = _mm_xor_si128(a[kk], b[kk]);
-
-		REP(32) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi64(b[kk], 5));
-
-		REP(32) y[kk] = a[kk];
-
-		REP(32) r[kk] = _mm_add_epi64(a[kk], b[kk]);
-	}
-
-	REP(32) r[kk] = _mm_and_si128(r[kk], mask1);
-
-	REP(32) r[kk] = _mm_or_si128(r[kk], mask2);
-
-	REP(32) t[kk] = _mm_sub_pd(t[kk], one);
-
-	REP(32) t[kk] = _mm_mul_pd(t[kk], s[kk]);
-
-	__m128i midx[32], nidx = _mm_setzero_si128(), ninc = _mm_set1_epi64x(1);
-	__m128d f[32], b[32];
-	REP(32) midx[kk] = _mm_set1_epi64x(n - 1);
-	REP(32) f[kk] = _mm_setzero_pd();
-
-	for (int i32 = 0; i32 < n * 32; i32 += 32)
-	{
-		REP(32) b[kk] = _mm_cmplt_pd(t[kk], arr[kk + i32]);
-
-		REP(8) t[ 0 + kk] = _mm_sub_pd(t[ 0 + kk], arr[ 0 + kk + i32]);
-
-		REP(32) b[kk] = _mm_andnot_pd(f[kk], b[kk]);
+		UNROLL(XS) f[kk] = _mm_or_pd(f[kk], b[kk]);
 			
-		REP(8) t[ 8 + kk] = _mm_sub_pd(t[ 8 + kk], arr[ 8 + kk + i32]);
-
-		REP(32) f[kk] = _mm_or_pd(f[kk], b[kk]);
-			
-		REP(8) t[16 + kk] = _mm_sub_pd(t[16 + kk], arr[16 + kk + i32]);
-
-		REP(32) midx[kk] = _mm_castpd_si128(_mm_blendv_pd(_mm_castsi128_pd(midx[kk]), _mm_castsi128_pd(nidx), b[kk]));//ok
-			
-		REP(8) t[24 + kk] = _mm_sub_pd(t[24 + kk], arr[24 + kk + i32]);
+		UNROLL(XS) midx[kk] = _mm_castpd_si128(_mm_blendv_pd(_mm_castsi128_pd(midx[kk]), _mm_castsi128_pd(nidx), b[kk]));//ok
 
 		nidx = _mm_add_epi64(nidx, ninc);
 	}
 
-	if constexpr (nbits == 32)
+	UNROLL(XS) re[kk] = midx[kk];
+}
+
+/* Draw uniform distriubted intergers */
+TARGETSSE void RNGSSE<double>::XorShift()
+{
+	__m128i a[XS], b[XS];
+
+	UNROLL(XS) a[kk] = x[kk];
+
+	UNROLL(XS) b[kk] = y[kk];
+
+	UNROLL(XS) x[kk] = b[kk];
+
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_slli_epi64(a[kk], 23));
+
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi64(a[kk], 18));
+
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], b[kk]);
+
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi64(b[kk], 5));
+
+	UNROLL(XS) y[kk] = a[kk];
+}
+
+/* Draw uniform distriubted integers */
+template<typename INT>
+TARGETSSE void RNGSSE<double>::Integer(INT* re, int64 n, INT minv, INT maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(INT);
+	int64 i = 0;
+	INT modv = maxv - minv;
+	INT* rei = re;
+
+	for (; i <= n - xesize; i += xesize)
 	{
-		REP(16) re[kk] = _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(midx[0 + (kk << 1)]), _mm_castsi128_ps(midx[1 + (kk << 1)]), _MM_SHUFFLE(2, 0, 2, 0)));
+		XorShift();
+		UNROLL(XS) { _mm_storeu_si128((__m128i*)rei, _mm_add_epi64(x[kk], y[kk])); rei += E128B / sizeof(INT); };
+	}
+
+	if (i != n)
+	{
+		__m128i re2[XS];
+		XorShift();
+		UNROLL(XS) re2[kk] = _mm_add_epi64(x[kk], y[kk]);
+		SetVal((INT*)rei, (INT*)re2, n - i);
+	}
+
+	if (maxv != (INT)-1 || minv != 0)
+	{
+		for (i = 0; i < n; ++i)
+			re[i] = re[i] % modv + minv;
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGETSSE void RNGSSE<double>::Uniform(double* re, int n, double minv, double maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(double);
+	int i = 0;
+	double range = maxv - minv;
+
+	__m128i mask1 = _mm_set1_epi64x(0x000FFFFFFFFFFFFF);
+	__m128i mask2 = _mm_set1_epi64x(0x3FF0000000000000);
+	__m128d v1 = _mm_set1_pd(minv - range);
+	__m128d v2 = _mm_set1_pd(range);
+
+	if (range == 1.0)
+	{
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { _mm_storeu_pd(re, _mm_add_pd(_mm_castsi128_pd(_mm_or_si128(_mm_and_si128(_mm_add_epi64(x[kk], y[kk]), mask1), mask2)), v1)); re += E128D; }
+		}
 	}
 	else
 	{
-		REP(32) re[kk] = midx[kk];
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { _mm_storeu_pd(re, _mm_fmaddx_pd(_mm_castsi128_pd(_mm_or_si128(_mm_and_si128(_mm_add_epi64(x[kk], y[kk]), mask1), mask2)), v2, v1)); re += E128D; }
+		}
+	}
+
+	if (i != n)
+	{
+		__m128d ref[XS];
+		XorShift();
+		UNROLL(XS) ref[kk] = _mm_fmaddx_pd(_mm_castsi128_pd(_mm_or_si128(_mm_and_si128(_mm_add_epi64(x[kk], y[kk]), mask1), mask2)), v2, v1);
+		SetVal((double*)re, (double*)ref, n - i);
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGETSSE void RNGSSE<double>::Normal(double* re, int n, double mean, double sd)
+{
+	constexpr int xhsize = XS / 2;
+	constexpr int xesize = XS * E128D;
+
+	int i = 0;
+
+	__m128i mask1 = _mm_set1_epi64x(0x000FFFFFFFFFFFFF);
+	__m128i mask2 = _mm_set1_epi64x(0x3FF0000000000000);
+	__m128d v1 = _mm_set1_pd(-1);
+	__m128d min_freq = _mm_set1_pd(MIN_FREQ);
+	__m128d pi2 = _mm_set1_pd(2.0 * M_PI);
+	__m128d mu = _mm_set1_pd(mean);
+	__m128d s = _mm_set1_pd(sd);
+
+	for (; i <= n - xesize; i += xesize)
+	{
+		XorShift();
+		UNROLL(XS) _mm_storeu_pd(re + E128D * kk, _mm_add_pd(_mm_castsi128_pd(_mm_or_si128(_mm_and_si128(_mm_add_epi64(x[kk], y[kk]), mask1), mask2)), v1));
+
+		__m128d u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = _mm_max_pd(_mm_loadu_pd(re + j * E128D), min_freq);
+			u2 = _mm_mul_pd(_mm_loadu_pd(re + j * E128D + xhsize * E128D), pi2);
+
+			UNROLL(E128D) simd_f64(u1, kk) = sqrt(-2.0 * log(simd_f64(u1, kk)));
+			UNROLL(E128D) simd_f64(u3, kk) = cos(simd_f64(u2, kk));
+			UNROLL(E128D) simd_f64(u4, kk) = sin(simd_f64(u2, kk));
+
+			_mm_storeu_pd(re + j * E128D, _mm_mul_pd(u1, u3));
+			_mm_storeu_pd(re + j * E128D + xhsize * E128D, _mm_mul_pd(u1, u4));
+		}
+			
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) { _mm_storeu_pd(re, _mm_fmaddx_pd(_mm_loadu_pd(re), s, mu)); re += E128D; }
+		else
+			re += XS * E128D;
+	}
+
+	if (i != n)
+	{
+		double ref[XS * E128D];
+		
+		XorShift();
+		UNROLL(XS) _mm_storeu_pd(ref + E128D * kk, _mm_add_pd(_mm_castsi128_pd(_mm_or_si128(_mm_and_si128(_mm_add_epi64(x[kk], y[kk]), mask1), mask2)), v1));
+
+		__m128d u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = _mm_max_pd(_mm_loadu_pd(ref + j * E128D), min_freq);
+			u2 = _mm_mul_pd(_mm_loadu_pd(ref + j * E128D + xhsize * E128D), pi2);
+
+			UNROLL(E128D) simd_f64(u1, kk) = sqrt(-2.0 * log(simd_f64(u1, kk)));
+			UNROLL(E128D) simd_f64(u3, kk) = cos(simd_f64(u2, kk));
+			UNROLL(E128D) simd_f64(u4, kk) = sin(simd_f64(u2, kk));
+
+			_mm_storeu_pd(ref + j * E128D, _mm_mul_pd(u1, u3));
+			_mm_storeu_pd(ref + j * E128D + xhsize * E128D, _mm_mul_pd(u1, u4));
+		}
+			
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) _mm_storeu_pd(ref + kk * E128D, _mm_fmaddx_pd(_mm_loadu_pd(ref), s, mu)); 
+
+		SetVal((double*)re, (double*)ref, n - i);
 	}
 }
 #endif
 
 #ifndef _RNGSSE_FP32
+#define XS 16
+#define XS2 32
+
 /* Initialize rng */
 TARGETSSE RNGSSE<float>::RNGSSE()
 {
@@ -156,208 +290,301 @@ TARGETSSE RNGSSE<float>::RNGSSE()
 
 /* Initialize rng */
 TARGETSSE RNGSSE<float>::RNGSSE(uint64 seed, uint64 salt)
-{	
-	__m128i a[16], s, m;
-	REP(16) { a[kk] = _mm_set_epi32(Mix(seed +  3), Mix(seed +  2), Mix(seed + 1), Mix(seed + 0)); seed += 4; }
+{
+	__m128i a[XS], s, m;
+	UNROLL(XS) { a[kk] = _mm_set_epi32(Mix(seed +  3), Mix(seed +  2), Mix(seed + 1), Mix(seed + 0)); seed += 4; }
 
 	s = _mm_set1_epi32(Mix(salt));
 	m = _mm_set1_epi32(0x5bd1e995);
 
-	// uint s = s ^ sizeof(uint);
-	s = _mm_xor_si128(s, _mm_set1_epi32(sizeof(uint)));
+	// uint s = s ^ 4;
+	s = _mm_xor_si128(s, _mm_set1_epi32(4));
 
 	// a *= m;
-	REP(16) a[kk] = _mm_mullo_epi32(a[kk], m);
+	UNROLL(XS) a[kk] = _mm_mullo_epi32(a[kk], m);
 
 	// a ^= a >> 24;
-	REP(16) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 24));
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 24));
 
 	// a *= m;
-	REP(16) a[kk] = _mm_mullo_epi32(a[kk], m);
+	UNROLL(XS) a[kk] = _mm_mullo_epi32(a[kk], m);
 
 	// s *= m;
 	s = _mm_mullo_epi32(s, m);
 
 	// a ^= s;
-	REP(16) a[kk] = _mm_xor_si128(a[kk], s);
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], s);
 
 	// a ^= a >> 13;
-	REP(16) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 13));
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 13));
 
 	// a *= m;
-	REP(16) a[kk] = _mm_mullo_epi32(a[kk], m);
+	UNROLL(XS) a[kk] = _mm_mullo_epi32(a[kk], m);
 
 	// a ^= a >> 15;
-	REP(16) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 15));
+	UNROLL(XS) a[kk] = _mm_xor_si128(a[kk], _mm_srli_epi32(a[kk], 15));
 
 	// original
-	REP(16) x[kk] = _mm_xor_si128(_mm_set1_epi32(0x075BCD15), a[kk]);
+	UNROLL(XS) x[kk] = _mm_xor_si128(_mm_set1_epi32(0x075BCD15), a[kk]);
 
-	REP(16) a[kk] = _mm_slli_epi32(a[kk], 3);
+	UNROLL(XS) a[kk] = _mm_slli_epi32(a[kk], 3);
 
-	REP(16) y[kk] = _mm_xor_si128(_mm_set1_epi32(0x159A55E5), a[kk]);
+	UNROLL(XS) y[kk] = _mm_xor_si128(_mm_set1_epi32(0x159A55E5), a[kk]);
 
-	REP(16) a[kk] = _mm_slli_epi32(a[kk], 3);
+	UNROLL(XS) a[kk] = _mm_slli_epi32(a[kk], 3);
 
-	REP(16) z[kk] = _mm_xor_si128(_mm_set1_epi32(0x1F123BB5), a[kk]);
+	UNROLL(XS) z[kk] = _mm_xor_si128(_mm_set1_epi32(0x1F123BB5), a[kk]);
 }
 
-/* Draw a uniform distriubted real number */
-template<int nbits>
+/* Draw 64 64-bit integers in [0,n), 64*n frequencies are in arr */
 TARGETSSE void RNGSSE<float>::Poly(__m128* arr, int n, __m128i* re)
 {
-	__m128 t[16], s[16]; __m128i u[16];
+	__m128 t[XS], s[XS];
 	__m128 one = _mm_set1_ps(1.0f);
 	__m128i mask1 = _mm_set1_epi32(0x007FFFFF);
 	__m128i mask2 = _mm_set1_epi32(0x3F800000);
 	__m128i* r = (__m128i*)t;
 
-	REP(16) s[kk] = _mm_setzero_ps();
+	UNROLL(XS) s[kk] = _mm_setzero_ps();
 
-	for (int i16 = 0; i16 < n * 16; i16 += 16)
-		REP(16) s[kk] = _mm_add_ps(s[kk], arr[kk + i16]);
+	for (int i = 0; i < n * XS; i += XS)
+		UNROLL(XS) s[kk] = _mm_add_ps(s[kk], arr[kk + i]);
 
+	XorShift();
+
+	UNROLL(XS) r[kk] = _mm_and_si128(z[kk], mask1);
+
+	UNROLL(XS) r[kk] = _mm_or_si128(r[kk], mask2);
+
+	UNROLL(XS) t[kk] = _mm_sub_ps(t[kk], one);
+
+	UNROLL(XS) t[kk] = _mm_mul_ps(t[kk], s[kk]);
+
+	__m128i midx[XS], nidx = _mm_setzero_si128(), ninc = _mm_set1_epi32(1);
+	__m128 f[XS], b[XS];
+	UNROLL(XS) midx[kk] = _mm_set1_epi32(n - 1);
+	UNROLL(XS) f[kk] = _mm_setzero_ps();
+
+	for (int i = 0; i < n * XS; i += XS)
 	{
-		//xorshift
-		REP(16) u[kk] = _mm_slli_epi32(x[kk], 16);
-		REP(16) x[kk] = _mm_xor_si128(x[kk], u[kk]);
+		UNROLL(XS) b[kk] = _mm_cmplt_ps(t[kk], arr[kk + i]);
 
-		REP(16) u[kk] = _mm_srli_epi32(x[kk], 5);
-		REP(16) x[kk] = _mm_xor_si128(x[kk], u[kk]);
+		UNROLL(XS) t[kk] = _mm_sub_ps(t[kk], arr[kk + i]);
 
-		REP(16) u[kk] = _mm_slli_epi32(x[kk], 1);
-		REP(16) x[kk] = _mm_xor_si128(x[kk], u[kk]);
+		UNROLL(XS) b[kk] = _mm_andnot_ps(f[kk], b[kk]);
 
-		REP(16) u[kk] = x[kk];
+		UNROLL(XS) f[kk] = _mm_or_ps(f[kk], b[kk]);
 
-		REP(16) x[kk] = y[kk];
-
-		REP(16) y[kk] = z[kk];
-
-		REP(16) z[kk] = _mm_xor_si128(u[kk], x[kk]);
-
-		REP(16) z[kk] = _mm_xor_si128(z[kk], y[kk]);
-	}
-
-	REP(16) r[kk] = _mm_and_si128(z[kk], mask1);
-
-	REP(16) r[kk] = _mm_or_si128(r[kk], mask2);
-
-	REP(16) t[kk] = _mm_sub_ps(t[kk], one);
-
-	REP(16) t[kk] = _mm_mul_ps(t[kk], s[kk]);
-
-	__m128i midx[16], nidx = _mm_setzero_si128(), ninc = _mm_set1_epi32(1);
-	__m128 f[16], b[16];
-	REP(16) midx[kk] = _mm_set1_epi32(n - 1);
-	REP(16) f[kk] = _mm_setzero_ps();
-
-	for (int i16 = 0; i16 < n * 16; i16 += 16)
-	{
-		REP(16) b[kk] = _mm_cmplt_ps(t[kk], arr[kk + i16]);
-
-		REP(8) t[ 0 + kk] = _mm_sub_ps(t[ 0 + kk], arr[ 0 + kk + i16]);
-
-		REP(16) b[kk] = _mm_andnot_ps(f[kk], b[kk]);
-		
-		REP(8) t[ 8 + kk] = _mm_sub_ps(t[ 8 + kk], arr[ 8 + kk + i16]);
-
-		REP(16)
-		{
-			f[kk] = _mm_or_ps(f[kk], b[kk]);
-			midx[kk] = _mm_castps_si128(_mm_blendv_ps(_mm_castsi128_ps(midx[kk]), _mm_castsi128_ps(nidx), b[kk]));//ok
-		}
+		UNROLL(XS) midx[kk] = _mm_castps_si128(_mm_blendv_ps(_mm_castsi128_ps(midx[kk]), _mm_castsi128_ps(nidx), b[kk]));//ok
 
 		nidx = _mm_add_epi32(nidx, ninc);
 	}
 
-	if constexpr (nbits == 32)
+	UNROLL(XS)
 	{
-		REP(16) re[kk] = midx[kk];
+		re[0 + (kk << 1)] = _mm_cvtepi32_epi64(midx[kk]);
+		re[1 + (kk << 1)] = _mm_cvtepi32_epi64(_mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(midx[kk]), _mm_castsi128_ps(midx[kk]), _MM_SHUFFLE(1, 0, 3, 2))));
+	}
+}
+
+/* Draw uniform distriubted intergers */
+TARGETSSE void RNGSSE<float>::XorShift()
+{
+	__m128i u[XS];
+
+	UNROLL(XS) u[kk] = _mm_slli_epi32(x[kk], 16);
+	UNROLL(XS) x[kk] = _mm_xor_si128(x[kk], u[kk]);
+
+	UNROLL(XS) u[kk] = _mm_srli_epi32(x[kk], 5);
+	UNROLL(XS) x[kk] = _mm_xor_si128(x[kk], u[kk]);
+
+	UNROLL(XS) u[kk] = _mm_slli_epi32(x[kk], 1);
+	UNROLL(XS) x[kk] = _mm_xor_si128(x[kk], u[kk]);
+
+	UNROLL(XS) u[kk] = x[kk];
+
+	UNROLL(XS) x[kk] = y[kk];
+
+	UNROLL(XS) y[kk] = z[kk];
+
+	UNROLL(XS) z[kk] = _mm_xor_si128(u[kk], x[kk]);
+
+	UNROLL(XS) z[kk] = _mm_xor_si128(z[kk], y[kk]);
+}
+
+/* Draw uniform distriubted integers */
+template<typename INT>
+TARGETSSE void RNGSSE<float>::Integer(INT* re, int64 n, INT minv, INT maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(INT);
+	int64 i = 0;
+	INT modv = maxv - minv;
+	INT* rei = re;
+
+	for (; i <= n - xesize; i += xesize)
+	{
+		XorShift();
+		UNROLL(XS) { _mm_storeu_si128((__m128i*)rei, z[kk]); rei += E128B / sizeof(INT); }
+	}
+
+	if (i != n)
+	{
+		XorShift();
+		SetVal((INT*)rei, (INT*)z, n - i);
+	}
+
+	if (maxv != (INT)-1 || minv != 0)
+	{
+		for (i = 0; i < n; ++i)
+			re[i] = re[i] % modv + minv;
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGETSSE void RNGSSE<float>::Uniform(float* re, int n, float minv, float maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(float);
+	int i = 0;
+	float range = maxv - minv;
+
+	__m128i mask1 = _mm_set1_epi32(0x007FFFFF);
+	__m128i mask2 = _mm_set1_epi32(0x3F800000);
+	__m128 v1 = _mm_set1_ps(minv - range);
+	__m128 v2 = _mm_set1_ps(range);
+
+	if (range == 1.0)
+	{
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { _mm_storeu_ps(re, _mm_add_ps(_mm_castsi128_ps(_mm_or_si128(_mm_and_si128(z[kk], mask1), mask2)), v1)); re += E128F; }
+		}
 	}
 	else
 	{
-		REP(16)
+		for (; i <= n - xesize; i += xesize)
 		{
-			re[0 + (kk << 1)] = _mm_cvtepi32_epi64(midx[kk]);
-			re[1 + (kk << 1)] = _mm_cvtepi32_epi64(_mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(midx[kk]), _mm_castsi128_ps(midx[kk]), _MM_SHUFFLE(1, 0, 3, 2))));
+			XorShift();
+			UNROLL(XS) { _mm_storeu_ps(re, _mm_fmaddx_ps(_mm_castsi128_ps(_mm_or_si128(_mm_and_si128(z[kk], mask1), mask2)), v2, v1)); re += E128F; }
 		}
+	}
+
+	if (i != n)
+	{
+		__m128 ref[XS];
+		XorShift();
+		UNROLL(XS) ref[kk] = _mm_fmaddx_ps(_mm_castsi128_ps(_mm_or_si128(_mm_and_si128(z[kk], mask1), mask2)), v2, v1);
+		SetVal((float*)re, (float*)ref, n - i);
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGETSSE void RNGSSE<float>::Normal(float* re, int n, float mean, float sd)
+{
+	constexpr int xhsize = XS / 2;
+	constexpr int xesize = XS * E128F;
+
+	int i = 0;
+
+	__m128i mask1 = _mm_set1_epi32(0x007FFFFF);
+	__m128i mask2 = _mm_set1_epi32(0x3F800000);
+	__m128 v1 = _mm_set1_ps(-1);
+	__m128 min_freq = _mm_set1_ps((float)MIN_FREQ);
+	__m128 pi2 = _mm_set1_ps((float)(2.0 * M_PI));
+	__m128 mu = _mm_set1_ps(mean);
+	__m128 s = _mm_set1_ps(sd);
+
+	for (; i <= n - xesize; i += xesize)
+	{
+		XorShift();
+		UNROLL(XS) _mm_storeu_ps(re + kk * E128F, _mm_add_ps(_mm_castsi128_ps(_mm_or_si128(_mm_and_si128(z[kk], mask1), mask2)), v1));
+
+		__m128 u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = _mm_max_ps(_mm_loadu_ps(re + j * E128F), min_freq);
+			u2 = _mm_mul_ps(_mm_loadu_ps(re + j * E128F + xhsize * E128F), pi2);
+
+			UNROLL(E128F) simd_f32(u1, kk) = sqrt(-2.0 * log(simd_f32(u1, kk)));
+			UNROLL(E128F) simd_f32(u3, kk) = cos(simd_f32(u2, kk));
+			UNROLL(E128F) simd_f32(u4, kk) = sin(simd_f32(u2, kk));
+				
+			_mm_storeu_ps(re + j * E128F, _mm_mul_ps(u1, u3));
+			_mm_storeu_ps(re + j * E128F + xhsize * E128F, _mm_mul_ps(u1, u4));
+		}
+			
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) { _mm_storeu_ps(re, _mm_fmaddx_ps(_mm_loadu_ps(re), s, mu)); re += E128F; }
+		else
+			re += XS * E128F;
+	}
+
+	if (i != n)
+	{
+		float ref[XS * E128F];
+		
+		XorShift();
+		UNROLL(XS) _mm_storeu_ps(ref + kk * E128F, _mm_add_ps(_mm_castsi128_ps(_mm_or_si128(_mm_and_si128(z[kk], mask1), mask2)), v1));
+
+		__m128 u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = _mm_max_ps(_mm_loadu_ps(ref + j * E128F), min_freq);
+			u2 = _mm_mul_ps(_mm_loadu_ps(ref + j * E128F + xhsize * E128F), pi2);
+
+			UNROLL(E128F) simd_f32(u1, kk) = sqrt(-2.0 * log(simd_f32(u1, kk)));
+			UNROLL(E128F) simd_f32(u3, kk) = cos(simd_f32(u2, kk));
+			UNROLL(E128F) simd_f32(u4, kk) = sin(simd_f32(u2, kk));
+				
+			_mm_storeu_ps(ref + j * E128F, _mm_mul_ps(u1, u3));
+			_mm_storeu_ps(ref + j * E128F + xhsize * E128F, _mm_mul_ps(u1, u4));
+		}
+			
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) _mm_storeu_ps(ref + kk * E128F, _mm_fmaddx_ps(_mm_loadu_ps(re), s, mu)); 
+
+		SetVal((float*)re, (float*)ref, n - i);
 	}
 }
 #endif
 
-__forceinline TARGETSSE double _mm_reduce_add_pd(__m128d v2)
-{
-	return simd_f64(v2, 0) + simd_f64(v2, 1);
-}
-
-__forceinline TARGETSSE double _mm_reduce_mul_pd(__m128d v2)
-{
-	return simd_f64(v2, 0) * simd_f64(v2, 1);
-}
-
-__forceinline TARGETSSE float _mm_reduce_add_ps(__m128 v2)
-{
-	__m128 v3 = _mm_add_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
-	return simd_f32(v3, 0) + simd_f32(v3, 1);
-}
-
-__forceinline TARGETSSE float _mm_reduce_mul_ps(__m128 v2)
-{
-	__m128 v3 = _mm_mul_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
-	return simd_f32(v3, 0) * simd_f32(v3, 1);
-}
-
-__forceinline TARGETSSE double _mm_reduce_add_psd(__m128 v2)
-{
-	__m128d v2b = _mm_add_pd(_mm_cvtps_pd(v2),
-				 _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8))));
-	return simd_f64(v2b, 0) + simd_f64(v2b, 1);
-}
-
-__forceinline TARGETSSE double _mm_reduce_mul_psd(__m128 v2)
-{
-	__m128d v2b = _mm_mul_pd(_mm_cvtps_pd(v2),
-				 _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8))));
-	return simd_f64(v2b, 0) * simd_f64(v2b, 1);
-}
-
 TARGETSSE int64 GetMinIdxSSE(double* A, int64 n, double& val)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	val = DBL_MAX;
 	uint64 idx = (uint64)-1;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		__m128d min1[N], f[N], a[N];
-		__m128i midx[N], nidx[N], msep = _mm_set1_epi64x(N * sizeof(__m128d) / sizeof(double));
-		REP(N) min1[kk] = _mm_set1_pd(val);
-		REP(N) midx[kk] = _mm_set1_epi64x(0xFFFFFFFFFFFFFFFF);
-		REP(N) nidx[kk] = _mm_set_epi64x(1 + (kk << 1), 0 + (kk << 1));
+		__m128d min1[N], f[N];
+		__m128i midx[N], nidx[N], msep = _mm_set1_epi64x(N * E128D);
+		UNROLL(N) min1[kk] = _mm_set1_pd(val);
+		UNROLL(N) midx[kk] = _mm_set1_epi64x(0xFFFFFFFFFFFFFFFF);
+		UNROLL(N) nidx[kk] = _mm_set_epi64x(1 + (kk << 1), 0 + (kk << 1));
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
+			UNROLL(N) 
+			{	
+				f[kk] = _mm_cmpgt_pd(min1[kk], _mm_loadu_pd(A)); 
+				min1[kk] = _mm_blendv_pd(min1[kk], _mm_loadu_pd(A), f[kk]); 
+				A += E128D; 
+			}
 
-			REP(N) f[kk] = _mm_cmpgt_pd(min1[kk], a[kk]);
+			UNROLL(N) midx[kk] = _mm_castpd_si128(_mm_blendv_pd(_mm_castsi128_pd(midx[kk]), _mm_castsi128_pd(nidx[kk]), f[kk]));//ok
 
-			REP(N) min1[kk] = _mm_blendv_pd(min1[kk], a[kk], f[kk]);//ok
-
-			REP(N) midx[kk] = _mm_castpd_si128(_mm_blendv_pd(_mm_castsi128_pd(midx[kk]), _mm_castsi128_pd(nidx[kk]), f[kk]));//ok
-
-			REP(N) nidx[kk] = _mm_add_epi64(nidx[kk], msep);
+			UNROLL(N) nidx[kk] = _mm_add_epi64(nidx[kk], msep);
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) f[kk] = _mm_cmpgt_pd(min1[kk], min1[kk + KK]);
-			REP(KK) min1[kk] = _mm_blendv_pd(min1[kk], min1[kk + KK], f[kk]);
-			REP(KK) midx[kk] = _mm_castpd_si128(_mm_blendv_pd(_mm_castsi128_pd(midx[kk]), _mm_castsi128_pd(midx[kk + KK]), f[kk]));
+			f[kk] = _mm_cmpgt_pd(min1[kk], min1[kk + KK]);
+			min1[kk] = _mm_min_pd(min1[kk], min1[kk + KK]);
+			midx[kk] = _mm_castpd_si128(_mm_blendv_pd(_mm_castsi128_pd(midx[kk]), _mm_castsi128_pd(midx[kk + KK]), f[kk]));
 		}
 
-		for (int64 j = 0; j < sizeof(__m128d) / sizeof(double); ++j)
+		for (int64 j = 0; j < E128D; ++j)
 		{
 			if (simp_f64(min1, j) > val) continue;
 			val = simp_f64(min1, j);
@@ -377,40 +604,41 @@ TARGETSSE int64 GetMinIdxSSE(double* A, int64 n, double& val)
 
 TARGETSSE int64 GetMinIdxSSE(float* A, int64 n, float& val)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	val = FLT_MAX;
 	uint idx = (uint)-1;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		__m128 min1[N], f[N], a[N];
-		__m128i midx[N], nidx[N], msep = _mm_set1_epi32(N * sizeof(__m128) / sizeof(float));
-		REP(N) min1[kk] = _mm_set1_ps(val);
-		REP(N) midx[kk] = _mm_set1_epi32(0xFFFFFFFF);
-		REP(N) nidx[kk] = _mm_set_epi32(3 + (kk << 2), 2 + (kk << 2), 1 + (kk << 2), 0 + (kk << 2));
+		__m128 min1[N], f[N];
+		__m128i midx[N], nidx[N], msep = _mm_set1_epi32(N * E128F);
+		UNROLL(N) min1[kk] = _mm_set1_ps(val);
+		UNROLL(N) midx[kk] = _mm_set1_epi32(0xFFFFFFFF);
+		UNROLL(N) nidx[kk] = _mm_set_epi32(3 + (kk << 2), 2 + (kk << 2), 1 + (kk << 2), 0 + (kk << 2));
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
+			UNROLL(N) 
+			{ 
+				f[kk] = _mm_cmpgt_ps(min1[kk], _mm_loadu_ps(A));
+				min1[kk] = _mm_blendv_ps(min1[kk], _mm_loadu_ps(A), f[kk]); 
+				A += E128F; 
+			}
 
-			REP(N) f[kk] = _mm_cmpgt_ps(min1[kk], a[kk]);
+			UNROLL(N) midx[kk] = _mm_castps_si128(_mm_blendv_ps(_mm_castsi128_ps(midx[kk]), _mm_castsi128_ps(nidx[kk]), f[kk]));
 
-			REP(N) min1[kk] = _mm_blendv_ps(min1[kk], a[kk], f[kk]);//ok
-
-			REP(N) midx[kk] = _mm_castps_si128(_mm_blendv_ps(_mm_castsi128_ps(midx[kk]), _mm_castsi128_ps(nidx[kk]), f[kk]));
-
-			REP(N) nidx[kk] = _mm_add_epi32(nidx[kk], msep);
+			UNROLL(N) nidx[kk] = _mm_add_epi32(nidx[kk], msep);
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) f[kk] = _mm_cmpgt_ps(min1[kk], min1[kk + KK]);
-			REP(KK) min1[kk] = _mm_blendv_ps(min1[kk], min1[kk + KK], f[kk]);
-			REP(KK) midx[kk] = _mm_castps_si128(_mm_blendv_ps(_mm_castsi128_ps(midx[kk]), _mm_castsi128_ps(midx[kk + KK]), f[kk]));
+			f[kk] = _mm_cmpgt_ps(min1[kk], min1[kk + KK]);
+			min1[kk] = _mm_blendv_ps(min1[kk], min1[kk + KK], f[kk]);
+			midx[kk] = _mm_castps_si128(_mm_blendv_ps(_mm_castsi128_ps(midx[kk]), _mm_castsi128_ps(midx[kk + KK]), f[kk]));
 		}
 
-		for (int64 j = 0; j < sizeof(__m128) / sizeof(float); ++j)
+		for (int64 j = 0; j < E128F; ++j)
 		{
 			if (simp_f32(min1, j) > val) continue;
 			val = simp_f32(min1, j);
@@ -430,118 +658,108 @@ TARGETSSE int64 GetMinIdxSSE(float* A, int64 n, float& val)
 
 TARGETSSE void GetMinMaxValSSE(double* A, int64 n, double& minv, double& maxv)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	minv = DBL_MAX;
 	maxv = -DBL_MAX;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		__m128d min1[N], max1[N], a[N];
-		REP(N) min1[kk] = _mm_set1_pd(minv);
-		REP(N) max1[kk] = _mm_set1_pd(maxv);
+		__m128d min1[N], max1[N];
+		UNROLL(N) min1[kk] = _mm_set1_pd(minv);
+		UNROLL(N) max1[kk] = _mm_set1_pd(maxv);
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N)
+			UNROLL(N)
 			{
-				min1[kk] = _mm_min_pd(min1[kk], a[kk]);
-				max1[kk] = _mm_max_pd(max1[kk], a[kk]);
+				min1[kk] = _mm_min_pd(min1[kk], _mm_loadu_pd(A));
+				max1[kk] = _mm_max_pd(max1[kk], _mm_loadu_pd(A));
+				A += E128D;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) min1[kk] = _mm_min_pd(min1[kk], min1[kk + KK]);
-			REP(KK) max1[kk] = _mm_max_pd(max1[kk], max1[kk + KK]);
+			min1[kk] = _mm_min_pd(min1[kk], min1[kk + KK]);
+			max1[kk] = _mm_max_pd(max1[kk], max1[kk + KK]);
 		}
-
-		minv = Min(simp_f64(min1, 0), simp_f64(min1, 1));
-		maxv = Max(simp_f64(max1, 0), simp_f64(max1, 1));
+		
+		minv = _mm_reduce_min_pd(min1[0]);
+		maxv = _mm_reduce_max_pd(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < minv) minv = *A;
-		if (*A > maxv) maxv = *A;
+		minv = std::min(minv, *A);
+		maxv = std::max(maxv, *A);
 	}
 }
 
 TARGETSSE void GetMinMaxValSSE(float* A, int64 n, float& minv, float& maxv)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	minv = FLT_MAX;
 	maxv = -FLT_MAX;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		__m128 min1[N], max1[N], a[N];
-		REP(N) min1[kk] = _mm_set1_ps(minv);
-		REP(N) max1[kk] = _mm_set1_ps(maxv);
+		__m128 min1[N], max1[N];
+		UNROLL(N) min1[kk] = _mm_set1_ps(minv);
+		UNROLL(N) max1[kk] = _mm_set1_ps(maxv);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N)
+			UNROLL(N)
 			{
-				min1[kk] = _mm_min_ps(min1[kk], a[kk]);
-				max1[kk] = _mm_max_ps(max1[kk], a[kk]);
+				min1[kk] = _mm_min_ps(min1[kk], _mm_loadu_ps(A));
+				max1[kk] = _mm_max_ps(max1[kk], _mm_loadu_ps(A));
+				A += E128F;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) min1[kk] = _mm_min_ps(min1[kk], min1[kk + KK]);
-			REP(KK) max1[kk] = _mm_max_ps(max1[kk], max1[kk + KK]);
+			min1[kk] = _mm_min_ps(min1[kk], min1[kk + KK]);
+			max1[kk] = _mm_max_ps(max1[kk], max1[kk + KK]);
 		}
-
-		minv = Min(Min(simp_f32(min1, 0), simp_f32(min1, 1)),
-				   Min(simp_f32(min1, 2), simp_f32(min1, 3)));
-		maxv = Max(Max(simp_f32(max1, 0), simp_f32(max1, 1)),
-				   Max(simp_f32(max1, 2), simp_f32(max1, 3)));
+		
+		minv = _mm_reduce_min_ps(min1[0]);
+		maxv = _mm_reduce_max_ps(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < minv) minv = *A;
-		if (*A > maxv) maxv = *A;
+		minv = std::min(minv, *A);
+		maxv = std::max(maxv, *A);
 	}
 }
 
 TARGETSSE double GetMaxValSSE(double* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	double val = -DBL_MAX;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
 		__m128d max1[N];
-		REP(N) max1[kk] = _mm_set1_pd(val);
+		UNROLL(N) max1[kk] = _mm_set1_pd(val);
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N)
-			{
-				max1[kk] = _mm_max_pd(max1[kk], _mm_loadu_pd(A));
-				A += sizeof(__m128d) / sizeof(double);
-			}
+			UNROLL(N) { max1[kk] = _mm_max_pd(max1[kk], _mm_loadu_pd(A)); A += E128D; }
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = _mm_max_pd(max1[kk], max1[kk + KK]);
-
-		val = Max(simp_f64(max1, 0), simp_f64(max1, 1));
+		REDUCE(max1) max1[kk] = _mm_max_pd(max1[kk], max1[kk + KK]);
+		
+		val = _mm_reduce_max_pd(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 
 	return val;
@@ -549,33 +767,28 @@ TARGETSSE double GetMaxValSSE(double* A, int64 n)
 
 TARGETSSE float GetMaxValSSE(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 8
 	int64 i = 0;
 	float val = -FLT_MAX;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		__m128 max1[N], a[N];
-		REP(N) max1[kk] = _mm_set1_ps(val);
+		__m128 max1[N];
+		UNROLL(N) max1[kk] = _mm_set1_ps(val);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) { max1[kk] = _mm_max_ps(max1[kk], a[kk]); }
+			UNROLL(N) { max1[kk] = _mm_max_ps(max1[kk], _mm_loadu_ps(A)); A += E128F; }
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = _mm_max_ps(max1[kk], max1[kk + KK]);
-
-		val = Max(Max(simp_f32(max1, 0), simp_f32(max1, 1)),
-				  Max(simp_f32(max1, 2), simp_f32(max1, 3)));
+		REDUCE(max1) max1[kk] = _mm_max_ps(max1[kk], max1[kk + KK]);
+		
+		val = _mm_reduce_max_ps(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 
 	return val;
@@ -583,37 +796,41 @@ TARGETSSE float GetMaxValSSE(float* A, int64 n)
 
 TARGETSSE double GetMaxValSSE(double* A, int64 n, int64 sep)
 {
+	//suboptimal to compile
+	{
+		double val = -DBL_MAX;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			val = std::max(val, *A);
+		return val;
+	}
+
+#define N 4
 	int64 i = 0;
 	double val = -DBL_MAX;
 
-	if (n >= 8)
+	if (n >= N * E128D)
 	{
-		__m128d max1[2];
-		REP(2) max1[kk] = _mm_set1_pd(val);
-		REP(4) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+		__m128d max1[N];
+		UNROLL(N) max1[kk] = _mm_set1_pd(val);
+		
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(4) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			max1[0] = _mm_max_pd(max1[0], _mm_set_pd(A[-7 * sep], A[-8 * sep]));
-			max1[1] = _mm_max_pd(max1[1], _mm_set_pd(A[-5 * sep], A[-6 * sep]));
-
-			REP(4) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			max1[0] = _mm_max_pd(max1[0], _mm_set_pd(A[-7 * sep], A[-8 * sep]));
-			max1[1] = _mm_max_pd(max1[1], _mm_set_pd(A[-5 * sep], A[-6 * sep]));
+			UNROLL(N)
+			{
+				max1[kk] = _mm_max_pd(max1[kk], _mm_set_pd(A[1 * sep], A[0 * sep]));
+				A += E128D * sep;
+			}
 		}
 
-		max1[0] = _mm_max_pd(max1[0], max1[1]);
+		REDUCE(max1) max1[kk] = _mm_max_pd(max1[kk], max1[kk + KK]);
 
-		val = Max(simp_f64(max1, 0), simp_f64(max1, 1));
-
-		A -= 4 * sep;
+		val = _mm_reduce_max_pd(max1[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 
 	return val;
@@ -621,35 +838,41 @@ TARGETSSE double GetMaxValSSE(double* A, int64 n, int64 sep)
 
 TARGETSSE float GetMaxValSSE(float* A, int64 n, int64 sep)
 {
-	constexpr int N = 4;
+	//suboptimal to compile
+	{
+		float val = -FLT_MAX;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			val = std::max(val, *A);
+		return val;
+	}
+
+#define N 4
 	int64 i = 0;
 	float val = -FLT_MAX;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
 		__m128 max1[N];
-		REP(N) max1[kk] = _mm_set1_ps(val);
+		UNROLL(N) max1[kk] = _mm_set1_ps(val);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N)
+			UNROLL(N)
 			{
 				max1[kk] = _mm_max_ps(max1[kk], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep]));
-				A += sizeof(__m128) / sizeof(float) * sep;
+				A += E128F * sep;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = _mm_max_ps(max1[kk], max1[kk + KK]);
+		REDUCE(max1) max1[kk] = _mm_max_ps(max1[kk], max1[kk + KK]);
 
-		val = Max(Max(simp_f32(max1, 0), simp_f32(max1, 1)),
-				  Max(simp_f32(max1, 2), simp_f32(max1, 3)));
+		val = _mm_reduce_max_ps(max1[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 
 	return val;
@@ -657,34 +880,28 @@ TARGETSSE float GetMaxValSSE(float* A, int64 n, int64 sep)
 
 TARGETSSE double GetMinValSSE(double* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	double val = DBL_MAX;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
 		__m128d min1[N];
-		REP(N) min1[kk] = _mm_set1_pd(val);
+		UNROLL(N) min1[kk] = _mm_set1_pd(val);
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N)
-			{
-				min1[kk] = _mm_min_pd(min1[kk], _mm_loadu_pd(A));
-				A += sizeof(__m128d) / sizeof(double);
-			}
+			UNROLL(N) { min1[kk] = _mm_min_pd(min1[kk], _mm_loadu_pd(A)); A += E128D; }
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) min1[kk] = _mm_min_pd(min1[kk], min1[kk + KK]);
-
-		val = Min(simp_f64(min1, 0), simp_f64(min1, 1));
+		REDUCE(min1) min1[kk] = _mm_min_pd(min1[kk], min1[kk + KK]);
+		
+		val = _mm_reduce_min_pd(min1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A > val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
 
 	return val;
@@ -692,33 +909,28 @@ TARGETSSE double GetMinValSSE(double* A, int64 n)
 
 TARGETSSE float GetMinValSSE(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 8
 	int64 i = 0;
 	float val = FLT_MAX;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
 		__m128 min1[N], a[N];
-		REP(N) min1[kk] = _mm_set1_ps(val);
+		UNROLL(N) min1[kk] = _mm_set1_ps(val);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) { min1[kk] = _mm_min_ps(min1[kk], a[kk]); }
+			UNROLL(N) { min1[kk] = _mm_min_ps(min1[kk], _mm_loadu_ps(A)); A += E128F; }
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) min1[kk] = _mm_min_ps(min1[kk], min1[kk + KK]);
-
-		val = Min(Min(simp_f32(min1, 0), simp_f32(min1, 1)),
-				  Min(simp_f32(min1, 2), simp_f32(min1, 3)));
+		REDUCE(min1) min1[kk] = _mm_min_ps(min1[kk], min1[kk + KK]);
+		
+		val = _mm_reduce_min_ps(min1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A > val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
 
 	return val;
@@ -726,34 +938,33 @@ TARGETSSE float GetMinValSSE(float* A, int64 n)
 
 TARGETSSE int64 GetMinValSSE(int64* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	int64 val = 0x7FFFFFFFFFFFFFFF;
 
-	if (n >= N * sizeof(__m128i) / sizeof(int64))
+	if (n >= N * E128D)
 	{
-		__m128i min1[N], a[N], f[N];
-		REP(N) min1[kk] = _mm_set1_epi64x(0x7FFFFFFFFFFFFFFF);
+		__m128i min1[N];
+		UNROLL(N) min1[kk] = _mm_set1_epi64x(0x7FFFFFFFFFFFFFFF);
 
-		for (int64 l1 = n - N * sizeof(__m128i) / sizeof(int64); i <= l1; i += N * sizeof(__m128i) / sizeof(int64))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_si128((__m128i*)A); A += sizeof(__m128i) / sizeof(int64); }
-			
-			REP(N) f[kk] = _mm_cmpgt_epi64(min1[kk], a[kk]);
+			UNROLL(N) 
+			{ 
+				min1[kk] = _mm_castpd_si128(_mm_blendv_pd(_mm_castsi128_pd(min1[kk]), _mm_castsi128_pd(_mm_loadu_si128((__m128i*)A)), _mm_castsi128_pd(_mm_cmpgt_epi64(min1[kk], _mm_loadu_si128((__m128i*)A))))); 
 
-			REP(N) min1[kk] = _mm_castpd_si128(_mm_blendv_pd( _mm_castsi128_pd(min1[kk]), _mm_castsi128_pd(a[kk]), _mm_castsi128_pd(f[kk])));
+				A += E128D; 
+			}
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) min1[kk] = _mm_castpd_si128(_mm_blendv_pd( _mm_castsi128_pd(min1[kk]), _mm_castsi128_pd(min1[kk + KK]), _mm_castsi128_pd(_mm_cmpgt_epi64(min1[kk], min1[kk + KK]))));
-
-		val = Min(simp_i64(min1, 0), simp_i64(min1, 1));
+		REDUCE(min1) min1[kk] = _mm_castpd_si128(_mm_blendv_pd( _mm_castsi128_pd(min1[kk]), _mm_castsi128_pd(min1[kk + KK]), _mm_castsi128_pd(_mm_cmpgt_epi64(min1[kk], min1[kk + KK]))));
+		
+		val = _mm_reduce_min_epi64(min1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A > val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
 
 	return val;
@@ -761,20 +972,14 @@ TARGETSSE int64 GetMinValSSE(int64* A, int64 n)
 
 TARGETSSE void SetValSSE(uint* A, ushort* B, int64 n)
 {
+#define N 4
 	int64 i = 0;
 
-	if (n >= 8)
+	if (n >= N * E128F)
 	{
-		__m128i b;
-
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			b = _mm_loadu_si128((__m128i*)B);  B += 8;
-
-			_mm_storeu_si128((__m128i*)A, _mm_cvtepu16_epi32(b)); A += 4;
-
-			b = _mm_srli_si128(b, 8);
-			_mm_storeu_si128((__m128i*)A, _mm_cvtepu16_epi32(b)); A += 4;
+			UNROLL(N) { _mm_storeu_si128((__m128i*)A, _mm_cvtepu16_epi32(_mm_loadu_si64(B))); A += E128F; B += E128F;}
 		}
 	}
 
@@ -834,44 +1039,25 @@ TARGETSSE void ChargeLogSSE(int64& slog, double& prod, __m128& val)
 
 TARGETSSE double LogProdSSE(double* A, int64 n)
 {
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 32)
+	if (n >= N * E512D)
 	{
-		__m128d pd[4];
-		REP(4) pd[kk] = _mm_set1_pd(1.0);
+		__m128d pd[E512_128];
+		UNROLL(E512_128) pd[kk] = _mm_set1_pd(1.0);
 
-		for (int64 l1 = n - 32; i <= l1; i += 32)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(2)
-			{
-				pd[0] = _mm_mul_pd(pd[0], _mm_mul_pd(_mm_loadu_pd(A + 0), _mm_loadu_pd(A + 8)));
-				//f1 = _mm_cmplt_pd(pd[0], dunder);
-				//f2 = _mm_cmplt_pd(dover, pd[0]);
+			UNROLL(N) UNROLL(E512_128)
+			{ pd[kk] = _mm_mul_pd(pd[kk], _mm_loadu_pd(A));  A += E128D; }
 
-				pd[1] = _mm_mul_pd(pd[1], _mm_mul_pd(_mm_loadu_pd(A + 2), _mm_loadu_pd(A + 10)));
-				//f1 = _mm_or_pd(f1, _mm_cmplt_pd(pd[1], dunder));
-				//f2 = _mm_or_pd(f2, _mm_cmplt_pd(dover, pd[1]));
-
-				pd[2] = _mm_mul_pd(pd[2], _mm_mul_pd(_mm_loadu_pd(A + 4), _mm_loadu_pd(A + 12)));
-				//f1 = _mm_or_pd(f1, _mm_cmplt_pd(pd[2], dunder));
-				//f2 = _mm_or_pd(f2, _mm_cmplt_pd(dover, pd[2]));
-
-				pd[3] = _mm_mul_pd(pd[3], _mm_mul_pd(_mm_loadu_pd(A + 6), _mm_loadu_pd(A + 14)));
-				//f1 = _mm_or_pd(f1, _mm_cmplt_pd(pd[3], dunder));
-				//f2 = _mm_or_pd(f2, _mm_cmplt_pd(dover, pd[3]));
-
-				A += 16;
-			}
-
-			//f1 = _mm_or_pd(f1, f2);
-			//if (_mm_testz_pd(f1, f1)) [[likely]] continue;
-
-			REP(4) AddExponentSSE(slog, pd[kk]);
+			UNROLL(E512_128) AddExponentSSE(slog, pd[kk]);
 		}
 
-		REP(4) ChargeLogSSE(slog, prod, pd[kk]);
+		__m128d* pd1 = (__m128d*)pd;
+		UNROLL(E512_128) ChargeLogSSE(slog, prod, pd1[kk]);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -883,72 +1069,25 @@ TARGETSSE double LogProdSSE(double* A, int64 n)
 
 TARGETSSE double LogProdSSE(float* A, int64 n)
 {
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 64)
+	if (n >= N * E512D)
 	{
-		__m128d pd[4];
-		REP(4) pd[kk] = _mm_set1_pd(1.0);
+		__m128d pd[E512_128];
+		UNROLL(E512_128) pd[kk] = _mm_set1_pd(1.0);
 
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(4)
-			{
-				pd[0] = _mm_mul_pd(pd[0], _mm_mul_pd(
-							_mm_cvtps_pd(_mm_loadu_ps(A + 0)),
-							_mm_cvtps_pd(_mm_loadu_ps(A + 8))));
-				pd[1] = _mm_mul_pd(pd[1], _mm_mul_pd(
-							_mm_cvtps_pd(_mm_loadu_ps(A + 2)),
-							_mm_cvtps_pd(_mm_loadu_ps(A + 10))));
-				pd[2] = _mm_mul_pd(pd[2], _mm_mul_pd(
-							_mm_cvtps_pd(_mm_loadu_ps(A + 4)),
-							_mm_cvtps_pd(_mm_loadu_ps(A + 12))));
-				pd[3] = _mm_mul_pd(pd[3], _mm_mul_pd(
-							_mm_cvtps_pd(_mm_loadu_ps(A + 6)),
-							_mm_cvtps_pd(_mm_loadu_ps(A + 14))));
-				A += 16;
-			}
-
-			REP(4) AddExponentSSE(slog, pd[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{ pd[kk] = _mm_mul_pd(pd[kk], _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadu_si64(A)))); A += E128D; }
+				
+			UNROLL(E512_128) AddExponentSSE(slog, pd[kk]);
 		}
-
-		REP(4) ChargeLogSSE(slog, prod, pd[kk]);
-	}
-
-	for (; i < n; ++i, ++A)
-		ChargeLog(slog, prod, *A);
-
-	CloseLog(slog, prod);
-	return prod;
-}
-
-TARGETSSE float LogProdSSEx(float* A, int64 n)
-{
-	int64 i = 0;
-	int64 slog = 0; double prod = 1;
-
-	if (n >= 32)
-	{
-		__m128 pd[4];
-		REP(4) pd[kk] = _mm_set1_ps(1.0f);
-
-		for (int64 l1 = n - 32; i <= l1; i += 32)
-		{
-			pd[0] = _mm_mul_ps(pd[0], _mm_loadu_ps(A));
-			pd[1] = _mm_mul_ps(pd[1], _mm_loadu_ps(A + 4));
-			pd[2] = _mm_mul_ps(pd[2], _mm_loadu_ps(A + 8));
-			pd[3] = _mm_mul_ps(pd[3], _mm_loadu_ps(A + 12));
-			pd[0] = _mm_mul_ps(pd[0], _mm_loadu_ps(A + 16));
-			pd[1] = _mm_mul_ps(pd[1], _mm_loadu_ps(A + 20));
-			pd[2] = _mm_mul_ps(pd[2], _mm_loadu_ps(A + 24));
-			pd[3] = _mm_mul_ps(pd[3], _mm_loadu_ps(A + 28));
-
-			A += 32;
-			REP(4) AddExponentSSE(slog, pd[kk]);
-		}
-
-		REP(4) ChargeLogSSE(slog, prod, pd[kk]);
+		
+		__m128d* pd1 = (__m128d*)pd;
+		UNROLL(E512_128) ChargeLogSSE(slog, prod, pd1[kk]);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -960,122 +1099,83 @@ TARGETSSE float LogProdSSEx(float* A, int64 n)
 
 TARGETSSE double LogProdSSE(double* A, int64 n, int64 sep)
 {
+	//suboptimal to compile
+	{
+		int64 slog = 0; double prod = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			ChargeLog(slog, prod, *A);
+
+		CloseLog(slog, prod);
+		return prod;
+	}
+
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 8)
+	if (n >= N * E512D)
 	{
-		REP(4) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-		__m128d f1, f2, pd[4], v1[4], dunder = _mm_set1_pd(DOUBLE_UNDERFLOW), dover = _mm_set1_pd(DOUBLE_OVERFLOW);
-		REP(4) pd[kk] = _mm_set1_pd(1.0);
+		__m128d pd[E512_128];
+		UNROLL(E512_128) pd[kk] = _mm_set1_pd(1.0);
 
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(4)
-			{
-				_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-				_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-				v1[kk] = _mm_set_pd(A[-5 * sep], A[-6 * sep]);
-			}
+			UNROLL(N) UNROLL(E512_128) 
+			{ pd[kk] = _mm_mul_pd(pd[kk], _mm_set_pd(A[1 * sep], A[0 * sep])); A += E128D * sep; }
 
-			f1 = _mm_setzero_pd();
-			f2 = _mm_setzero_pd();
-
-			REP(4)
-			{
-				pd[kk] = _mm_mul_pd(pd[kk], v1[kk]);
-
-				f1 = _mm_or_pd(f1, _mm_cmplt_pd(pd[kk], dunder));
-				f2 = _mm_or_pd(f2, _mm_cmplt_pd(dover, pd[kk]));
-			}
-
-			f1 = _mm_or_pd(f1, f2);
-
-			if (_mm_testz_si128(_mm_castpd_si128(f1), _mm_castpd_si128(f1))) [[likely]] continue;
-
-			REP(4) AddExponentSSE(slog, pd[kk]);
+			UNROLL(E512_128) AddExponentSSE(slog, pd[kk]);
 		}
 
-		REP(4) ChargeLogSSE(slog, prod, pd[kk]);
-		A -= 4 * sep;
+		UNROLL(E512_128) ChargeLogSSE(slog, prod, pd[kk]);
 	}
 
 	for (; i < n; ++i, A += sep)
 		ChargeLog(slog, prod, *A);
 
 	CloseLog(slog, prod);
+
 	return prod;
 }
 
 TARGETSSE double LogProdSSE(float* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	int64 slog = 0; double prod = 1;
-
-	if (n >= 32)
+	//suboptimal to compile
 	{
-		REP(4) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
+		int64 slog = 0; double prod = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			ChargeLog(slog, prod, *A);
 
-		__m128d pd[2];
-		__m128 a1, a2;
-		REP(2) pd[kk] = _mm_set1_pd(1.0);
-
-		for (int64 l1 = n - 32; i <= l1; i += 32)
-		{
-			REP(8)
-			{
-				_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-				_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-				_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-				_mm_prefetch((const char*)A, _MM_HINT_T0); A += sep;
-
-				a1 = _mm_set_ps(A[-5 * sep], A[-6 * sep], A[-7 * sep], A[-8 * sep]);
-				a2 = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(a1), 8));
-
-				pd[0] = _mm_mul_pd(pd[0], _mm_cvtps_pd(a1));
-				pd[1] = _mm_mul_pd(pd[1], _mm_cvtps_pd(a2));
-			}
-
-			REP(2) AddExponentSSE(slog, pd[kk]);
-		}
-
-		REP(2) ChargeLogSSE(slog, prod, pd[kk]);
-		A -= 4 * sep;
+		CloseLog(slog, prod);
+		return prod;
 	}
 
-	for (; i < n; ++i, A += sep)
-		ChargeLog(slog, prod, *A);
-
-	CloseLog(slog, prod);
-	return prod;
-}
-
-TARGETSSE float LogProdSSEx(float* A, int64 n, int64 sep)
-{
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 32)
+	if (n >= N * E128F)
 	{
-		__m128 pd[4];
-		REP(4) pd[kk] = _mm_set1_ps(1.0f);
+		__m128d pd1 = _mm_set1_pd(1.0), pd2 = _mm_set1_pd(1.0);
+		__m128 a1, a2;
 
-		for (int64 l1 = n - 32; i <= l1; i += 32)
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			pd[0] = _mm_mul_ps(pd[0], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-			pd[1] = _mm_mul_ps(pd[1], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-			pd[2] = _mm_mul_ps(pd[2], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-			pd[3] = _mm_mul_ps(pd[3], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
+			UNROLL(N)
+			{
+				a1 = _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep]); A += E128F * sep;
+				a2 = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(a1), 8));
+				pd1 = _mm_mul_pd(pd1, _mm_cvtps_pd(a1));
+				pd2 = _mm_mul_pd(pd2, _mm_cvtps_pd(a2));
+			}
 
-			pd[0] = _mm_mul_ps(pd[0], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-			pd[1] = _mm_mul_ps(pd[1], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-			pd[2] = _mm_mul_ps(pd[2], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-			pd[3] = _mm_mul_ps(pd[3], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-
-			REP(4) AddExponentSSE(slog, pd[kk]);
+			AddExponentSSE(slog, pd1);
+			AddExponentSSE(slog, pd2);
 		}
 
-		REP(4) ChargeLogSSE(slog, prod, pd[kk]);
+		ChargeLogSSE(slog, prod, pd1);
+		ChargeLogSSE(slog, prod, pd2);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1087,148 +1187,65 @@ TARGETSSE float LogProdSSEx(float* A, int64 n, int64 sep)
 
 TARGETSSE double LogProdDivSSE(double* A, double* B, int64 n, int64 sep)
 {
-	int64 slog1 = 0; double prod1 = 1;
-	int64 slog2 = 0; double prod2 = 1;
-	for (int64 i = 0; i < n; ++i, A += sep, B += sep)
+	//suboptimal to compile
 	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-	return prod1 - prod2;
-
-	/*
-	int64 i = 0;
-	int64 slog1 = 0; double prod1 = 1;
-	int64 slog2 = 0; double prod2 = 1;
-
-	if (n >= 64)
-	{
-		__m128d pd1[4], pd2[4];
-		REP(4) pd1[kk] = pd2[kk] = _mm_set1_pd(1.0);
-
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		int64 slog1 = 0; double prod1 = 1;
+		int64 slog2 = 0; double prod2 = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep, B += sep)
 		{
-			REP(8)
-			{
-				pd1[0] = _mm_mul_pd(pd1[0], _mm_set_pd(A[1 * sep], A[0 * sep])); A += sep * 2;
-				pd2[0] = _mm_mul_pd(pd2[0], _mm_set_pd(B[1 * sep], B[0 * sep])); B += sep * 2;
-
-				pd1[1] = _mm_mul_pd(pd1[1], _mm_set_pd(A[1 * sep], A[0 * sep])); A += sep * 2;
-				pd2[1] = _mm_mul_pd(pd2[1], _mm_set_pd(B[1 * sep], B[0 * sep])); B += sep * 2;
-
-				pd1[2] = _mm_mul_pd(pd1[2], _mm_set_pd(A[1 * sep], A[0 * sep])); A += sep * 2;
-				pd2[2] = _mm_mul_pd(pd2[2], _mm_set_pd(B[1 * sep], B[0 * sep])); B += sep * 2;
-
-				pd1[3] = _mm_mul_pd(pd1[3], _mm_set_pd(A[1 * sep], A[0 * sep])); A += sep * 2;
-				pd2[3] = _mm_mul_pd(pd2[3], _mm_set_pd(B[1 * sep], B[0 * sep])); B += sep * 2;
-			}
-
-			REP(4) AddExponentSSE(slog1, pd1[kk]);
-			REP(4) AddExponentSSE(slog2, pd2[kk]);
+			ChargeLog(slog1, prod1, *A);
+			ChargeLog(slog2, prod2, *B);
 		}
 
-		REP(4) ChargeLogSSE(slog1, prod1, pd1[kk]);
-		REP(4) ChargeLogSSE(slog2, prod2, pd2[kk]);
+		CloseLog(slog1, prod1);
+		CloseLog(slog2, prod2);
+		return prod1 - prod2;
 	}
-
-	for (; i < n; ++i, A += sep, B += sep)
-	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-
-	return prod1 - prod2;
-	*/
 }
 
 TARGETSSE double LogProdDivSSE(float* A, float* B, int64 n, int64 sep)
 {
+	//suboptimal to compile
+	{
+		int64 slog1 = 0; double prod1 = 1;
+		int64 slog2 = 0; double prod2 = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep, B += sep)
+		{
+			ChargeLog(slog1, prod1, *A);
+			ChargeLog(slog2, prod2, *B);
+		}
+
+		CloseLog(slog1, prod1);
+		CloseLog(slog2, prod2);
+		return prod1 - prod2;
+	}
+
+#define N 8
 	int64 i = 0;
 	int64 slog1 = 0; double prod1 = 1;
 	int64 slog2 = 0; double prod2 = 1;
 
-	if (n >= 64)
+	if (n >= N * E512D)
 	{
-		__m128d pd1[4], pd2[4];
-		REP(4) pd1[kk] = pd2[kk] = _mm_set1_pd(1.0);
+		__m128d pd1[E512_128], pd2[E512_128];
+		UNROLL(E512_128) pd1[kk] = pd2[kk] = _mm_set1_pd(1.0);
 
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(8)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				pd1[0] = _mm_mul_pd(pd1[0], _mm_set_pd(A[1 * sep], A[0 * sep])); A += sep * 2;
-				pd2[0] = _mm_mul_pd(pd2[0], _mm_set_pd(B[1 * sep], B[0 * sep])); B += sep * 2;
-
-				pd1[1] = _mm_mul_pd(pd1[1], _mm_set_pd(A[1 * sep], A[0 * sep])); A += sep * 2;
-				pd2[1] = _mm_mul_pd(pd2[1], _mm_set_pd(B[1 * sep], B[0 * sep])); B += sep * 2;
-
-				pd1[2] = _mm_mul_pd(pd1[2], _mm_set_pd(A[1 * sep], A[0 * sep])); A += sep * 2;
-				pd2[2] = _mm_mul_pd(pd2[2], _mm_set_pd(B[1 * sep], B[0 * sep])); B += sep * 2;
-
-				pd1[3] = _mm_mul_pd(pd1[3], _mm_set_pd(A[1 * sep], A[0 * sep])); A += sep * 2;
-				pd2[3] = _mm_mul_pd(pd2[3], _mm_set_pd(B[1 * sep], B[0 * sep])); B += sep * 2;
+				pd1[kk] = _mm_mul_pd(pd1[kk], _mm_set_pd(A[1 * sep], A[0 * sep])); A += sep * E128D;
+				pd2[kk] = _mm_mul_pd(pd2[kk], _mm_set_pd(B[1 * sep], B[0 * sep])); B += sep * E128D;
 			}
 
-			REP(4) AddExponentSSE(slog1, pd1[kk]);
-			REP(4) AddExponentSSE(slog2, pd2[kk]);
+			UNROLL(E512_128) AddExponentSSE(slog1, pd1[kk]);
+			UNROLL(E512_128) AddExponentSSE(slog2, pd2[kk]);
 		}
 
-		REP(4) ChargeLogSSE(slog1, prod1, pd1[kk]);
-		REP(4) ChargeLogSSE(slog2, prod2, pd2[kk]);
-	}
-
-	for (; i < n; ++i, A += sep, B += sep)
-	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-
-	return prod1 - prod2;
-}
-
-TARGETSSE float LogProdDivSSEx(float* A, float* B, int64 n, int64 sep)
-{
-	int64 i = 0;
-	int64 slog1 = 0; double prod1 = 1;
-	int64 slog2 = 0; double prod2 = 1;
-
-	if (n >= 64)
-	{
-		__m128 pd1[4], pd2[4];
-		REP(4) pd1[kk] = pd2[kk] = _mm_set1_ps(1.0f);
-
-		for (int64 l1 = n - 64; i <= l1; i += 64)
-		{
-			REP(4)
-			{
-				pd1[0] = _mm_mul_ps(pd1[0], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-				pd2[0] = _mm_mul_ps(pd2[0], _mm_set_ps(B[3 * sep], B[2 * sep], B[1 * sep], B[0 * sep])); B += 4 * sep;
-
-				pd1[1] = _mm_mul_ps(pd1[1], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-				pd2[1] = _mm_mul_ps(pd2[1], _mm_set_ps(B[3 * sep], B[2 * sep], B[1 * sep], B[0 * sep])); B += 4 * sep;
-
-				pd1[2] = _mm_mul_ps(pd1[2], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-				pd2[2] = _mm_mul_ps(pd2[2], _mm_set_ps(B[3 * sep], B[2 * sep], B[1 * sep], B[0 * sep])); B += 4 * sep;
-
-				pd1[3] = _mm_mul_ps(pd1[3], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += 4 * sep;
-				pd2[3] = _mm_mul_ps(pd2[3], _mm_set_ps(B[3 * sep], B[2 * sep], B[1 * sep], B[0 * sep])); B += 4 * sep;
-			}
-
-			REP(4) AddExponentSSE(slog1, pd1[kk]);
-			REP(4) AddExponentSSE(slog2, pd2[kk]);
-		}
-
-		REP(4) ChargeLogSSE(slog1, prod1, pd1[kk]);
-		REP(4) ChargeLogSSE(slog2, prod2, pd2[kk]);
+		UNROLL(E512_128) ChargeLogSSE(slog1, prod1, pd1[kk]);
+		UNROLL(E512_128) ChargeLogSSE(slog2, prod2, pd2[kk]);
 	}
 
 	for (; i < n; ++i, A += sep, B += sep)
@@ -1247,18 +1264,17 @@ TARGETSSE int64 CountNonZeroSSE(byte* A, int64 n)
 {
 	uint64 re = 0;
 	int64 i = 0;
-
-	if (n >= 16)
+	
+	if (n >= E128B)
 	{
-		__m128i a = _mm_setzero_si128(), z = _mm_setzero_si128();
+		__m128i a = _mm_setzero_si128(), z = _mm_setzero_si128(), o = _mm_set1_epi8(0x01);
 
-		for (int64 l1 = n - 16; i <= l1; i += 16)
+		for (int64 l1 = n - E128B; i <= l1; i += E128B)
 		{
-			a = _mm_add_epi64(a, _mm_sad_epu8(z, _mm_sub_epi8(z, _mm_cmpeq_epi8(_mm_loadu_si128((__m128i*)A), z))));
-			A += 16;
+			a = _mm_add_epi64(a, _mm_sad_epu8(z, _mm_min_epu8(_mm_loadu_si128((__m128i*)A), o))); A += E128B;
 		}
 
-		re = i - (simd_u64(a, 0) + simd_u64(a, 1));
+		re = _mm_reduce_add_epi64(a);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -1269,24 +1285,21 @@ TARGETSSE int64 CountNonZeroSSE(byte* A, int64 n)
 
 TARGETSSE double SumSSE(double* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m128d s[N], a[N];
-		REP(N) s[kk] = _mm_setzero_pd();
+		__m128d s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) s[kk] = _mm_add_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _mm_add_pd(s[kk], _mm_loadu_pd(A)); A += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_pd(s[0]);
 	}
@@ -1302,30 +1315,21 @@ TARGETSSE double SumSSE(double* A, int64 n)
 
 TARGETSSE double SumSSE(float* A, int64 n)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N / 2 * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m128d s[N];
-		REP(N) s[kk] = _mm_setzero_pd();
+		__m128d s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N / 2 * sizeof(__m128) / sizeof(float); i <= l1; i += N / 2 * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
-			{
-				__m128 v1 = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float);
-				__m128d a1 = _mm_cvtps_pd(v1);
-				__m128d a2 = _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v1), 8)));
-
-				s[0 + (kk << 1)] = _mm_add_pd(s[0 + (kk << 1)], a1);
-				s[1 + (kk << 1)] = _mm_add_pd(s[1 + (kk << 1)], a2);
-			}
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _mm_add_pd(s[kk], _mm_set_pd(A[1], A[0])); A += 2; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_pd(s[0]);
 	}
@@ -1341,24 +1345,21 @@ TARGETSSE double SumSSE(float* A, int64 n)
 
 TARGETSSE float SumSSEx(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	float re = 0;
+	volatile float re = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m128 s[N], a[N];
-		REP(N) s[kk] = _mm_setzero_ps();
+		__m128 s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) s[kk] = _mm_add_ps(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _mm_add_ps(s[kk], _mm_loadu_ps(A)); A += E128F; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_ps(s[0]);
 	}
@@ -1374,26 +1375,21 @@ TARGETSSE float SumSSEx(float* A, int64 n)
 
 TARGETSSE int64 SumSSE(byte* A, int64 n)
 {
-	constexpr int N = 4;
-	uint64 re = 0;
+#define N 4
+	int64 re = 0;
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128i) / sizeof(byte))
+	if (n >= N * E128B)
 	{
-		__m128i s[N], a[N], z = _mm_setzero_si128();
-		REP(N) s[kk] = _mm_setzero_si128();
+		__m128i s = _mm_setzero_si128(), z = _mm_setzero_si128();
 
-		for (int64 l1 = n - N * sizeof(__m128i) / sizeof(byte); i <= l1; i += N * sizeof(__m128i) / sizeof(byte))
+		for (int64 l1 = n - N * E128B; i <= l1; i += N * E128B)
 		{
-			REP(N) { a[kk] = _mm_loadu_si128((__m128i*)A); A += sizeof(__m128i) / sizeof(byte); }
-
-			REP(N) s[kk] = _mm_add_epi64(s[kk], _mm_sad_epu8(a[kk], z));
+			UNROLL(N)
+			{ s = _mm_add_epi64(s, _mm_sad_epu8(_mm_loadu_si128((__m128i*)A), z)); A += E128B; }
 		}
-
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_epi64(s[kk], s[kk + KK]);
-
-		re += simd_u64(s, 0) + simd_u64(s, 1);
+		
+		re += _mm_reduce_add_epi64(s);
 	}
 
 	for (; i < n; ++i)
@@ -1404,28 +1400,35 @@ TARGETSSE int64 SumSSE(byte* A, int64 n)
 
 TARGETSSE double SumSSE(double* A, int64 n, int64 sep)
 {
-	constexpr int N = 8;
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	//suboptimal to compile
 	{
-		REP(4) _mm_prefetch((const char*)(A + sep * kk), _MM_HINT_T0);
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re += *A;
+		return re;
+	}
 
-		__m128d s[N], a[N];
-		REP(N) s[kk] = _mm_setzero_pd();
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E512D)
+	{
+		__m128d s[E512_128] = { 0 };
+		UNROLL(E128D) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N * 2) { _mm_prefetch((const char*)(A + sep * kk), _MM_HINT_T0); }
-
-			REP(N) { a[kk] = _mm_set_pd(A[sep], A[0]); A += sep * sizeof(__m128d) / sizeof(double); }
-
-			REP(N) s[kk] = _mm_add_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) _mm_prefetch((const char*)&A[E128D * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm_add_pd(s[kk], _mm_set_pd(A[1 * sep], A[0 * sep]));
+				A += E128D * sep;
+			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_pd(s[0]);
 	}
@@ -1441,26 +1444,37 @@ TARGETSSE double SumSSE(double* A, int64 n, int64 sep)
 
 TARGETSSE double SumSSE(float* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= 4)
+	//suboptimal to compile
 	{
-		REP(4) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re += *A;
+		return re;
+	}
 
-		__m128d s1 = _mm_setzero_pd(), s2 = _mm_setzero_pd();
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - 4; i <= l1; i += 4)
+	if (n >= N * E512D)
+	{
+		__m128d s[E512_128] = { 0 };
+		UNROLL(E128D) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(4) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-
-			s1 = _mm_add_pd(s1, _mm_set_pd(A[-7 * sep], A[-8 * sep]));
-			s2 = _mm_add_pd(s2, _mm_set_pd(A[-5 * sep], A[-6 * sep]));
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) _mm_prefetch((const char*)&A[E128D * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm_add_pd(s[kk], _mm_set_pd(A[1 * sep], A[0 * sep])); 
+				A += E128D * sep;
+			}
 		}
 
-		s1 = _mm_add_pd(s1, s2);
-		re = _mm_reduce_add_pd(s1);
-		A -= 4 * sep;
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+
+		re = _mm_reduce_add_pd(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1474,49 +1488,35 @@ TARGETSSE double SumSSE(float* A, int64 n, int64 sep)
 
 TARGETSSE float SumSSEx(float* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	float re = 0;
-
-	if (n >= 8)
+	//suboptimal to compile
 	{
-		__m128 s1 = _mm_setzero_ps(), s2 = _mm_setzero_ps();
-
-		for (int64 l1 = n - 8; i <= l1; i += 8)
-		{
-			s1 = _mm_add_ps(s1, _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep]));
-			s2 = _mm_add_ps(s2, _mm_set_ps(A[7 * sep], A[6 * sep], A[5 * sep], A[4 * sep]));
-			A += 8 * sep;
-		}
-
-		s1 = _mm_add_ps(s1, s2);
-		re = _mm_reduce_add_ps(s1);
+		float re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re += *A;
+		return re;
 	}
 
-	for (; i < n; ++i, A += sep)
-	{
-		volatile float v1 = *A;
-		re += v1;
-	}
-
-	return re;
-
-	/*
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	float re = 0;
+	volatile float re = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m128 s[N];
-		REP(N) s[kk] = _mm_setzero_ps();
+		__m128 s[E512_128] = { 0 };
+		UNROLL(E128F) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { s[kk] = _mm_add_ps(s[kk], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep])); A += sep * sizeof(__m128) / sizeof(float); }
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128F) _mm_prefetch((const char*)&A[E128F * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm_add_ps(s[kk], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep]));
+				A += E128F * sep; 
+			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_ps(s[0]);
 	}
@@ -1528,135 +1528,26 @@ TARGETSSE float SumSSEx(float* A, int64 n, int64 sep)
 	}
 
 	return re;
-	*/
-}
-
-TARGETSSE void SumSSE(double* A, double** B, int64 k, int64 n)
-{
-	constexpr int N = 16;
-	int64 i = 0;
-
-	if (n >= N * sizeof(__m128d) / sizeof(double))
-	{
-		__m128d a[N];
-
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
-		{
-			REP(N) a[kk] = _mm_setzero_pd();
-
-			for (int64 j = 0; j < k; ++j)
-				REP(N) a[kk] = _mm_add_pd(a[kk], _mm_loadu_pd(&B[j][i + kk * sizeof(__m128d) / sizeof(double)]));
-
-			REP(N) { _mm_storeu_pd(A, a[kk]); A += sizeof(__m128d) / sizeof(double); }
-		}
-	}
-
-	for (; i < n; ++i)
-	{
-		double Ai = 0;
-		for (int64 j = 0; j < k; ++j)
-			Ai += B[j][i];
-		*A++ = Ai;
-	}
-}
-
-TARGETSSE void SumSSE(float* A, float** B, int64 k, int64 n)
-{
-	constexpr int N = 16;
-	int64 i = 0;
-
-	if (n >= N * sizeof(__m128) / sizeof(float))
-	{
-		__m128d a[N * 2];
-
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
-		{
-			REP(N * 2) a[kk] = _mm_setzero_pd();
-			
-			for (int64 j = 0; j < k; ++j)
-				REP(N)
-				{
-					__m128 v1 = _mm_loadu_ps(&B[j][i + kk * sizeof(__m128) / sizeof(float)]);
-					a[0 + (kk << 1)] = _mm_add_pd(a[0 + (kk << 1)], _mm_cvtps_pd(v1));
-					a[1 + (kk << 1)] = _mm_add_pd(a[1 + (kk << 1)], _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v1), 8))));
-				}
-
-			REP(N)
-			{
-				_mm_storeu_ps(A, _mm_shuffle_ps(
-					_mm_cvtpd_ps(a[0 + (kk << 1)]), 
-					_mm_cvtpd_ps(a[1 + (kk << 1)]), _MM_SHUFFLE(1, 0, 1, 0)));
-				
-				A += sizeof(__m128) / sizeof(float); 
-			}
-		}
-	}
-
-	for (; i < n; ++i)
-	{
-		double Ai = 0;
-		for (int64 j = 0; j < k; ++j)
-			Ai += B[j][i];
-		*A++ = Ai;
-	}
-
-	/*
-	int64 i = 0;
-
-	if (n >= 16)
-	{
-		for (int64 l1 = n - 16; i <= l1; i += 16)
-		{
-			__m128 a1 = _mm_setzero_ps();
-			__m128 a2 = _mm_setzero_ps();
-			__m128 a3 = _mm_setzero_ps();
-			__m128 a4 = _mm_setzero_ps();
-
-			for (int64 j = 0; j < k; ++j)
-			{
-				a1 = _mm_add_ps(a1, _mm_loadu_ps(&B[j][i +  0]));
-				a2 = _mm_add_ps(a2, _mm_loadu_ps(&B[j][i +  4]));
-				a3 = _mm_add_ps(a3, _mm_loadu_ps(&B[j][i +  8]));
-				a4 = _mm_add_ps(a4, _mm_loadu_ps(&B[j][i + 12]));
-			}
-
-			_mm_storeu_ps(&A[i +  0], a1);
-			_mm_storeu_ps(&A[i +  4], a2);
-			_mm_storeu_ps(&A[i +  8], a3);
-			_mm_storeu_ps(&A[i + 12], a4);
-		}
-	}
-
-	for (; i < n; ++i)
-	{
-		float Ai = 0;
-		for (int64 j = 0; j < k; ++j)
-			Ai += B[j][i];
-		A[i] = Ai;
-	}
-	*/
 }
 
 TARGETSSE double ProdSSE(double* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 1;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m128d s[N], a[N];
-		REP(N) s[kk] = _mm_set1_pd(1);
+		__m128d s[E512_128];
+		UNROLL(E512_128) s[kk] = _mm_set1_pd(1);
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) s[kk] = _mm_mul_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _mm_mul_pd(s[kk], _mm_loadu_pd(A)); A += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_mul_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_mul_pd(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_mul_pd(s[0]);
 	}
@@ -1672,30 +1563,22 @@ TARGETSSE double ProdSSE(double* A, int64 n)
 
 TARGETSSE double ProdSSE(float* A, int64 n)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
-	double re = 1;
+	volatile double re = 0;
 
-	if (n >= N / 2 * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m128d s[N];
-		REP(N) s[kk] = _mm_set1_pd(1);
+		__m128d s[E512_128];
+		UNROLL(E512_128) s[kk] = _mm_set1_pd(1);
 
-		for (int64 l1 = n - N / 2 * sizeof(__m128) / sizeof(float); i <= l1; i += N / 2 * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
-			{
-				__m128 v1 = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float);
-				__m128d a1 = _mm_cvtps_pd(v1);
-				__m128d a2 = _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v1), 8)));
-
-				s[0 + (kk << 1)] = _mm_mul_pd(s[0 + (kk << 1)], a1);
-				s[1 + (kk << 1)] = _mm_mul_pd(s[1 + (kk << 1)], a2);
-			}
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _mm_mul_pd(s[kk], _mm_set_pd(A[1], A[0])); A += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_mul_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_mul_pd(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_mul_pd(s[0]);
 	}
@@ -1711,64 +1594,69 @@ TARGETSSE double ProdSSE(float* A, int64 n)
 
 TARGETSSE float ProdSSEx(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	volatile float re = 1;
+	volatile float re = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m128 s[N], a[N];
-		REP(N) s[kk] = _mm_set1_ps(1);
+		__m128 s[E512_128];
+		UNROLL(E512_128) s[kk] = _mm_set1_ps(1);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) s[kk] = _mm_mul_ps(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _mm_mul_ps(s[kk], _mm_loadu_ps(A)); A += E128F; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_mul_ps(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_mul_ps(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_mul_ps(s[0]);
 	}
 
 	for (; i < n; ++i)
-		re *= *A++;
+	{
+		volatile float v1 = *A++;
+		re *= v1;
+	}
 
 	return re;
 }
 
 TARGETSSE double ProdSSE(double* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	double re = 1;
-
-	if (n >= 8)
+	//suboptimal to compile
 	{
-		REP(8) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
+		double re = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re *= *A;
+		return re;
+	}
 
-		__m128d pd1 = _mm_set1_pd(1.0), pd2 = _mm_set1_pd(1.0);
-		__m128d pd3 = _mm_set1_pd(1.0), pd4 = _mm_set1_pd(1.0);
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+	if (n >= N * E512D)
+	{
+		__m128d s[E512_128];
+		UNROLL(E512_128) s[kk] = _mm_set1_pd(1);
+		UNROLL(E128D) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(2) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			pd1 = _mm_mul_pd(pd1, _mm_set_pd(A[-9 * sep], A[-10 * sep]));
-
-			REP(2) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			pd2 = _mm_mul_pd(pd2, _mm_set_pd(A[-9 * sep], A[-10 * sep]));
-
-			REP(2) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			pd3 = _mm_mul_pd(pd3, _mm_set_pd(A[-9 * sep], A[-10 * sep]));
-
-			REP(2) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			pd4 = _mm_mul_pd(pd4, _mm_set_pd(A[-9 * sep], A[-10 * sep]));
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) _mm_prefetch((const char*)&A[E128D * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm_mul_pd(s[kk], _mm_set_pd(A[1 * sep], A[0 * sep]));
+				A += E128D * sep;
+			}
 		}
 
-		pd1 = _mm_mul_pd(_mm_mul_pd(pd1, pd2), _mm_mul_pd(pd3, pd4));
-		re = _mm_reduce_mul_pd(pd1);
-		A -= 8 * sep;
+		REDUCE(s) s[kk] = _mm_mul_pd(s[kk], s[kk + KK]);
+
+		re = _mm_reduce_mul_pd(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1782,34 +1670,38 @@ TARGETSSE double ProdSSE(double* A, int64 n, int64 sep)
 
 TARGETSSE double ProdSSE(float* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	double re = 1;
-
-	if (n >= 8)
+	//suboptimal to compile
 	{
-		REP(8) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
+		double re = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re *= *A;
+		return re;
+	}
 
-		__m128d pd1 = _mm_set1_pd(1.0), pd2 = _mm_set1_pd(1.0);
-		__m128d pd3 = _mm_set1_pd(1.0), pd4 = _mm_set1_pd(1.0);
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+	if (n >= N * E512D)
+	{
+		__m128d s[E512_128];
+		UNROLL(E512_128) s[kk] = _mm_set1_pd(1);
+		UNROLL(E128D) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(2) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			pd1 = _mm_mul_pd(pd1, _mm_set_pd(A[-9 * sep], A[-10 * sep]));
-
-			REP(2) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			pd2 = _mm_mul_pd(pd2, _mm_set_pd(A[-9 * sep], A[-10 * sep]));
-
-			REP(2) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			pd3 = _mm_mul_pd(pd3, _mm_set_pd(A[-9 * sep], A[-10 * sep]));
-
-			REP(2) { _mm_prefetch((const char*)A, _MM_HINT_T0); A += sep; }
-			pd4 = _mm_mul_pd(pd4, _mm_set_pd(A[-9 * sep], A[-10 * sep]));
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) _mm_prefetch((const char*)&A[E128D * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm_mul_pd(s[kk], _mm_set_pd(A[1 * sep], A[0 * sep]));
+				A += E128D * sep;
+			}
 		}
 
-		pd1 = _mm_mul_pd(_mm_mul_pd(pd1, pd2), _mm_mul_pd(pd3, pd4));
-		re = _mm_reduce_mul_pd(pd1);
-		A -= 8 * sep;
+		REDUCE(s) s[kk] = _mm_mul_pd(s[kk], s[kk + KK]);
+
+		re = _mm_reduce_mul_pd(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1823,28 +1715,38 @@ TARGETSSE double ProdSSE(float* A, int64 n, int64 sep)
 
 TARGETSSE float ProdSSEx(float* A, int64 n, int64 sep)
 {
-	constexpr int N = 4;
-	int64 i = 0;
-	volatile float re = 1;
-
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	//suboptimal to compile
 	{
-		__m128 pd[4];
-		REP(N) pd[kk] = _mm_set1_ps(1.0f);
+		float re = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re *= *A;
+		return re;
+	}
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		__m128 s[E512_128];
+		UNROLL(E512_128) s[kk] = _mm_set1_ps(1);
+		UNROLL(E128F) _mm_prefetch((const char*)&A[kk * sep], _MM_HINT_T0);
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				pd[kk] = _mm_mul_ps(pd[kk], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep]));
-				A += 4 * sep;
+				UNROLL(E128F) _mm_prefetch((const char*)&A[E128F * sep + kk * sep], _MM_HINT_T0);
+				s[kk] = _mm_mul_ps(s[kk], _mm_set_ps(A[3 * sep], A[2 * sep], A[1 * sep], A[0 * sep]));
+				A += E128F * sep;
 			}
 		}
 
-		for (int KK = sizeof(pd) / sizeof(pd[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) pd[kk] = _mm_mul_ps(pd[kk], pd[kk + KK]);
+		REDUCE(s) s[kk] = _mm_mul_ps(s[kk], s[kk + KK]);
 
-		re = _mm_reduce_mul_ps(pd[0]);
+		re = _mm_reduce_mul_ps(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1858,26 +1760,21 @@ TARGETSSE float ProdSSEx(float* A, int64 n, int64 sep)
 
 TARGETSSE double SumSquareSSE(double* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m128d s[N], a[N];
-		REP(N) s[kk] = _mm_setzero_pd();
+		__m128d s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm_mul_pd(a[kk], a[kk]);
-
-			REP(N) s[kk] = _mm_add_pd(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _mm_fmaddx_pd(_mm_loadu_pd(A), _mm_loadu_pd(A), s[kk]); A += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_pd(s[0]);
 	}
@@ -1893,33 +1790,24 @@ TARGETSSE double SumSquareSSE(double* A, int64 n)
 
 TARGETSSE double SumSquareSSE(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N / 2 * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m128d s[N];
-		REP(N) s[kk] = _mm_setzero_pd();
+		__m128d s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N / 2 * sizeof(__m128) / sizeof(float); i <= l1; i += N / 2 * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				__m128 v1 = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float);
-				__m128d a1 = _mm_cvtps_pd(v1);
-				__m128d a2 = _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v1), 8)));
-
-				a1 = _mm_mul_pd(a1, a1);
-				a2 = _mm_mul_pd(a2, a2);
-
-				s[0 + (kk << 1)] = _mm_add_pd(s[0 + (kk << 1)], a1);
-				s[1 + (kk << 1)] = _mm_add_pd(s[1 + (kk << 1)], a2);
+				__m128d v1 = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadu_si64(A))); A += E128D;
+				s[kk] = _mm_fmaddx_pd(v1, v1, s[kk]);
 			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_pd(s[0]);
 	}
@@ -1933,74 +1821,28 @@ TARGETSSE double SumSquareSSE(float* A, int64 n)
 	return re;
 }
 
-TARGETSSE float SumSquareSSEx(float* A, int64 n)
-{
-	constexpr int N = 8;
-	int64 i = 0;
-	float re = 0;
-
-	if (n >= N * sizeof(__m128) / sizeof(float))
-	{
-		__m128 s[N], a[N];
-		REP(N) s[kk] = _mm_setzero_ps();
-
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
-		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) a[kk] = _mm_mul_ps(a[kk], a[kk]);
-
-			REP(N) s[kk] = _mm_add_ps(s[kk], a[kk]);
-		}
-
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
-
-		re = _mm_reduce_add_ps(s[0]);
-	}
-
-	for (; i < n; ++i, ++A)
-	{
-		volatile float v1 = *A * *A;
-		re += v1;
-	}
-
-	return re;
-}
-
 TARGETSSE int64 SumSquareSSE(byte* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	uint64 re = 0;
 
-	if (n >= N * sizeof(__m128i) / sizeof(byte))
+	if (n >= N * E128B)
 	{
-		__m128i a, t[2], s = _mm_setzero_si128();
-		REP(2) t[kk] = _mm_setzero_si128();
+		__m128i t = _mm_setzero_si128(), s = _mm_setzero_si128();
 
-		for (int64 l1 = n - N * sizeof(__m128i) / sizeof(byte); i <= l1; i += N * sizeof(__m128i) / sizeof(byte))
+		for (int64 l1 = n - N * E128B; i <= l1; i += N * E128B)
 		{
-			REP(N)
-			{
-				a = _mm_loadu_si128((__m128i*)A);
-				A += sizeof(__m128i) / sizeof(byte);
-				s = _mm_add_epi16(s, _mm_maddubs_epi16(a, a));
-			}
+			UNROLL(N) { s = _mm_add_epi16(s, _mm_maddubs_epi16(_mm_loadu_si128((__m128i*)A), _mm_loadu_si128((__m128i*)A))); A += E128B; }
 
-			if ((i & (sizeof(__m128i) / sizeof(byte) * 128 - 1)) == 0)
+			if ((i & (E128B * 128 - 1)) == 0) [[unlikely]]
 			{
-				t[0] = _mm_add_epi32(t[0], _mm_cvtepi16_epi32(s));
-				t[1] = _mm_add_epi32(t[1], _mm_cvtepi16_epi32(_mm_srli_si128(s, 8)));
-				s = _mm_setzero_si128();
+				UNROLL(E512_128) { t = _mm_add_epi64(t, _mm_cvtepi16_epi64(s)); s = _mm_srli_si128(s, 4); }
 			}
 		}
-
-		t[0] = _mm_add_epi32(t[0], _mm_cvtepi16_epi32(s));
-		t[1] = _mm_add_epi32(t[1], _mm_cvtepi16_epi32(_mm_srli_si128(s, 8)));
-		t[0] = _mm_add_epi32(t[0], t[1]);
-
-		re = simp_i32(t, 0) + simp_i32(t, 1) + simp_i32(t, 2) + simp_i32(t, 3);
+		
+		UNROLL(E512_128) { t = _mm_add_epi64(t, _mm_cvtepi16_epi64(s)); s = _mm_srli_si128(s, 4); }
+		re = _mm_reduce_add_epi64(t);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -2011,30 +1853,30 @@ TARGETSSE int64 SumSquareSSE(byte* A, int64 n)
 
 TARGETSSE void SumSumSquareSSE(double* A, int64 n, double& sum, double& sumsq)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re1 = 0, re2 = 0;
+	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m128d s1[N], s2[N], a[N];
-		REP(N) s1[kk] = s2[kk] = _mm_setzero_pd();
+		__m128d s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
+			UNROLL(N) UNROLL(E512_128)
+			{
+				__m128d v1 = _mm_loadu_pd(A); A += E128D;
 
-			REP(N) s1[kk] = _mm_add_pd(s1[kk], a[kk]);
+				s1[kk] = _mm_add_pd(v1, s1[kk]);
 
-			REP(N) a[kk] = _mm_mul_pd(a[kk], a[kk]);
-
-			REP(N) s2[kk] = _mm_add_pd(s2[kk], a[kk]);
+				s2[kk] = _mm_fmaddx_pd(v1, v1, s2[kk]);
+			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = _mm_add_pd(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = _mm_add_pd(s2[kk], s2[kk + KK]);
+			s1[kk] = _mm_add_pd(s1[kk], s1[kk + KK]);
+			s2[kk] = _mm_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _mm_reduce_add_pd(s1[0]);
@@ -2055,38 +1897,30 @@ TARGETSSE void SumSumSquareSSE(double* A, int64 n, double& sum, double& sumsq)
 
 TARGETSSE void SumSumSquareSSE(float* A, int64 n, double& sum, double& sumsq)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
-	double re1 = 0, re2 = 0;
+	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N / 2 * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m128d s1[N], s2[N];
-		REP(N) s1[kk] = s2[kk] = _mm_setzero_pd();
+		__m128d s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
 
-		for (int64 l1 = n - N / 2 * sizeof(__m128) / sizeof(float); i <= l1; i += N / 2 * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				__m128 v1 = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float);
-				__m128d a1 = _mm_cvtps_pd(v1);
-				__m128d a2 = _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v1), 8)));
+				__m128d v1 = _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadu_si64(A))); A += E128D;
 
-				s1[0 + (kk << 1)] = _mm_add_pd(s1[0 + (kk << 1)], a1);
-				s1[1 + (kk << 1)] = _mm_add_pd(s1[1 + (kk << 1)], a2);
+				s1[kk] = _mm_add_pd(v1, s1[kk]);
 
-				a1 = _mm_mul_pd(a1, a1);
-				a2 = _mm_mul_pd(a2, a2);
-
-				s2[0 + (kk << 1)] = _mm_add_pd(s2[0 + (kk << 1)], a1);
-				s2[1 + (kk << 1)] = _mm_add_pd(s2[1 + (kk << 1)], a2);
+				s2[kk] = _mm_fmaddx_pd(v1, v1, s2[kk]);
 			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = _mm_add_pd(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = _mm_add_pd(s2[kk], s2[kk + KK]);
+			s1[kk] = _mm_add_pd(s1[kk], s1[kk + KK]);
+			s2[kk] = _mm_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _mm_reduce_add_pd(s1[0]);
@@ -2107,103 +1941,118 @@ TARGETSSE void SumSumSquareSSE(float* A, int64 n, double& sum, double& sumsq)
 
 TARGETSSE double SumProdDivSSE(double* A1, double* A2, double* B, int64 sep, int64 n)
 {
-	constexpr int N = 2;
+	//suboptimal to compile
+	{
+		double re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
+		{
+			volatile double v1 = (double)*A1 * (double)*B;
+			volatile double v2 = (double)*A2 * (double)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
+
+#define N 2
 	int64 i = 0;
 	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		REP(8) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+		UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
 
-		__m128d s1[2], s2[2], b;
-		REP(2) s1[kk] = s2[kk] = _mm_setzero_pd();
-
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		__m128d s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
+		
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				b = _mm_set_pd(B[-9 * sep], B[-10 * sep]);
-				s1[0] = _mm_add_pd(s1[0], _mm_mul_pd(_mm_loadu_pd(A1), b)); A1 += 2;
-				s2[0] = _mm_add_pd(s2[0], _mm_mul_pd(_mm_loadu_pd(A2), b)); A2 += 2;
+				UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
 
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				b = _mm_set_pd(B[-9 * sep], B[-10 * sep]);
-				s1[1] = _mm_add_pd(s1[1], _mm_mul_pd(_mm_loadu_pd(A1), b)); A1 += 2;
-				s2[1] = _mm_add_pd(s2[1], _mm_mul_pd(_mm_loadu_pd(A2), b)); A2 += 2;
+				__m128d b = _mm_set_pd(B[-3 * sep], B[-4 * sep]);
+				
+				s1[kk] = _mm_fmaddx_pd(b, _mm_loadu_pd(A1), s1[kk]); A1 += E128D;
+
+				s2[kk] = _mm_fmaddx_pd(b, _mm_loadu_pd(A2), s2[kk]); A2 += E128D;
 			}
 		}
 
-		s1[0] = _mm_add_pd(s1[0], s1[1]);
-		s2[0] = _mm_add_pd(s2[0], s2[1]);
+		REDUCE(s1)
+		{
+			s1[kk] = _mm_add_pd(s1[kk], s1[kk + KK]);
+			s2[kk] = _mm_add_pd(s2[kk], s2[kk + KK]);
+		}
 
 		re1 = _mm_reduce_add_pd(s1[0]);
 		re2 = _mm_reduce_add_pd(s2[0]);
 
-		B -= 8 * sep;
+		B -= E128D * sep;
 	}
 
 	for (; i < n; ++i, A1++, A2++, B += sep)
 	{
-		volatile double v1 = *A1 * *B;
-		volatile double v2 = *A2 * *B;
+		volatile double v1 = (double)*A1 * (double)*B;
+		volatile double v2 = (double)*A2 * (double)*B;
 		re1 += v1;
 		re2 += v2;
 	}
 
 	return re1 / re2;
+
 }
 
 TARGETSSE double SumProdDivSSE(double* A1, float* A2, float* B, int64 sep, int64 n)
 {
-	constexpr int N = 2;
+	//suboptimal to compile
+	{
+		double re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
+		{
+			volatile double v1 = (double)*A1 * (double)*B;
+			volatile double v2 = (double)*A2 * (double)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
+
+#define N 2
 	int64 i = 0;
 	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		REP(6) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+		UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
 
-		__m128 a2[N * 2];
-		__m128d a1[N * 2], b[N * 2], s1[N * 2], s2[N * 2];
-		REP(N * 2) s1[kk] = s2[kk] = _mm_setzero_pd();
+		__m128d s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				a1[0 + (kk << 1)] = _mm_loadu_pd(A1); A1 += 2;
-				a2[0 + (kk << 1)] = _mm_loadu_ps(A2); A2 += 4;
-				b[0 + (kk << 1)] = _mm_set_pd(B[-7 * sep], B[-8 * sep]);
+				UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
 
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				a1[1 + (kk << 1)] = _mm_loadu_pd(A1); A1 += 2;
-				a2[1 + (kk << 1)] = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(a2[0 + (kk << 1)]), 8));
-				b[1 + (kk << 1)] = _mm_set_pd(B[-7 * sep], B[-8 * sep]);
+				__m128d b = _mm_set_pd(B[-3 * sep], B[-4 * sep]);
 
-				s1[0 + (kk << 1)] = _mm_add_pd(s1[0 + (kk << 1)], _mm_mul_pd(a1[0 + (kk << 1)], b[0 + (kk << 1)]));
-				s2[0 + (kk << 1)] = _mm_add_pd(s2[0 + (kk << 1)], _mm_mul_pd(_mm_cvtps_pd(a2[0 + (kk << 1)]), b[0 + (kk << 1)]));
+				s1[kk] = _mm_fmaddx_pd(_mm_loadu_pd(A1), b, s1[kk]); A1 += E128D;
 
-				s1[1 + (kk << 1)] = _mm_add_pd(s1[1 + (kk << 1)], _mm_mul_pd(a1[1 + (kk << 1)], b[1 + (kk << 1)]));
-				s2[1 + (kk << 1)] = _mm_add_pd(s2[1 + (kk << 1)], _mm_mul_pd(_mm_cvtps_pd(a2[1 + (kk << 1)]), b[1 + (kk << 1)]));
+				s2[kk] = _mm_fmaddx_pd(_mm_cvtps_pd(_mm_castsi128_ps(_mm_loadu_si64(A2))), b, s2[kk]); A2 += E128D;
 			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = _mm_add_pd(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = _mm_add_pd(s2[kk], s2[kk + KK]);
+			s1[kk] = _mm_add_pd(s1[kk], s1[kk + KK]);
+			s2[kk] = _mm_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _mm_reduce_add_pd(s1[0]);
 		re2 = _mm_reduce_add_pd(s2[0]);
 
-		B -= 6 * sep;
+		B -= E128D * sep;
 	}
 
 	for (; i < n; ++i, A1++, A2++, B += sep)
@@ -2219,52 +2068,54 @@ TARGETSSE double SumProdDivSSE(double* A1, float* A2, float* B, int64 sep, int64
 
 TARGETSSE double SumProdDivSSE(float* A1, float* A2, float* B, int64 sep, int64 n)
 {
-	constexpr int N = 2;
+	//suboptimal to compile
+	{
+		double re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
+		{
+			volatile double v1 = (double)*A1 * (double)*B;
+			volatile double v2 = (double)*A2 * (double)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
+
+#define N 2
 	int64 i = 0;
 	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		REP(6) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+		UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
 
-		__m128d s1[N * 2], s2[N * 2], b[N * 2];
-		REP(N * 2) s1[kk] = s2[kk] = _mm_setzero_pd();
+		__m128d s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				b[0 + (kk << 1)] = _mm_set_pd(B[-7 * sep], B[-8 * sep]);
+				UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
 
-				__m128 a11 = _mm_loadu_ps(A1); A1 += sizeof(__m128) / sizeof(float);
-				__m128 a21 = _mm_loadu_ps(A2); A2 += sizeof(__m128) / sizeof(float);
+				__m128d b = _mm_set_pd(B[-3 * sep], B[-4 * sep]);
 
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				b[1 + (kk << 1)] = _mm_set_pd(B[-7 * sep], B[-8 * sep]);
+				s1[kk] = _mm_fmaddx_pd(_mm_cvtps_pd(_mm_castsi128_ps(_mm_loadu_si64(A1))), b, s1[kk]); A1 += E128D;
 
-				__m128 a12 = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(a11), 8));
-				__m128 a22 = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(a21), 8));
-
-				s1[0 + (kk << 1)] = _mm_add_pd(s1[0 + (kk << 1)], _mm_mul_pd(_mm_cvtps_pd(a11), b[0 + (kk << 1)]));
-				s2[0 + (kk << 1)] = _mm_add_pd(s2[0 + (kk << 1)], _mm_mul_pd(_mm_cvtps_pd(a21), b[0 + (kk << 1)]));
-				s1[1 + (kk << 1)] = _mm_add_pd(s1[1 + (kk << 1)], _mm_mul_pd(_mm_cvtps_pd(a12), b[1 + (kk << 1)]));
-				s2[1 + (kk << 1)] = _mm_add_pd(s2[1 + (kk << 1)], _mm_mul_pd(_mm_cvtps_pd(a22), b[1 + (kk << 1)])); 
+				s2[kk] = _mm_fmaddx_pd(_mm_cvtps_pd(_mm_castsi128_ps(_mm_loadu_si64(A2))), b, s2[kk]); A2 += E128D;
 			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = _mm_add_pd(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = _mm_add_pd(s2[kk], s2[kk + KK]);
+			s1[kk] = _mm_add_pd(s1[kk], s1[kk + KK]);
+			s2[kk] = _mm_add_pd(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _mm_reduce_add_pd(s1[0]);
 		re2 = _mm_reduce_add_pd(s2[0]);
 
-		B -= 6 * sep;
+		B -= E128D * sep;
 	}
 
 	for (; i < n; ++i, A1++, A2++, B += sep)
@@ -2280,71 +2131,63 @@ TARGETSSE double SumProdDivSSE(float* A1, float* A2, float* B, int64 sep, int64 
 
 TARGETSSE float SumProdDivSSEx(float* A1, float* A2, float* B, int64 sep, int64 n)
 {
-	constexpr int N = 4;
-	int64 i = 0;
-	volatile float re1 = 0, re2 = 0;
-
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	//suboptimal to compile
 	{
-		__m128 s1[N], s2[N], b;
-		REP(N) s1[kk] = s2[kk] = _mm_setzero_ps();
-
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		float re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
 		{
-			REP(N)
-			{
-				b = _mm_set_ps(B[3 * sep], B[2 * sep], B[1 * sep], B[0 * sep]); B += sizeof(__m128) / sizeof(float) * sep;
-				s1[kk] = _mm_add_ps(s1[kk], _mm_mul_ps(_mm_loadu_ps(A1), b)); A1 += sizeof(__m128) / sizeof(float);
-				s2[kk] = _mm_add_ps(s2[kk], _mm_mul_ps(_mm_loadu_ps(A2), b)); A2 += sizeof(__m128) / sizeof(float);
-			}
+			volatile float v1 = (float)*A1 * (float)*B;
+			volatile float v2 = (float)*A2 * (float)*B;
+			re1 += v1;
+			re2 += v2;
 		}
-
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
-		{
-			REP(KK) s1[kk] = _mm_add_ps(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = _mm_add_ps(s2[kk], s2[kk + KK]);
-		}
-
-		re1 = _mm_reduce_add_ps(s1[0]);
-		re2 = _mm_reduce_add_ps(s2[0]);
+		return re1 / re2;
 	}
-
-	for (; i < n; ++i, A1++, A2++, B += sep)
-	{
-		volatile float v1 = *A1 * *B;
-		volatile float v2 = *A2 * *B;
-		re1 += v1;
-		re2 += v2;
-	}
-
-	return re1 / re2;
 }
 
 TARGETSSE double SumProdSSE(double* A, double* B, int64 sep, int64 n)
 {
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= 2)
+	//suboptimal to compile
 	{
-		_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-		_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-
-		__m128d s = _mm_setzero_pd();
-
-		for (int64 l1 = n - 2; i <= l1; i += 2)
-		{
-			_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-			_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-			s = _mm_add_pd(s, _mm_mul_pd(_mm_loadu_pd(A), _mm_set_pd(B[-3 * sep], B[-4 * sep])));
-			A += 2;
-		}
-
-		re = _mm_reduce_add_pd(s); 
-		B -= 2 * sep;
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A++, B += sep)
+			re += (double)*A * (double)*B;
+		return re;
 	}
 
-	for (; i < n; ++i, ++A, ++B)
+#define N 2
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+
+		__m128d s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N)
+			{
+				UNROLL(E512_128)
+				{
+					UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+					
+					s[kk] = _mm_fmaddx_pd(_mm_loadu_pd(A), _mm_set_pd(B[-4 * sep], B[-3 * sep]), s[kk]); A += E128D;
+				}
+			}
+		}
+
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]); 
+
+		re = _mm_reduce_add_pd(s[0]);
+
+		B -= E128D * sep;
+	}
+
+	for (; i < n; ++i, ++A, B += sep)
 	{
 		volatile double v1 = *A * *B;
 		re += v1;
@@ -2355,36 +2198,42 @@ TARGETSSE double SumProdSSE(double* A, double* B, int64 sep, int64 n)
 
 TARGETSSE double SumProdSSE(float* A, float* B, int64 sep, int64 n)
 {
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= 4)
+	//suboptimal to compile
 	{
-		_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-		_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-		_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-		_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A++, B += sep)
+			re += (double)*A * (double)*B;
+		return re;
+	}
 
-		__m128d s1 = _mm_setzero_pd(), s2 = _mm_setzero_pd();
-		__m128 a;
+#define N 2
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - 4; i <= l1; i += 4)
+	if (n >= N * E512D)
+	{
+		UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+
+		__m128d s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-			_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-			a = _mm_loadu_ps(A); A += 4;
-			s1 = _mm_add_pd(s1, _mm_mul_pd(_mm_cvtps_pd(a), _mm_set_pd(B[-5 * sep], B[-6 * sep])));
-
-			_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-			_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-			a = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(a), 8));
-			s2 = _mm_add_pd(s2, _mm_mul_pd(_mm_cvtps_pd(a), _mm_set_pd(B[-5 * sep], B[-6 * sep])));
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
+				
+				s[kk] = _mm_fmaddx_pd(_mm_cvtps_pd(_mm_castsi128_ps(_mm_loadu_si64(A))), _mm_set_pd(B[-3 * sep], B[-4 * sep]), s[kk]); 
+				
+				A += E128D;
+			}
 		}
 
-		s1 = _mm_add_pd(s1, s2);
-		re = _mm_reduce_add_pd(s1); 
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
 
-		B -= 4 * sep;
+		re = _mm_reduce_add_pd(s[0]);
+
+		B -= E128D * sep;
 	}
 
 	for (; i < n; ++i, A++, B += sep)
@@ -2398,78 +2247,43 @@ TARGETSSE double SumProdSSE(float* A, float* B, int64 sep, int64 n)
 
 TARGETSSE float SumProdSSEx(float* A, float* B, int64 sep, int64 n)
 {
-	constexpr int N = 4;
-	int64 i = 0;
-	volatile float re = 0;
-
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	//suboptimal to compile
 	{
-		REP(N) { _mm_prefetch((const char*)B, _MM_HINT_T0); B += sep; }
-
-		__m128 s[N];
-		REP(N) s[kk] = _mm_setzero_ps();
-
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		float re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A++, B += sep)
 		{
-			REP(N)
-			{
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-				_mm_prefetch((const char*)B, _MM_HINT_T0); B += sep;
-
-				s[kk] = _mm_add_ps(s[kk], _mm_mul_ps(_mm_loadu_ps(A), _mm_set_ps(B[-5 * sep], B[-6 * sep], B[-7 * sep], B[-8 * sep])));
-				A += sizeof(__m128) / sizeof(float);
-			}
+			volatile float v1 = *A * *B;
+			re += v1;
 		}
-
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
-
-		re = _mm_reduce_add_ps(s[0]);
-
-		B -= 4 * sep;
+		return re;
 	}
-
-	for (; i < n; ++i, A++, B += sep)
-	{
-		volatile float v1 = *A * *B;
-		re += v1;
-	}
-
-	return re;
 }
 
 TARGETSSE double SumProdSSE(double* A, double* B, int64 n)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m128d s[N];
-		REP(N) s[kk] = _mm_setzero_pd();
+		__m128d s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
-			{
-				s[kk] = _mm_add_pd(s[kk], _mm_mul_pd(_mm_loadu_pd(A), _mm_loadu_pd(B)));
-				A += sizeof(__m128d) / sizeof(double);
-				B += sizeof(__m128d) / sizeof(double);
-			}
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _mm_fmaddx_pd(_mm_loadu_pd(A), _mm_loadu_pd(B), s[kk]); A += E128D; B += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_pd(s[0]);
 	}
 
 	for (; i < n; ++i, ++A, ++B)
 	{
-		volatile double v1 = *A * *B;
+		volatile double v1 = (double)*A * (double)*B;
 		re += v1;
 	}
 
@@ -2478,32 +2292,21 @@ TARGETSSE double SumProdSSE(double* A, double* B, int64 n)
 
 TARGETSSE double SumProdSSE(float* A, float* B, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N / 2 * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		__m128d s[N];
-		REP(N) s[kk] = _mm_setzero_pd();
+		__m128d s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N / 2 * sizeof(__m128) / sizeof(float); i <= l1; i += N / 2 * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
-			{
-				__m128 v1 = _mm_loadu_ps(A), v2 = _mm_loadu_ps(B);
-				A += sizeof(__m128) / sizeof(float);
-				B += sizeof(__m128) / sizeof(float);
-				s[0 + (kk << 1)] = _mm_add_pd(s[0 + (kk << 1)], _mm_mul_pd(_mm_cvtps_pd(v1), _mm_cvtps_pd(v2)));
-
-				v1 = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v1), 8));
-				v2 = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8));
-				s[1 + (kk << 1)] = _mm_add_pd(s[1 + (kk << 1)], _mm_mul_pd(_mm_cvtps_pd(v1), _mm_cvtps_pd(v2)));
-			}
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _mm_fmaddx_pd(_mm_cvtps_pd(_mm_castsi128_ps(_mm_loadu_si64(A))), _mm_cvtps_pd(_mm_castsi128_ps(_mm_loadu_si64(B))), s[kk]); A += E128D; B += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_pd(s[0]);
 	}
@@ -2519,34 +2322,148 @@ TARGETSSE double SumProdSSE(float* A, float* B, int64 n)
 
 TARGETSSE float SumProdSSEx(float* A, float* B, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
 	volatile float re = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m128 s[N];
-		REP(N) s[kk] = _mm_setzero_ps();
+		__m128 s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N)
-			{
-				s[kk] = _mm_add_ps(s[kk], _mm_mul_ps(_mm_loadu_ps(A), _mm_loadu_ps(B)));
-				A += sizeof(__m128) / sizeof(float);
-				B += sizeof(__m128) / sizeof(float);
-			}
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _mm_fmaddx_ps(_mm_loadu_ps(A), _mm_loadu_ps(B), s[kk]); A += E128F; B += E128F; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
 
 		re = _mm_reduce_add_ps(s[0]);
 	}
 
 	for (; i < n; ++i, ++A, ++B)
 	{
-		volatile float v1 = *A * *B;
+		volatile float v1 = (float)*A * (float)*B;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGETSSE double SumProdSSE(double* A, double* B, double* C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m128d s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _mm_fmaddx_pd(_mm_mul_pd(_mm_loadu_pd(A), _mm_loadu_pd(B)), _mm_loadu_pd(C), s[kk]); A += E128D; B += E128D; C += E128D; }
+		}
+
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+
+		re = _mm_reduce_add_pd(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B, ++C)
+	{
+		volatile double v1 = (double)*A * (double)*B * (double)*C;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGETSSE float SumProdSSE(float* A, float* B, float* C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		__m128 s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
+		{
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _mm_fmaddx_ps(_mm_mul_ps(_mm_loadu_ps(A), _mm_loadu_ps(B)), _mm_loadu_ps(C), s[kk]); A += E128F; B += E128F; C += E128F; }
+		}
+
+		REDUCE(s) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
+
+		re = _mm_reduce_add_ps(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B, ++C)
+	{
+		volatile float v1 = (float)*A * (float)*B * (float)*C;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGETSSE double SumSqProdSSE(double* A, double* B, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		__m128d s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _mm_fmaddx_pd(_mm_mul_pd(_mm_loadu_pd(A), _mm_loadu_pd(A)), _mm_loadu_pd(B), s[kk]); A += E128D; B += E128D; }
+		}
+
+		REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+
+		re = _mm_reduce_add_pd(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B)
+	{
+		volatile double v1 = (double)*A * (double)*A * (double)*B;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGETSSE float SumSqProdSSE(float* A, float* B, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		__m128 s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
+		{
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _mm_fmaddx_ps(_mm_mul_ps(_mm_loadu_ps(A), _mm_loadu_ps(A)), _mm_loadu_ps(B), s[kk]); A += E128F; B += E128F; }
+		}
+
+		REDUCE(s) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
+
+		re = _mm_reduce_add_ps(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B)
+	{
+		volatile float v1 = (float)*A * (float)*A * (float)*B;
 		re += v1;
 	}
 
@@ -2555,22 +2472,15 @@ TARGETSSE float SumProdSSEx(float* A, float* B, int64 n)
 
 TARGETSSE void AddSSE(double* A, double* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		__m128d a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) { b[kk] = _mm_loadu_pd(B); B += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm_add_pd(a[kk], b[kk]);
-
-			REP(N) _mm_storeu_pd(A + (kk - N) * sizeof(__m128d) / sizeof(double), a[kk]);
+			UNROLL(N) UNROLL(E512_128) 
+			{ _mm_storeu_pd(A, _mm_add_pd(_mm_loadu_pd(A), _mm_loadu_pd(B))); A += E128D; B += E128D; }
 		}
 	}
 
@@ -2580,22 +2490,15 @@ TARGETSSE void AddSSE(double* A, double* B, int64 n)
 
 TARGETSSE void AddSSE(float* A, float* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		__m128 a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) { b[kk] = _mm_loadu_ps(B); B += sizeof(__m128) / sizeof(float); }
-
-			REP(N) a[kk] = _mm_add_ps(a[kk], b[kk]);
-
-			REP(N) _mm_storeu_ps(A + (kk - N) * sizeof(__m128) / sizeof(float), a[kk]);
+			UNROLL(N) UNROLL(E512_128) 
+			{ _mm_storeu_ps(A, _mm_add_ps(_mm_loadu_ps(A), _mm_loadu_ps(B))); A += E128F; B += E128F; }
 		}
 	}
 
@@ -2605,22 +2508,14 @@ TARGETSSE void AddSSE(float* A, float* B, int64 n)
 
 TARGETSSE void AddSSE(int64* A, int64* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128i) / sizeof(int64))
+	if (n >= N * E128D)
 	{
-		__m128i a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m128i) / sizeof(int64); i <= l1; i += N * sizeof(__m128i) / sizeof(int64))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_si128((__m128i*)A); A += sizeof(__m128i) / sizeof(int64); }
-
-			REP(N) { b[kk] = _mm_loadu_si128((__m128i*)B); B += sizeof(__m128i) / sizeof(int64); }
-
-			REP(N) a[kk] = _mm_add_epi64(a[kk], b[kk]);
-
-			REP(N) _mm_storeu_si128((__m128i*)(A + (kk - N) * sizeof(__m128i) / sizeof(int64)), a[kk]);
+			UNROLL(N) { _mm_storeu_si128((__m128i*)A, _mm_add_epi64(_mm_loadu_si128((__m128i*)A), _mm_loadu_si128((__m128i*)B))); A += E128D; B += E128D; }
 		}
 	}
 
@@ -2630,22 +2525,14 @@ TARGETSSE void AddSSE(int64* A, int64* B, int64 n)
 
 TARGETSSE void AddSSE(int* A, int* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128i) / sizeof(int))
+	if (n >= N * E128F)
 	{
-		__m128i a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m128i) / sizeof(int); i <= l1; i += N * sizeof(__m128i) / sizeof(int))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_si128((__m128i*)A); A += sizeof(__m128i) / sizeof(int); }
-
-			REP(N) { b[kk] = _mm_loadu_si128((__m128i*)B); B += sizeof(__m128i) / sizeof(int); }
-
-			REP(N) a[kk] = _mm_add_epi32(a[kk], b[kk]);
-
-			REP(N) _mm_storeu_si128((__m128i*)(A + (kk - N) * sizeof(__m128i) / sizeof(int)), a[kk]);
+			UNROLL(N) { _mm_storeu_si128((__m128i*)A, _mm_add_epi32(_mm_loadu_si128((__m128i*)A), _mm_loadu_si128((__m128i*)B))); A += E128F; B += E128F; }
 		}
 	}
 
@@ -2655,20 +2542,16 @@ TARGETSSE void AddSSE(int* A, int* B, int64 n)
 
 TARGETSSE void AddSSE(int* A, int B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128i) / sizeof(int))
+	if (n >= N * E128F)
 	{
-		__m128i a[N], b = _mm_set1_epi32(B);
+		__m128i b = _mm_set1_epi32(B);
 
-		for (int64 l1 = n - N * sizeof(__m128i) / sizeof(int); i <= l1; i += N * sizeof(__m128i) / sizeof(int))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_si128((__m128i*)A); A += sizeof(__m128i) / sizeof(int); }
-
-			REP(N) a[kk] = _mm_add_epi32(a[kk], b);
-
-			REP(N) _mm_storeu_si128((__m128i*)(A + (kk - N) * sizeof(__m128i) / sizeof(int)), a[kk]);
+			UNROLL(N) { _mm_storeu_si128((__m128i*)A, _mm_add_epi32(_mm_loadu_si128((__m128i*)A), b)); A += E128F; }
 		}
 	}
 
@@ -2678,20 +2561,16 @@ TARGETSSE void AddSSE(int* A, int B, int64 n)
 
 TARGETSSE void AddSSE(double* A, double B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		__m128d b = _mm_set1_pd(B), a[N];
+		__m128d b = _mm_set1_pd(B);
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm_add_pd(a[kk], b);
-
-			REP(N) _mm_storeu_pd(A + (kk - N) * sizeof(__m128d) / sizeof(double), a[kk]);
+			UNROLL(N) {_mm_storeu_pd(A, _mm_add_pd(_mm_loadu_pd(A), b)); A += E128D; }
 		}
 	}
 
@@ -2701,20 +2580,16 @@ TARGETSSE void AddSSE(double* A, double B, int64 n)
 
 TARGETSSE void AddSSE(float* A, float B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		__m128 b = _mm_set1_ps(B), a[N];
+		__m128 b = _mm_set1_ps(B);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) a[kk] = _mm_add_ps(a[kk], b);
-
-			REP(N) _mm_storeu_ps(A + (kk - N) * sizeof(__m128) / sizeof(float), a[kk]);
+			UNROLL(N) { _mm_storeu_ps(A, _mm_add_ps(_mm_loadu_ps(A), b)); A += E128F; }
 		}
 	}
 
@@ -2722,130 +2597,102 @@ TARGETSSE void AddSSE(float* A, float B, int64 n)
 		*A += B;
 }
 
-TARGETSSE void MulSSE(double* C, double* A, double* B, int64 n)
+TARGETSSE void MulSSE(double* A, double* B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		__m128d a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) { b[kk] = _mm_loadu_pd(B); B += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm_mul_pd(a[kk], b[kk]);
-
-			REP(N) { _mm_storeu_pd(C, a[kk]); C += sizeof(__m128d) / sizeof(double); }
+			UNROLL(N) { _mm_storeu_pd(A, _mm_mul_pd(_mm_loadu_pd(B), _mm_loadu_pd(C))); A += E128D; B += E128D; C += E128D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * *B++;
-		*C++ = v1;
+		volatile double v1 = *B++ * *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETSSE void MulSSE(float* C, float* A, float* B, int64 n)
+TARGETSSE void MulSSE(float* A, float* B, float* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		__m128 a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) { b[kk] = _mm_loadu_ps(B); B += sizeof(__m128) / sizeof(float); }
-
-			REP(N) a[kk] = _mm_mul_ps(a[kk], b[kk]);
-
-			REP(N) { _mm_storeu_ps(C, a[kk]); C += sizeof(__m128) / sizeof(float); }
+			UNROLL(N) { _mm_storeu_ps(A, _mm_mul_ps(_mm_loadu_ps(B), _mm_loadu_ps(C))); A += E128F; B += E128F; C += E128F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * *B++;
-		*C++ = v1;
+		volatile float v1 = *B++ * *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETSSE void MulSSE(double* C, double* A, double B, int64 n)
+TARGETSSE void MulSSE(double* A, double* B, double C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		__m128d b = _mm_set1_pd(B), a[N];
+		__m128d c = _mm_set1_pd(C);
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm_mul_pd(a[kk], b);
-
-			REP(N) { _mm_storeu_pd(C, a[kk]); C += sizeof(__m128d) / sizeof(double); }
+			UNROLL(N) { _mm_storeu_pd(A, _mm_mul_pd(_mm_loadu_pd(B), c)); A += E128D; B += E128D; }
 		}
 	}
-	
+
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * B;
-		*C++ = v1;
+		volatile double v1 = *B++ * C;
+		*A++ = v1;
 	}
 }
 
-TARGETSSE void MulSSE(float* C, float* A, float B, int64 n)
+TARGETSSE void MulSSE(float* A, float* B, float C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		__m128 b = _mm_set1_ps(B), a[N];
+		__m128 c = _mm_set1_ps(C);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) a[kk] = _mm_mul_ps(a[kk], b);
-
-			REP(N) { _mm_storeu_ps(C, a[kk]); C += sizeof(__m128) / sizeof(float); }
+			UNROLL(N) { _mm_storeu_ps(A, _mm_mul_ps(_mm_loadu_ps(B), c)); A += E128F; B += E128F;}
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * B;
-		*C++ = v1;
+		volatile float v1 = *B++ * C;
+		*A++ = v1;
 	}
 }
 
 TARGETSSE void MulSSE(double* A, double B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		__m128d b = _mm_set1_pd(B), a[N];
+		__m128d b = _mm_set1_pd(B);
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) a[kk] = _mm_mul_pd(a[kk], b);
-
-			REP(N) _mm_storeu_pd(A + (kk - N) * sizeof(__m128d) / sizeof(double), a[kk]);
+			UNROLL(N) { _mm_storeu_pd(A, _mm_mul_pd(_mm_loadu_pd(A), b)); A += E128D; }
 		}
 	}
 
@@ -2858,20 +2705,16 @@ TARGETSSE void MulSSE(double* A, double B, int64 n)
 
 TARGETSSE void MulSSE(float* A, float B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		__m128 b = _mm_set1_ps(B), a[N];
+		__m128 b = _mm_set1_ps(B);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) a[kk] = _mm_mul_ps(a[kk], b);
-
-			REP(N) _mm_storeu_ps(A + (kk - N) * sizeof(__m128) / sizeof(float), a[kk]);
+			UNROLL(N) { _mm_storeu_ps(A,_mm_mul_ps(_mm_loadu_ps(A), b)); A += E128F; }
 		}
 	}
 
@@ -2882,183 +2725,241 @@ TARGETSSE void MulSSE(float* A, float B, int64 n)
 	}
 }
 
-TARGETSSE void AddProdSSE(double* C, double* A, double* B, int64 n)
+TARGETSSE void DivSSE(double* A, double B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		__m128d a[N];
+		__m128d b = _mm_set1_pd(B);
 
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) { a[kk] = _mm_mul_pd(a[kk], _mm_loadu_pd(B)); B += sizeof(__m128d) / sizeof(double); }
-
-			double* C2 = C;
-
-			REP(N) { a[kk] = _mm_add_pd(a[kk], _mm_loadu_pd(C)); C += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) { _mm_storeu_pd(C2, a[kk]); C2 += sizeof(__m128d) / sizeof(double); }
+			UNROLL(N) { _mm_storeu_pd(A, _mm_div_pd(b, _mm_loadu_pd(C))); A += E128D; C += E128D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * *B++;
-		*C++ += v1;
+		volatile double v1 = B / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETSSE void AddProdSSE(float* C, float* A, float* B, int64 n)
+TARGETSSE void DivSSE(float* A, float B, float* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= 4 * N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		__m128 a[N];
+		__m128 b = _mm_set1_ps(B);
 
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N) { a[kk] = _mm_mul_ps(a[kk], _mm_loadu_ps(B)); B += sizeof(__m128) / sizeof(float); }
-
-			float* C2 = C;
-
-			REP(N) { a[kk] = _mm_add_ps(a[kk], _mm_loadu_ps(C)); C += sizeof(__m128) / sizeof(float); }
-
-			REP(N) { _mm_storeu_ps(C2, a[kk]); C2 += sizeof(__m128) / sizeof(float); }
+			UNROLL(N) { _mm_storeu_ps(A, _mm_div_ps(b, _mm_loadu_ps(C))); A += E128F; C += E128F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * *B++;
-		*C++ += v1;
+		volatile float v1 = B / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETSSE void AddProdSSE(double* C, double* A, double B, int64 n)
+TARGETSSE void DivSSE(double* A, double* B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= 4 * N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		__m128d a[N], b = _mm_set1_pd(B);
-
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128d) / sizeof(double); }
-
-			REP(N)  a[kk] = _mm_mul_pd(a[kk], b);
-
-			double* C2 = C;
-
-			REP(N) { a[kk] = _mm_add_pd(a[kk], _mm_loadu_pd(C)); C += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) { _mm_storeu_pd(C2, a[kk]); C2 += sizeof(__m128d) / sizeof(double); }
+			UNROLL(N) { _mm_storeu_pd(A, _mm_div_pd(_mm_loadu_pd(B), _mm_loadu_pd(C))); A += E128D; B += E128D; C += E128D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * B;
-		*C++ += v1;
+		volatile double v1 = *B++ / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETSSE void AddProdSSE(double* C, float* A, double B, int64 n)
+TARGETSSE void DivSSE(float* A, float* B, float* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= 4 * N * sizeof(__m128d) / sizeof(double))
+	if (n >= N * E128F)
 	{
-		__m128d a[N], b = _mm_set1_pd(B);
-
-		for (int64 l1 = n - N * sizeof(__m128d) / sizeof(double); i <= l1; i += N * sizeof(__m128d) / sizeof(double))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N / 2) 
-			{
-				__m128 v1 = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float);
-				
-				a[0 + (kk << 1)] = _mm_cvtps_pd(v1); 
-				a[1 + (kk << 1)] = _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v1), 8)));
-			}
-
-			REP(N)  a[kk] = _mm_mul_pd(a[kk], b);
-
-			double* C2 = C;
-
-			REP(N) { a[kk] = _mm_add_pd(a[kk], _mm_loadu_pd(C)); C += sizeof(__m128d) / sizeof(double); }
-
-			REP(N) { _mm_storeu_pd(C2, a[kk]); C2 += sizeof(__m128d) / sizeof(double); }
+			UNROLL(N) { _mm_storeu_ps(A, _mm_div_ps(_mm_loadu_ps(B), _mm_loadu_ps(C))); A += E128F; B += E128F; C += E128F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * B;
-		*C++ += v1;
+		volatile float v1 = *B++ / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETSSE void AddProdSSE(float* C, float* A, float B, int64 n)
+TARGETSSE void AddProdSSE(double* A, double* B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 1
 	int64 i = 0;
 
-	if (n >= 4 * N * sizeof(__m128) / sizeof(float))
+	if (n >= N * E128D)
 	{
-		__m128 a[N], b = _mm_set1_ps(B);
-
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(float); i <= l1; i += N * sizeof(__m128) / sizeof(float))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = _mm_loadu_ps(A); A += sizeof(__m128) / sizeof(float); }
-
-			REP(N)  a[kk] = _mm_mul_ps(a[kk], b);
-
-			float* C2 = C;
-
-			REP(N) { a[kk] = _mm_add_ps(a[kk], _mm_loadu_ps(C)); C += sizeof(__m128) / sizeof(float); }
-
-			REP(N) { _mm_storeu_ps(C2, a[kk]); C2 += sizeof(__m128) / sizeof(float); }
+			UNROLL(N) { _mm_storeu_pd(A, _mm_fmaddx_pd(_mm_loadu_pd(B), _mm_loadu_pd(C), _mm_loadu_pd(A))); A += E128D; B += E128D; C += E128D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * B;
-		*C++ += v1;
+		volatile double v1 = *B++ * *C++;
+		*A++ += v1;
+	}
+}
+
+TARGETSSE void AddProdSSE(float* A, float* B, float* C, int64 n)
+{
+#define N 1
+	int64 i = 0;
+
+	if (n >= N * E128F)
+	{
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
+		{
+			UNROLL(N) { _mm_storeu_ps(A, _mm_fmaddx_ps(_mm_loadu_ps(B), _mm_loadu_ps(C), _mm_loadu_ps(A))); A += E128F; B += E128F; C += E128F; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile float v1 = *B++ * *C++;
+		*A++ += v1;
+	}
+}
+
+TARGETSSE void AddProdSSE(double* A, double* B, double C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+
+	if (n >= N * E128D)
+	{
+		__m128d b[N], c = _mm_set1_pd(C);
+
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
+		{
+			UNROLL(N) { b[kk] = _mm_loadu_pd(B); B += E128D; }
+
+			UNROLL(N)  b[kk] = _mm_mul_pd(b[kk], c);
+
+			double* A2 = A;
+
+			UNROLL(N) { b[kk] = _mm_add_pd(b[kk], _mm_loadu_pd(A)); A += E128D; }
+
+			UNROLL(N) { _mm_storeu_pd(A2, b[kk]); A2 += E128D; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile double v1 = *B++ * C;
+		*A++ += v1;
+	}
+}
+
+TARGETSSE void AddProdSSE(double* A, float* B, double C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+
+	if (n >= N * E128D)
+	{
+		__m128d b[N], c = _mm_set1_pd(C);
+
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
+		{
+			__m128 v1 = _mm_loadu_ps(B); B += E128F;
+			b[0] = _mm_cvtps_pd(v1);
+			b[1] = _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v1), 8)));
+
+			__m128 v2 = _mm_loadu_ps(B); B += E128F;
+			b[2] = _mm_cvtps_pd(v2);
+			b[3] = _mm_cvtps_pd(_mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
+
+			UNROLL(N) b[kk] = _mm_mul_pd(b[kk], c);
+
+			double* A2 = A;
+
+			UNROLL(N) { b[kk] = _mm_add_pd(b[kk], _mm_loadu_pd(A)); A += E128D; }
+
+			UNROLL(N) { _mm_storeu_pd(A2, b[kk]); A2 += E128D; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile double v1 = *B++ * C;
+		*A++ += v1;
+	}
+}
+
+TARGETSSE void AddProdSSE(float* A, float* B, float C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+
+	if (n >= N * E128F)
+	{
+		__m128 b[N], c = _mm_set1_ps(C);
+
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
+		{
+			UNROLL(N) { b[kk] = _mm_loadu_ps(B); B += E128F; }
+
+			UNROLL(N)  b[kk] = _mm_mul_ps(b[kk], c);
+
+			float* A2 = A;
+
+			UNROLL(N) { b[kk] = _mm_add_ps(b[kk], _mm_loadu_ps(A)); A += E128F; }
+
+			UNROLL(N) { _mm_storeu_ps(A2, b[kk]); A2 += E128F; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile float v1 = *B++ * C;
+		*A++ += v1;
 	}
 }
 
 TARGETSSE void UnifySSE(double* A, int64 n)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
 	double invsum = 1.0 / (SumSSE(A, n) + n * MIN_FREQ);
-
-	if (n >= N * sizeof(__m128) / sizeof(double))
+	
+	if (n >= E128D)
 	{
-		__m128d a[N], minf = _mm_set1_pd(MIN_FREQ), invs = _mm_set1_pd(invsum);
-
-		for (int64 l1 = n - N * sizeof(__m128) / sizeof(double); i <= l1; i += N * sizeof(__m128) / sizeof(double))
+		__m128d b = _mm_set1_pd(invsum), c = _mm_set1_pd(MIN_FREQ * invsum);
+		
+		UNROLLHEAD(N)
+		for (int64 l1 = n - E128D; i <= l1; i += E128D)
 		{
-			double* A2 = A;
-
-			REP(N) { a[kk] = _mm_loadu_pd(A); A += sizeof(__m128) / sizeof(double); }
-
-			REP(N) a[kk] = _mm_add_pd(a[kk], minf);
-
-			REP(N) a[kk] = _mm_mul_pd(a[kk], invs);
-
-			REP(N) { _mm_storeu_pd(A2, a[kk]); A2 += sizeof(__m128) / sizeof(double); }
+			_mm_storeu_pd(A,_mm_fmaddx_pd(_mm_loadu_pd(A), b, c)); 
+			A += E128D;
 		}
 	}
 
@@ -3071,32 +2972,22 @@ TARGETSSE void UnifySSE(double* A, int64 n)
 
 TARGETSSE void UnifySSE(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
 	double invsum = 1.0 / (SumSSE(A, n) + n * MIN_FREQ);
 
-	if (n >= N / 2 * sizeof(__m128) / sizeof(float))
+	if (n >= E128F)
 	{
-		__m128d a[N], minf = _mm_set1_pd(MIN_FREQ), invs = _mm_set1_pd(invsum);
-
-		for (int64 l1 = n - N / 2 * sizeof(__m128) / sizeof(float); i <= l1; i += N / 2 * sizeof(__m128) / sizeof(float))
+		__m128d b = _mm_set1_pd(invsum), c = _mm_set1_pd(MIN_FREQ * invsum);
+		
+		UNROLLHEAD(N)
+		for (int64 l1 = n - E128F; i <= l1; i += E128F)
 		{
-			float* A2 = A;
-
-			REP(N) { a[kk] = _mm_cvtps_pd(_mm_loadu_ps(A)); A += sizeof(__m128) / sizeof(float) / 2; }
-
-			REP(N) a[kk] = _mm_add_pd(a[kk], minf);
-
-			REP(N) a[kk] = _mm_mul_pd(a[kk], invs);
-
-			REP(N / 2) 
-			{ 
-				_mm_storeu_ps(A2, _mm_shuffle_ps(
-					_mm_cvtpd_ps(a[0 + (kk << 1)]),
-					_mm_cvtpd_ps(a[1 + (kk << 1)]), _MM_SHUFFLE(1, 0, 1, 0)));
-
-				A2 += sizeof(__m128) / sizeof(float); 
-			}
+			_mm_storeu_ps(A, _mm_shuffle_ps(
+						_mm_cvtpd_ps(_mm_fmaddx_pd(_mm_set_pd(A[1], A[0]), b, c)), 
+						_mm_cvtpd_ps(_mm_fmaddx_pd(_mm_set_pd(A[3], A[2]), b, c)), 
+						_MM_SHUFFLE(1, 0, 1, 0)));
+			A += E128F;
 		}
 	}
 
@@ -3109,29 +3000,36 @@ TARGETSSE void UnifySSE(float* A, int64 n)
 
 TARGETSSE char* StrNextIdxSSE(char* A, char val, int64 rep, int64 n)
 {
+#define N 4
 	A++; n--;
 	int64 i = 0;
 
-	if (n >= 16)
+	if (n >= E512B)
 	{
-		__m128i r = _mm_setzero_si128(), v = _mm_set1_epi8(val), o = _mm_setzero_si128();
+		__m128i r[N], v = _mm_set1_epi8(val);
 
-		for (int64 l1 = n - 16; i <= l1; )
+		for (int64 l1 = n - E512B; i <= l1; i += E512B)
 		{
-			__m128i a = _mm_loadu_si128((__m128i*)A);
-			r = _mm_cmpeq_epi8(a, v);
+			char* Ab = A;
+			__m128i rz = _mm_setzero_si128();
 
-			if (_mm_testz_si128(r, r)) { A += 16; i += 16; continue; }
+			UNROLL(N) { rz = _mm_or_si128(rz, r[kk] = _mm_cmpeq_epi8(_mm_loadu_si128((__m128i*)A), v)); A += E128B; }
 
-			r = _mm_sad_epu8(o, _mm_sub_epi8(o, r)); //4 int 64, each 8 bytes
+			if (_mm_testz_si128(rz, rz)) continue;
 
-			for (int64 j = 0; j < 2; ++j, A += 8, i += 8)
+			uint64 mask; ushort* mask2 = (ushort*) & mask;
+			UNROLL(N) mask2[kk] = (ushort)_mm_movemask_epi8(r[kk]);
+
+			int count = _mm_popcnt_u64(mask);
+			
+			if (rep > count) [[likely]]
 			{
-				if (rep > (int64)simd_u64(r, j))
-					rep -= simd_u64(r, j);
-				else for (;; A++)
-					if (*A == val && !--rep) return A;
+				rep -= count;
+				continue;
 			}
+			else for (;; Ab++, mask >>= 1)
+				if ((mask & 1) && !--rep)
+					return Ab;
 		}
 	}
 
@@ -3144,26 +3042,550 @@ TARGETSSE char* StrNextIdxSSE(char* A, char val, int64 rep, int64 n)
 
 TARGETSSE int64 CountCharSSE(char* A, char val, int64 n)
 {
+#define N 4
 	uint64 re = 0;
 	int64 i = 0;
 
-	if (n >= 16)
+	if (n >= E128B)
 	{
 		__m128i r = _mm_setzero_si128(), v = _mm_set1_epi8(val), o = _mm_setzero_si128();
-
-		for (int64 l1 = n - 16; i <= l1; i += 16)
+		
+		UNROLLHEAD(N)
+		for (int64 l1 = n - E128B; i <= l1; i += E128B)
 		{
-			r = _mm_add_epi64(r, _mm_sad_epu8(o, _mm_sub_epi8(o, _mm_cmpeq_epi8(_mm_loadu_si128((__m128i*)A), v))));
-			A += 16;
+			r = _mm_add_epi64(r, _mm_sad_epu8(o, _mm_cmpeq_epi8(_mm_loadu_si128((__m128i*)A), v)));
+			A += E128B;
 		}
 
-		re = simd_u64(r, 0) + simd_u64(r, 1);
+		re = _mm_reduce_add_epi64(r) / 0xFF;
 	}
 
 	for (; i < n; ++i, A++)
 		if (*A == val) re++;
 
 	return (int64)re;
+}
+
+TARGETSSE void DiagQuadFormSSE(double* res1, double* A, double* D, int64 m, int64 n)
+{
+#define N 3
+
+#define DECLARE			double* pA1 = (A + n * i), *pA2 = (A + n * j), *pD = D; __m128d a1[N], a2[N], r[N][N] = { 0 }
+#define ALOAD1(ii)		a1[ii] = _mm_loadu_pd(pA1 + n * ii)
+#define ALOAD2(ii)		a2[ii] = _mm_loadu_pd(pA2 + n * ii)
+#define ALOAD3(ii)		a1[ii] = a2[ii] = _mm_loadu_pd(pA1 + n * ii)
+#define ADMUL(ii)		a1[ii] = _mm_mul_pd(a1[ii], _mm_loadu_pd(pD))
+#define FMADD(ii,jj)	r[ii][jj] = _mm_fmaddx_pd(a1[ii], a2[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res1[(i+ii) * m + (j+jj)] = _mm_reduce_add_pd(r[ii][jj])
+#define REMAIN(ii,jj)	res1[(i+ii) * m + (j+jj)] += A[(i+ii) * n + k] * A[(j+jj) * n + k] * D[k]
+#define FINAL(ii,jj)	res1[(i+ii) + (j+jj) * m] = res1[(i+ii) * m + (j+jj)]
+	
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA1 += E128D, pA2 += E128D, pD += E128D) 
+			{ LOOP(ALOAD1); LOOP(ALOAD2); LOOP(ADMUL); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+
+			LOOP2(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA1 += E128D, pD += E128D) 
+			{ LOOP(ALOAD3); LOOP(ADMUL); LOOP3(FMADD); }
+
+			LOOP3(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3(REMAIN); }
+
+			LOOP3(FINAL);
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA1 += E128D, pA2 += E128D, pD += E128D) 
+			{ LOOPNa(ALOAD1); LOOP(ALOAD2); LOOPNa(ADMUL); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+
+			LOOP2Na(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA1 += E128D, pD += E128D) 
+			{ LOOPNa(ALOAD3); LOOP(ADMUL); LOOP3Na(FMADD); }
+
+			LOOP3Na(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3Na(REMAIN); }
+
+			LOOP3Na(FINAL);
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD1
+#undef ALOAD2
+#undef ALOAD3
+#undef ADMUL
+#undef FMADD
+#undef RDUADD
+#undef REMAIN
+#undef FINAL
+}
+
+TARGETSSE void DiagQuadFormSSE(double* res2, double* A, double* D, double* B, int64 m, int64 n)
+{
+#define N 8
+
+#define DECLARE			double* pA = (A + n * i), *pB = B, *pD = D; __m128d bd, r[N] = { 0 }
+#define BDMUL			bd = _mm_mul_pd(_mm_loadu_pd(pB), _mm_loadu_pd(pD)); pB += E128D; pD += E128D
+#define FMADD(ii)		r[ii] = _mm_fmaddx_pd(_mm_loadu_pd(pA + n * ii), bd, r[ii]); 
+#define RDUADD(ii)		res2[(i+ii)] = _mm_reduce_add_pd(r[ii])
+#define FINAL(ii)		res2[(i+ii)] += A[(i+ii) * n + k] * B[k] * D[k]
+
+    int64 i = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+		DECLARE;
+
+        for (k = 0; k + E128D <= n; k += E128D, pA += E128D) 
+		{ BDMUL; LOOP(FMADD); }
+			
+		LOOP(RDUADD);
+
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOP(FINAL); }
+	}
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+			
+		DECLARE;
+
+        for (k = 0; k + E128D <= n; k += E128D, pA += E128D) 
+		{ BDMUL; LOOPNa(FMADD); }
+			
+		LOOPNa(RDUADD);
+			
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOPNa(FINAL); }
+	}
+
+#undef DECLARE
+#undef BDMUL
+#undef FMADD
+#undef RDUADD
+#undef FINAL
+}
+
+TARGETSSE void DiagQuadFormSSE(double* res3, double* B, double* D, int64 n)
+{
+#define N 4
+	__m128d s[4] = { 0 };
+
+	int64 k = 0;
+    for (; k + N * E128D <= n; k += N * E128D) 
+	{
+		UNROLL(N) 
+		{
+			s[kk] = _mm_fmaddx_pd(_mm_mul_pd(_mm_loadu_pd(B), _mm_loadu_pd(B)), _mm_loadu_pd(D), s[kk]); 
+			B += E128D;
+			D += E128D;
+		}
+	}
+
+	REDUCE(s) s[kk] = _mm_add_pd(s[kk], s[kk + KK]);
+
+	res3[0] = _mm_reduce_add_pd(s[0]);
+			
+	VECTORIZE
+    for (; k < n; k++, B++, D++) 
+		res3[0] += B[0] * B[0] * D[0];
+}
+
+TARGETSSE void MatrixMulSSE(double* res, double* A, double* B, int64 m, int64 n, int64 p)
+{
+#define N 3
+	
+#define DECLARE			double* pA = (A + n * i), *pB = (B + n * j); __m128d a[N], b[N], r[N][N] = { 0 }
+#define ALOAD(kk)		a[kk] = _mm_loadu_pd(pA + n * kk)
+#define BLOAD(kk)		b[kk] = _mm_loadu_pd(pB + n * kk)
+#define FMADD(ii,jj)	r[ii][jj] = _mm_fmaddx_pd(a[ii], b[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res[(i+ii) + (j+jj) * m] = _mm_reduce_add_pd(r[ii][jj])
+#define REMAIN(ii,jj)	res[(i+ii) + (j+jj) * m] += A[(i+ii) * n + k] * B[(j+jj) * n + k]
+
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA += E128D, pB += E128D) 
+			{ LOOP(ALOAD); LOOP(BLOAD); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+        }
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA += E128D, pB += E128D) 
+			{ LOOP(ALOAD); LOOPNb(BLOAD); LOOP2Nb(FMADD); }
+			
+			LOOP2Nb(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Nb(REMAIN); }
+
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA += E128D, pB += E128D) 
+			{ LOOPNa(ALOAD); LOOP(BLOAD); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+        }
+
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA += E128D, pB += E128D) 
+			{ LOOPNa(ALOAD); LOOPNb(BLOAD); LOOP2NaNb(FMADD); }
+			
+			LOOP2NaNb(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2NaNb(REMAIN); }
+
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD
+#undef BLOAD
+#undef FMADD
+#undef RDUADD
+#undef FINAL
+}
+
+TARGETSSE void DiagQuadFormSSE(float* res1, float* A, float* D, int64 m, int64 n)
+{
+#define N 3
+
+#define DECLARE			float* pA1 = (A + n * i), *pA2 = (A + n * j), *pD = D; __m128 a1[N], a2[N], r[N][N] = { 0 }
+#define ALOAD1(ii)		a1[ii] = _mm_loadu_ps(pA1 + n * ii)
+#define ALOAD2(ii)		a2[ii] = _mm_loadu_ps(pA2 + n * ii)
+#define ALOAD3(ii)		a1[ii] = a2[ii] = _mm_loadu_ps(pA1 + n * ii)
+#define ADMUL(ii)		a1[ii] = _mm_mul_ps(a1[ii], _mm_loadu_ps(pD))
+#define FMADD(ii,jj)	r[ii][jj] = _mm_fmaddx_ps(a1[ii], a2[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res1[(i+ii) * m + (j+jj)] = _mm_reduce_add_ps(r[ii][jj])
+#define REMAIN(ii,jj)	res1[(i+ii) * m + (j+jj)] += A[(i+ii) * n + k] * A[(j+jj) * n + k] * D[k]
+#define FINAL(ii,jj)	res1[(i+ii) + (j+jj) * m] = res1[(i+ii) * m + (j+jj)]
+	
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA1 += E128F, pA2 += E128F, pD += E128F) 
+			{ LOOP(ALOAD1); LOOP(ALOAD2); LOOP(ADMUL); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+
+			LOOP2(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA1 += E128F, pD += E128F) 
+			{ LOOP(ALOAD3); LOOP(ADMUL); LOOP3(FMADD); }
+
+			LOOP3(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3(REMAIN); }
+
+			LOOP3(FINAL);
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA1 += E128F, pA2 += E128F, pD += E128F) 
+			{ LOOPNa(ALOAD1); LOOP(ALOAD2); LOOPNa(ADMUL); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+
+			LOOP2Na(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA1 += E128F, pD += E128F) 
+			{ LOOPNa(ALOAD3); LOOP(ADMUL); LOOP3Na(FMADD); }
+
+			LOOP3Na(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3Na(REMAIN); }
+
+			LOOP3Na(FINAL);
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD1
+#undef ALOAD2
+#undef ALOAD3
+#undef ADMUL
+#undef FMADD
+#undef RDUADD
+#undef REMAIN
+#undef FINAL
+}
+
+TARGETSSE void DiagQuadFormSSE(float* res2, float* A, float* D, float* B, int64 m, int64 n)
+{
+#define N 8
+
+#define DECLARE			float* pA = (A + n * i), *pB = B, *pD = D; __m128 bd, r[N] = { 0 }
+#define BDMUL			bd = _mm_mul_ps(_mm_loadu_ps(pB), _mm_loadu_ps(pD)); pB += E128F; pD += E128F
+#define FMADD(ii)		r[ii] = _mm_fmaddx_ps(_mm_loadu_ps(pA + n * ii), bd, r[ii]); 
+#define RDUADD(ii)		res2[(i+ii)] = _mm_reduce_add_ps(r[ii])
+#define FINAL(ii)		res2[(i+ii)] += A[(i+ii) * n + k] * B[k] * D[k]
+
+    int64 i = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+		DECLARE;
+
+        for (k = 0; k + E128F <= n; k += E128F, pA += E128F) 
+		{ BDMUL; LOOP(FMADD); }
+			
+		LOOP(RDUADD);
+
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOP(FINAL); }
+	}
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+			
+		DECLARE;
+
+        for (k = 0; k + E128F <= n; k += E128F, pA += E128F) 
+		{ BDMUL; LOOPNa(FMADD); }
+			
+		LOOPNa(RDUADD);
+			
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOPNa(FINAL); }
+	}
+
+#undef DECLARE
+#undef BDMUL
+#undef FMADD
+#undef RDUADD
+#undef FINAL
+}
+
+TARGETSSE void DiagQuadFormSSE(float* res3, float* B, float* D, int64 n)
+{
+#define N 4
+	__m128 s[4] = { 0 };
+
+	int64 k = 0;
+    for (; k + N * E128F <= n; k += N * E128F) 
+	{
+		UNROLL(N) 
+		{
+			s[kk] = _mm_fmaddx_ps(_mm_mul_ps(_mm_loadu_ps(B), _mm_loadu_ps(B)), _mm_loadu_ps(D), s[kk]); 
+			B += E128F;
+			D += E128F;
+		}
+	}
+
+	REDUCE(s) s[kk] = _mm_add_ps(s[kk], s[kk + KK]);
+
+	res3[0] = _mm_reduce_add_ps(s[0]);
+			
+	VECTORIZE
+    for (; k < n; k++, B++, D++) 
+		res3[0] += B[0] * B[0] * D[0];
+}
+
+TARGETSSE void MatrixMulSSE(float* res, float* A, float* B, int64 m, int64 n, int64 p)
+{
+#define N 3
+	
+#define DECLARE			float* pA = (A + n * i), *pB = (B + n * j); __m128 a[N], b[N], r[N][N] = { 0 }
+#define ALOAD(kk)		a[kk] = _mm_loadu_ps(pA + n * kk)
+#define BLOAD(kk)		b[kk] = _mm_loadu_ps(pB + n * kk)
+#define FMADD(ii,jj)	r[ii][jj] = _mm_fmaddx_ps(a[ii], b[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res[(i+ii) + (j+jj) * m] = _mm_reduce_add_ps(r[ii][jj])
+#define REMAIN(ii,jj)	res[(i+ii) + (j+jj) * m] += A[(i+ii) * n + k] * B[(j+jj) * n + k]
+
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA += E128F, pB += E128F) 
+			{ LOOP(ALOAD); LOOP(BLOAD); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+        }
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA += E128F, pB += E128F) 
+			{ LOOP(ALOAD); LOOPNb(BLOAD); LOOP2Nb(FMADD); }
+			
+			LOOP2Nb(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Nb(REMAIN); }
+
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA += E128F, pB += E128F) 
+			{ LOOPNa(ALOAD); LOOP(BLOAD); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+        }
+
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA += E128F, pB += E128F) 
+			{ LOOPNa(ALOAD); LOOPNb(BLOAD); LOOP2NaNb(FMADD); }
+			
+			LOOP2NaNb(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2NaNb(REMAIN); }
+
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD
+#undef BLOAD
+#undef FMADD
+#undef RDUADD
+#undef FINAL
 }
 
 #endif

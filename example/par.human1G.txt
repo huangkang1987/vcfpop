@@ -1,10 +1,12 @@
 -g_output=human1G\out
 -g_decimal=6
 -g_eval=yes
+-g_nthread=8
+-g_gpu=none
 -g_seed=1
 -g_progress=80
--g_nthread=16
 -g_indtext="pop1:#1-#500#npop2:#501-#1000 pop3:#1001-#1500 pop4:#1501-#2000 pop5:#2001-#2504 #REG reg1:#1-#2 reg2:#3-#5"
+-g_replot=no
 
 -g_input=data.human1G.vcf.gz
 -g_format=vcf
@@ -19,7 +21,7 @@
 -haplotype_alleles=[2,10]
 -haplotype_interval=10000
 
--xconvert
+-convert
 -convert_format=polyrelatedness
 
 -diversity
@@ -34,6 +36,7 @@
 -indstat_estimator=Ritland1996
 
 -fst
+-fst_plot=yes
 -fst_estimator=Nei1973
 -fst_level=popXtot,pop
 -fst_locus=all
@@ -41,6 +44,7 @@
 -fst_fmt=matrix
 
 -gdist
+-gdist_plot=yes
 -gdist_level=pop
 -gdist_estimator=Nei1972
 -gdist_fmt=matrix
@@ -54,30 +58,36 @@
 -amova_printss=no
 
 -popas
+-popas_plot=yes
 -popas_model=prcs
 -popas_level=pop
 -popas_error=0.05
 
 -relatedness
+-relatedness_plot=yes
 -relatedness_range=pop
 -relatedness_fmt=matrix
 -relatedness_estimator=Ritland1996_modified
 
 -kinship
+-kinship_plot=yes
 -kinship_fmt=matrix
 -kinship_range=total
 -kinship_estimator=Ritland1996
 
 -pcoa
+-pcoa_plot=yes
 -pcoa_level=pop,ind
 -pcoa_estimator=Euclidean
 
 -cluster
+-cluster_plot=yes
 -cluster_method=NEAREST
 -cluster_estimator=Cavalli-Sforza1967
 -cluster_level=ind,pop
 
 -structure
+-structure_plot=yes
 -structure_admix=no
 -structure_locpriori=no
 -structure_f=no

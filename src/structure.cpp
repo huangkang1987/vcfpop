@@ -85,7 +85,7 @@ TARGET BAYESIAN<REAL>::BAYESIAN()
 
 /* Write results for a run */
 template<typename REAL>
-TARGET void BAYESIAN<REAL>::PrintStructure()
+TARGET void BAYESIAN<REAL>::WriteStructure()
 {
     char filename[PATH_LEN];
     char name_buf[NAME_BUF_LEN];
@@ -209,7 +209,7 @@ TARGET void BAYESIAN<REAL>::PrintStructure()
             fprintf(fout, "%c%d", g_delimiter_val, j + 1);
         for (int i = 0; i < S; ++i)
         {
-            fprintf(fout, "%s%s", g_linebreak_val, apops[i]->name);
+            fprintf(fout, "%s%s", g_linebreak_val, apops<REAL>[i]->name);
             for (int j = 0; j < K; ++j)
             {
                 fprintf(fout, "%c", g_delimiter_val); WriteReal(fout, rout[4 + nl + 1 + K + i * K + j]);
@@ -253,7 +253,7 @@ TARGET void BAYESIAN<REAL>::PrintStructure()
     fprintf(fout, "%s%sProportion of membership of each pre-defined population in each of the %d clusters", g_linebreak_val, g_linebreak_val, K);
     fprintf(fout, "%s%cCluster%sPop", g_linebreak_val, g_delimiter_val, g_linebreak_val);
     for (int i = 0; i < N; ++i)
-        Add(O + ainds[i]->popid * K, Q + i * K, K);
+        Add(O + ainds<REAL>[i]->popid * K, Q + i * K, K);
     Unify(O, S, K);
 
     for (int k = 0; k < K; ++k)
@@ -261,7 +261,7 @@ TARGET void BAYESIAN<REAL>::PrintStructure()
 
     for (int s = 0; s < S; ++s)
     {
-        fprintf(fout, "%s%s", g_linebreak_val, apops[s]->name);
+        fprintf(fout, "%s%s", g_linebreak_val, apops<REAL>[s]->name);
         for (int k = 0; k < K; ++k)
         {
             fprintf(fout, "%c", g_delimiter_val);
@@ -278,9 +278,9 @@ TARGET void BAYESIAN<REAL>::PrintStructure()
     double* MiSumDouble = (double*)MiSum;
     for (int i = 0; i < N; ++i)
     {
-        fprintf(fout, "%s%s%c%s%c%s", g_linebreak_val, ainds[i]->name,
-            g_delimiter_val, apops[ainds[i]->popid]->name,
-            g_delimiter_val, apops[ainds[i]->popid]->rid == -1 ? "Total" : aregs[0][apops[ainds[i]->popid]->rid]->name
+        fprintf(fout, "%s%s%c%s%c%s", g_linebreak_val, ainds<REAL>[i]->name,
+            g_delimiter_val, apops<REAL>[ainds<REAL>[i]->popid]->name,
+            g_delimiter_val, apops<REAL>[ainds<REAL>[i]->popid]->rid == -1 ? "Total" : aregs<REAL>[0][apops<REAL>[ainds<REAL>[i]->popid]->rid]->name
         );
         for (int k = 0; k < K; ++k)
         {
@@ -370,7 +370,7 @@ TARGET void BAYESIAN<REAL>::PrintStructure()
 
     VLA_DELETE(H);
     VLA_DELETE(D);
-    delete[] H2;
+    DEL(H2);
 
     fclose(fout);
     Uninit();
@@ -378,7 +378,7 @@ TARGET void BAYESIAN<REAL>::PrintStructure()
 
 /* Write results summary for all runs */
 template<typename REAL>
-TARGET void BAYESIAN<REAL>::PrintSummary(STRUCTURE_RUNINFO* sp, int len)
+TARGET void BAYESIAN<REAL>::WriteStructureSummary(STRUCTURE_RUNINFO* sp, int len)
 {
     OpenResFile("-structure", "#Bayesian clustering");
 
@@ -483,8 +483,8 @@ TARGET void BAYESIAN<REAL>::InitFix(int tid)
 
         bufKthread = new double[structure_nsubthread * K]; 
 
-        bufNK1o = (byte*)MallocHostCUDA((Max(N, 64) * K * sizeof(double) + 63) * structure_nsubthread);  //align for SIMD 
-        bufNK2o = (byte*)MallocHostCUDA((Max(N, 64) * K * sizeof(double) + 63) * structure_nsubthread);  //align for SIMD 
+        bufNK1o = (byte*)MallocHostCUDA((std::max(N, 64) * K * sizeof(double) + 63) * structure_nsubthread);  //align for SIMD 
+        bufNK2o = (byte*)MallocHostCUDA((std::max(N, 64) * K * sizeof(double) + 63) * structure_nsubthread);  //align for SIMD 
         bufNK1 = (double*)Align64(bufNK1o);
         bufNK2 = (double*)Align64(bufNK2o);
         bufN1 = (double*)MallocHostCUDA(N * structure_nsubthread * sizeof(double));
@@ -568,11 +568,11 @@ TARGET void BAYESIAN<REAL>::InitAdmix(int tid)
 
         if (singlez)
         {
-            RNG<REAL> rng(seed - 1, RNG_SALT_INITADM);//checked
+            RNG<double> rng(seed - 1, RNG_SALT_INITADM);//double
             for (int i = 0; i < N; ++i)
             {
                 Z[i] = (ushort)rng.Next(K);
-                Mi[i * K + Z[i]] = ainds[i]->vt;
+                Mi[i * K + Z[i]] = ainds<REAL>[i]->vt;
             }
         }
 
@@ -626,7 +626,7 @@ TARGET void BAYESIAN<REAL>::InitAdmix(int tid)
 
                 //avoid thread-conflict
                 int64* mi = Mi + N * K * tid2;
-                RNG<REAL> rng(seed + l, RNG_SALT_INITADM);//checked
+                RNG<double> rng(seed + l, RNG_SALT_INITADM);//double
 
                 for (int i = 0; i < N; ++i, mi += K)
                 {
@@ -698,8 +698,8 @@ TARGET void BAYESIAN<REAL>::InitFmodel()
         for (int64 l = 0; l < L; ++l)
         {
             int k2 = GetLoc(l).k;
-            REAL* p2 = total_pop->GetFreq(l);
-            int nhaplo = total_pop->loc_stat1[l].nhaplo;
+            REAL* p2 = total_pop<REAL>->GetFreq(l);
+            int nhaplo = total_pop<REAL>->loc_stat1[l].nhaplo;
             for (int a = 0; a < k2; ++a)
                 p[a] = (lambda + p2[a] * nhaplo) / (k2 * lambda + nhaplo);
             p += k2;
@@ -848,14 +848,14 @@ TARGET void BAYESIAN<REAL>::UpdateP(int tid)
         {
             int64 kl_start = blockid * K * L / 128;
             int64 kl_end = (blockid + 1) * K * L / 128;
-            RNG<REAL> rng(seed + m * 128 + blockid, RNG_SALT_UPDATEP);//checked
+            RNG<double> rng(seed + m * 128 + blockid, RNG_SALT_UPDATEP);//REAL
 
             for (int64 kl = kl_start; kl < kl_end; ++kl)
             {
                 int64 k = kl / L, l = kl % L;
                 int* ni = Ni + k * KT + allele_freq_offset[l];
                 REAL* p = ClusterLocusFreq(k, l);
-                rng.Dirichlet(p, p, ni, GetLoc(l).k);
+                rng.Dirichlet(p, p, ni, (int)GetLoc(l).k);
             }
         }
     }
@@ -874,8 +874,8 @@ TARGET void BAYESIAN<REAL>::UpdateQNoAdmixCPU(int tid)
         double* buf1 = bufNK1, * buf2 = bufNK2;
         if (locpriori) for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
         {
-            if (ainds[i]->vt == 0) continue;
-            ChargeLog((int64*)buf1, buf2, Gamma + ainds[i]->popid * K, K);
+            if (ainds<REAL>[i]->vt == 0) continue;
+            ChargeLog((int64*)buf1, buf2, Gamma + ainds<REAL>[i]->popid * K, K);
         }
 
         //////////////////////////////////////////////////////////
@@ -890,10 +890,10 @@ TARGET void BAYESIAN<REAL>::UpdateQNoAdmixCPU(int tid)
 
         buf1 = bufNK1;
         REAL* q = Q;
-        RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+        RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//double
         for (int i = 0; i < N; ++i, buf1 += K, q += K)
         {
-            if (ainds[i]->vt == 0) continue;
+            if (ainds<REAL>[i]->vt == 0) continue;
             ushort k2 = (ushort)rng.PolyLog(buf1, K);
             q[k2] = 1;
             Z[i] = k2;
@@ -987,18 +987,18 @@ TARGET void BAYESIAN<REAL>::UpdateQAdmix()
 {
     //used by noadmix (in admburnin) and admix model
     binaryq = false;
-    RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+    RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//REAL
 
     if (locpriori)
     {
         for (int i = 0; i < N; ++i)
-            if (ainds[i]->vt)
-                rng.Dirichlet(Q + i * K, AlphaLocal + ainds[i]->popid * K, Mi + i * K, K);
+            if (ainds<REAL>[i]->vt)
+                rng.Dirichlet(Q + i * K, AlphaLocal + ainds<REAL>[i]->popid * K, Mi + i * K, K);
     }
     else
     {
         for (int i = 0; i < N; ++i)
-            if (ainds[i]->vt)
+            if (ainds<REAL>[i]->vt)
                 rng.Dirichlet(Q + i * K, Alpha, Mi + i * K, K);
     }
 }
@@ -1009,14 +1009,14 @@ TARGET void BAYESIAN<REAL>::UpdateQMetroCPU(int tid)
 {
     if (tid == -1)
     {
-        RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+        RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//REAL
         REAL* bufi = (REAL*)bufNK1;
         REAL* q = NULL;
 
         for (int i = 0; i < N; ++i, bufi += K)
         {
-            if (ainds[i]->vt == 0) continue;
-            if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds[i]->popid * K, K);
+            if (ainds<REAL>[i]->vt == 0) continue;
+            if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds<REAL>[i]->popid * K, K);
             else           rng.Dirichlet(bufi, Alpha, K);
         }
 
@@ -1035,7 +1035,7 @@ TARGET void BAYESIAN<REAL>::UpdateQMetroCPU(int tid)
         bufi = (REAL*)bufNK1; q = Q;
         for (int i = 0; i < N; ++i, q += K, bufi += K)
         {
-            if (ainds[i]->vt == 0) continue;
+            if (ainds<REAL>[i]->vt == 0) continue;
             if (bufN1[i] >= NZERO || rng.Uniform() < exp(bufN1[i]))
                 SetVal(q, bufi, K);
         }
@@ -1072,7 +1072,7 @@ TARGET void BAYESIAN<REAL>::UpdateQMetroCPU(int tid)
                 ushort* als = gt.GetAlleleArray();
                 for (int a = 0; a < gt.Ploidy(); ++a)
                 {
-                    if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+                    if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                         ChargeLog(*(int64*)buf1, *buf2, SumProdDiv(bufi, q, p + als[a], KT, K));
                     else
                         ChargeLog(*(int64*)buf1, *buf2, SumProdDivx(bufi, q, p + als[a], KT, K));
@@ -1152,8 +1152,8 @@ TARGET void BAYESIAN<REAL>::UpdateQ()
             SetZero(Di, S * K);
             REAL* q = Q;
             for (int i = 0; i < N; ++i, q += K)
-                if (ainds[i]->vt) //bug fixed for individuals with no data
-                    Add(Di + ainds[i]->popid * K, q, K);
+                if (ainds<REAL>[i]->vt) //bug fixed for individuals with no data
+                    Add(Di + ainds<REAL>[i]->popid * K, q, K);
         }
     }
     else
@@ -1171,7 +1171,7 @@ TARGET void BAYESIAN<REAL>::UpdateLocPriori()
 {
     if (!locpriori) return;
 
-    RNG<REAL> rng(seed + m, RNG_SALT_UPDATELoc);//checked
+    RNG<double> rng(seed + m, RNG_SALT_UPDATELoc);//double
     if (admix)
     {
         double rm = rng.Uniform(r - epsr, r + epsr);
@@ -1180,7 +1180,7 @@ TARGET void BAYESIAN<REAL>::UpdateLocPriori()
             double dlnL = 0, d = rm - r, dt1 = rm * MyLog(rm) - r * MyLog(r);
             for (int k = 0; k < K; ++k)
             {
-                dlnL += S * (Alpha[k] * dt1 - LogGamma1(rm * Alpha[k]) + LogGamma1(r * Alpha[k]));
+                dlnL += S * (Alpha[k] * dt1 - LogGamma(rm * Alpha[k]) + LogGamma(r * Alpha[k]));
                 dlnL += Alpha[k] * d * LogProd(AlphaLocal + k, S, K) - Sum(AlphaLocal + k, S, K) * d;
             }
             if (dlnL >= NZERO || rng.Uniform() < exp(dlnL))
@@ -1192,9 +1192,9 @@ TARGET void BAYESIAN<REAL>::UpdateLocPriori()
         double rm = rng.Uniform(r - epsr, r + epsr);
         if (rm > 0 && rm < maxr)
         {
-            double dlnL = LogGamma1(rm) - LogGamma1(r);
+            double dlnL = LogGamma(rm) - LogGamma(r);
             for (int k = 0; k < K; ++k)
-                dlnL += LogGamma1(r * Eta[k]) - LogGamma1(rm * Eta[k]);
+                dlnL += LogGamma(r * Eta[k]) - LogGamma(rm * Eta[k]);
             dlnL *= S;
 
             for (int k = 0; k < K; ++k)
@@ -1208,12 +1208,12 @@ TARGET void BAYESIAN<REAL>::UpdateLocPriori()
         if (K >= 2)
         {
             int64 i1 = rng.Next(K), j1 = rng.NextAvoid(K, i1);
-            double delta = rng.Uniform(epseta);
+            double delta = rng.Uniform(0, epseta);
             double e1 = Eta[i1] + delta;
             double e2 = Eta[j1] - delta;
             if (e1 < 1 && e2 > 0)
             {
-                double dlnL = S * (LogGamma1(r * Eta[i1]) + LogGamma1(r * Eta[j1]) - LogGamma1(r * e1) - LogGamma1(r * e2));
+                double dlnL = S * (LogGamma(r * Eta[i1]) + LogGamma(r * Eta[j1]) - LogGamma(r * e1) - LogGamma(r * e2));
                 dlnL += r * delta * LogProdDiv(Gamma + i1, Gamma + j1, S, K);
 
                 if (dlnL >= NZERO || rng.Uniform() < exp(dlnL))
@@ -1230,7 +1230,7 @@ TARGET void BAYESIAN<REAL>::UpdateLocPriori()
             for (int s = 0; s < S; ++s)
             {
                 int64 i1 = rng.Next(K), j1 = rng.NextAvoid(K, i1);
-                double delta = rng.Uniform(epsgamma);
+                double delta = rng.Uniform(0, epsgamma);
 
                 if (Gamma[s * K + i1] + delta < 1 && Gamma[s * K + j1] - delta > 0)
                 {
@@ -1266,7 +1266,7 @@ TARGET void BAYESIAN<REAL>::UpdateZNoAdmixCPU(int tid)
         // Z in already updated in update Q
         //Count number of allele copies in individual i and cluster k
         for (int i = 0; i < N; ++i)
-            Mi[i * K + Z[i]] = ainds[i]->vt;
+            Mi[i * K + Z[i]] = ainds<REAL>[i]->vt;
 
         //////////////////////////////////////////////////////////
 
@@ -1383,7 +1383,7 @@ TARGET void BAYESIAN<REAL>::UpdateZAdmixCPU(int tid)
             int64 o = allele_freq_offset[l];
             RNG<double> rngd; RNG<float > rngs;
 
-            if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+            if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                 new(&rngd) RNG<double>(seed + m * L + l, RNG_SALT_UPDATEZ);
             else
                 new(&rngs) RNG<float >(seed + m * L + l, RNG_SALT_UPDATEZ);
@@ -1406,7 +1406,7 @@ TARGET void BAYESIAN<REAL>::UpdateZAdmixCPU(int tid)
                     //alway draw to keey results consistent
                     if (a >= ploidy)
                     {
-                        if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+                        if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                             rngd.XorShift();
                         else
                             rngs.XorShift();
@@ -1416,14 +1416,14 @@ TARGET void BAYESIAN<REAL>::UpdateZAdmixCPU(int tid)
                     //The same to previous allele, do not update multinomial prob to save time
                     if (a == 0 || als[a] != als[a - 1])
                         for (int k = 0; k < K; ++k)
-                            if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+                            if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                                 bufkd[k] = (double)q[k] * (double)ClusterAlleleFreq(k, l, als[a]);
                             else
                                 bufks[k] = q[k] * ClusterAlleleFreq(k, l, als[a]);
 
                     ushort k2;
                     //draw cluster for each allele copy
-                    if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+                    if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                         k2 = (ushort)rngd.Poly(bufkd, K);
                     else
                         k2 = (ushort)rngs.Poly(bufks, K);
@@ -1484,29 +1484,6 @@ TARGET void BAYESIAN<REAL>::UpdateZAdmix()
         printf("ZAdmix%s %0.5f %x %x %0.15e\n", simdstr[i], GetElapse(begin), HashString((char*)Ni, K * KT * 4), HashString((char*)Mi, N * K * 8), Sum(bufNK1, structure_nsubthread));
 
     }
-
-    /*
-        string sb1, sb2;
-        char str[100];
-        for (int i = 0; i < KT; ++i)
-        {
-            for (int j = 0; j < K; ++j)
-            {
-                sprintf(str, "%d\t", Ni[j * KT + i]);
-                sb1.append(str);
-            }
-            sb1.append("\r\n");
-        }
-        for (int i = 0; i < N; ++i)
-        {
-            for (int j = 0; j < K; ++j)
-            {
-                sprintf(str, "%lld\t", Mi[i * K + j]);
-                sb2.append(str);
-            }
-            sb2.append("\r\n");
-        }
-    */
 }
 
 /* Update ancestral proportion for each allele or for each individual */
@@ -1523,7 +1500,7 @@ TARGET void BAYESIAN<REAL>::UpdateZ()
 template<typename REAL>
 TARGET void BAYESIAN<REAL>::UpdateAlpha()
 {
-    RNG<REAL> rng(seed + m, RNG_SALT_UPDATEAlpha);//checked
+    RNG<double> rng(seed + m, RNG_SALT_UPDATEAlpha);//double
 
     if (locpriori && admix)//checked
     {
@@ -1536,7 +1513,7 @@ TARGET void BAYESIAN<REAL>::UpdateAlpha()
             if (am > 0 && am < maxalpha)
             {
                 double d = am - Alpha[k];
-                double dlnL = S * (d * r * MyLog(r) + LogGamma1(r * Alpha[k]) - LogGamma1(r * am));
+                double dlnL = S * (d * r * MyLog(r) + LogGamma(r * Alpha[k]) - LogGamma(r * am));
 
                 dlnL += r * d * LogProd(AlphaLocal + k, S, K);
 
@@ -1553,8 +1530,8 @@ TARGET void BAYESIAN<REAL>::UpdateAlpha()
         //update AlphaLocal
         for (int s = 0; s < S; ++s)
         {
-            int snind = apops[s]->nind;
-            REAL* sq = &Q[apops[s]->ind0id * K + 0];
+            int snind = apops<REAL>[s]->nind;
+            REAL* sq = &Q[apops<REAL>[s]->ind0id * K + 0];
 
             for (int k = 0; k < K; ++k)
             {
@@ -1564,8 +1541,8 @@ TARGET void BAYESIAN<REAL>::UpdateAlpha()
                 {
                     double d = am - ao;
                     double dlnL = (r * Alpha[k] - 1) * MyLog(am / ao) - d * r +
-                        apops[s]->nind * (LogGamma1(SumAlpha[s] + d) -
-                            LogGamma1(am) - LogGamma1(SumAlpha[s]) + LogGamma1(ao));
+                        apops<REAL>[s]->nind * (LogGamma(SumAlpha[s] + d) -
+                            LogGamma(am) - LogGamma(SumAlpha[s]) + LogGamma(ao));
 
                     dlnL += d * LogProd(sq + k, snind, K);
 
@@ -1596,7 +1573,7 @@ TARGET void BAYESIAN<REAL>::UpdateAlpha()
                 double d = am - ao;
                 double dlnL = uniformalpha ? 0 : ((alphapriora - 1) * MyLog(am / ao) + (ao - am) / alphapriorb);
 
-                dlnL += (am - ao) * LogProd(Q + k, N, K) + (LogGamma1(sumalpha + d) - LogGamma1(sumalpha) - LogGamma1(am) + LogGamma1(ao)) * N;
+                dlnL += (am - ao) * LogProd(Q + k, N, K) + (LogGamma(sumalpha + d) - LogGamma(sumalpha) - LogGamma(am) + LogGamma(ao)) * N;
                 if (dlnL >= NZERO || rng.Uniform() < exp(dlnL))
                     Alpha[k] = am;
             }
@@ -1608,7 +1585,7 @@ TARGET void BAYESIAN<REAL>::UpdateAlpha()
             double ao = Alpha[0];
             double dlnL = uniformalpha ? 0 : ((alphapriora - 1) * MyLog(am / ao) + (ao - am) / alphapriorb);
 
-            dlnL += (am - ao) * LogProd(Q, N * K) + (LogGamma1(K * am) - LogGamma1(K * ao) - K * LogGamma1(am) + K * LogGamma1(ao)) * N;
+            dlnL += (am - ao) * LogProd(Q, N * K) + (LogGamma(K * am) - LogGamma(K * ao) - K * LogGamma(am) + K * LogGamma(ao)) * N;
             if (dlnL >= NZERO || rng.Uniform() < exp(dlnL))
                 for (int k = 0; k < K; ++k)
                     Alpha[k] = am;
@@ -1622,17 +1599,17 @@ TARGET void BAYESIAN<REAL>::UpdateLambda()
 {
     if (!inferlambda) return;
 
-    RNG<REAL> rng(seed + m, RNG_SALT_UPDATELambda);//checked
+    RNG<double> rng(seed + m, RNG_SALT_UPDATELambda);//checked
 
     if (difflambda) for (int k = 0; k < K; ++k)
     {
         double lo = Lambda[k], lm = rng.Normal(lo, stdlambda);
         if (lm <= 0 || lm >= maxlambda) continue;
 
-        double dlnL = 0, gd = LogGamma1(lo) - LogGamma1(lm);
+        double dlnL = 0, gd = LogGamma(lo) - LogGamma(lm);
 
         for (int i = 2; i <= maxK; ++i)
-            dlnL += kdis[i] * (LogGamma1(i * lm) - LogGamma1(i * lo) + i * gd);
+            dlnL += kdis[i] * (LogGamma(i * lm) - LogGamma(i * lo) + i * gd);
 
         dlnL += (lm - lo) * LogProd(ClusterFreq(k), KT);
 
@@ -1645,10 +1622,10 @@ TARGET void BAYESIAN<REAL>::UpdateLambda()
         double lo = Lambda[0], lm = rng.Normal(lo, stdlambda);
         if (lm <= 0 || lm >= maxlambda) return;
 
-        double dlnL = 0, gd = LogGamma1(lo) - LogGamma1(lm);
+        double dlnL = 0, gd = LogGamma(lo) - LogGamma(lm);
 
         for (int i = 2; i <= maxK; ++i)
-            dlnL += kdis[i] * np * (LogGamma1(i * lm) - LogGamma1(i * lo) + i * gd);
+            dlnL += kdis[i] * np * (LogGamma(i * lm) - LogGamma(i * lo) + i * gd);
 
         dlnL += (lm - lo) * (fmodel ? LogProd(AncestralFreqA, KT) : LogProd(Freq, K * KT));
 
@@ -1691,7 +1668,7 @@ TARGET void BAYESIAN<REAL>::UpdateA1(int tid)
         {
             int64 l_start = blockid * L / 32;
             int64 l_end = (blockid + 1) * L / 32;
-            RNG<REAL> rng(seed + m * 32 + blockid, RNG_SALT_UPDATEA);//checked
+            RNG<double> rng(seed + m * 32 + blockid, RNG_SALT_UPDATEA);//REAL
 
             for (int64 l = l_start; l < l_end; ++l)
             {
@@ -1715,7 +1692,7 @@ TARGET void BAYESIAN<REAL>::UpdateA1(int tid)
                     REAL* pk = ClusterLocusFreq(k, l);
                     double fr = f[k];
                     for (int a = 0; a < k2; ++a)
-                        dlnL += LogGamma1(fr * pa[a]) - LogGamma1(fr * pc[a])
+                        dlnL += LogGamma(fr * pa[a]) - LogGamma(fr * pc[a])
                         + fr * (pc[a] - pa[a]) * MyLog(pk[a]);
                 }
 
@@ -1751,7 +1728,7 @@ TARGET void BAYESIAN<REAL>::UpdateA1(int tid)
                 {
                     double fr = f[k];
                     for (int a = 0; a < k2; ++a)
-                        dlnL += LogGamma1(fr * pa[a]) - LogGamma1(fr * pc[a])
+                        dlnL += LogGamma(fr * pa[a]) - LogGamma(fr * pc[a])
                         + fr * (pc[a] - pa[a]) * MyLog(*bufK[k]++);
                 }
 
@@ -1785,7 +1762,7 @@ TARGET void BAYESIAN<REAL>::UpdateA2(int tid)
         {
             int64 l_start = blockid * L / 32;
             int64 l_end = (blockid + 1) * L / 32;
-            RNG<REAL> rng(seed + m * 32 + blockid, RNG_SALT_UPDATEA);//checked
+            RNG<double> rng(seed + m * 32 + blockid, RNG_SALT_UPDATEA);//double
 
             uint64 loffset = allele_freq_offset[l_start];
             REAL* pa = AncestralFreqA + loffset, * pb = AncestralFreqB + loffset, * pc = AncestralFreqC + loffset;
@@ -1796,7 +1773,7 @@ TARGET void BAYESIAN<REAL>::UpdateA2(int tid)
                 int k2 = GetLoc(l).k;
                 int m1 = rng.Next(k2), n1 = rng.NextAvoid(k2, m1);
 
-                double delta = rng.Uniform(pow(N, -0.5));
+                double delta = rng.Uniform(0, pow(N, -0.5));
                 double pm0 = pa[m1], pm1 = pm0 + delta, pn0 = pa[n1], pn1 = pn0 - delta;
                 if (pm1 >= 1 || pn1 <= 0)
                 {
@@ -1809,8 +1786,8 @@ TARGET void BAYESIAN<REAL>::UpdateA2(int tid)
                 for (int k = 0; k < K; ++k)
                 {
                     double fr = f[k];
-                    dlnL += LogGamma1(fr * pm0) + LogGamma1(fr * pn0)
-                          - LogGamma1(fr * pm1) - LogGamma1(fr * pn1)
+                    dlnL += LogGamma(fr * pm0) + LogGamma(fr * pn0)
+                          - LogGamma(fr * pm1) - LogGamma(fr * pn1)
                           + (fr * delta) * MyLog(p[k * KT + m1] / p[k * KT + n1]);
                 }
 
@@ -1833,7 +1810,7 @@ TARGET void BAYESIAN<REAL>::UpdateF()
     //F model
     if (!fmodel) return;
 
-    RNG<REAL> rng(seed + m, RNG_SALT_UPDATEF);//checked
+    RNG<double> rng(seed + m, RNG_SALT_UPDATEF);//checked
 
     // Update F/Fst
     for (int k = 0; k < K; ++k)
@@ -1848,7 +1825,7 @@ TARGET void BAYESIAN<REAL>::UpdateF()
         double fo = f[k], fm = (1 - Fm) / Fm;
         double dlnL = pmeanf * (Fo - Fm) / (pstdf * pstdf) +
             (pmeanf * pmeanf / (pstdf * pstdf) - 1) * MyLog(Fm / Fo) +
-            (fsame ? K : 1) * nloc * (LogGamma1(fm) - LogGamma1(fo));//eL add in 2018.09
+            (fsame ? K : 1) * nloc * (LogGamma(fm) - LogGamma(fo));//eL add in 2018.09
 
         for (int k2 = k; k2 < K; ++k2)
         {
@@ -1857,7 +1834,7 @@ TARGET void BAYESIAN<REAL>::UpdateF()
             for (int a = 0; a < KT; ++a)
             {
                 REAL pa2 = *pa++;
-                dlnL += pa2 * (fm - fo) * MyLog(*p++) + LogGamma1(fo * pa2) - LogGamma1(fm * pa2);
+                dlnL += pa2 * (fm - fo) * MyLog(*p++) + LogGamma(fo * pa2) - LogGamma(fm * pa2);
             }
             if (!fsame) break;
         }
@@ -1945,7 +1922,7 @@ TARGET void BAYESIAN<REAL>::RecordCPU(int tid)
                 {
                     if constexpr (isadmix)
                     {
-                        if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+                        if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                             ChargeLog(slog, prod, SumProd(q, p + als[a], KT, K));
                         else
                             ChargeLog(slog, prod, SumProdx(q, p + als[a], KT, K));
@@ -2072,53 +2049,50 @@ template<typename REAL>
 TARGET void BAYESIAN<REAL>::Uninit()
 {
     //Normal
-    delete[] kdis;                  kdis = NULL;
-    delete[] bufKthread;            bufKthread = NULL;
-    delete[] MiSum;                 MiSum = NULL;
-    delete[] Alpha;                 Alpha = NULL;
-    delete[] Lambda;                Lambda = NULL;
-    delete[] rout;                  rout = NULL;
-    free(FreqA);                    FreqA = NULL;
-    free(FreqM);                    FreqM = NULL;
+    DEL(kdis);
+    DEL(bufKthread);
+    DEL(MiSum);
+    DEL(Alpha);
+    DEL(Lambda);
+    DEL(rout);
+    FREE(FreqA);
+    FREE(FreqM);
 
-    FreeHostCUDA(Freq);             Freq = NULL;
-    FreeHostCUDA(Ni);               Ni = NULL;
-    FreeHostCUDA(Mi);               Mi = NULL;
-    FreeHostCUDA(Q);                Q = NULL;
-    FreeHostCUDA(bufNK1o);          bufNK1 = NULL; bufNK1o = NULL;
-    FreeHostCUDA(bufNK2o);          bufNK2 = NULL; bufNK2o = NULL;
-    FreeHostCUDA(bufN1);            bufN1 = NULL;
-    FreeHostCUDA(bufN2);            bufN2 = NULL;
+    FREECUDA(Freq);
+    FREECUDA(Ni);
+    FREECUDA(Mi);
+    FREECUDA(Q);
+    FREECUDA(bufNK1o);          bufNK1 = NULL; 
+    FREECUDA(bufNK2o);          bufNK2 = NULL; 
+    FREECUDA(bufN1);
+    FREECUDA(bufN2);
 
     //Write lnL
-    if (lnL)
-    {
-        delete[] lnL;               lnL = lnL;
-    }
+    DEL(lnL);
 
     //Adm
-    FreeHostCUDA(Z);                Z = NULL;
+    FREECUDA(Z);
 
     //Fmodel
     if (fmodel)
     {
-        delete[] F;                 F = NULL;
-        delete[] f;                 f = NULL;
-        delete[] fbuf1;             fbuf1 = NULL;
-        delete[] fbuf2;             fbuf2 = NULL;
+        DEL(F);
+        DEL(f);
+        DEL(fbuf1);
+        DEL(fbuf2);
     }
 
     //Loc
     if (locpriori)
     {
-        delete[] SumAlpha;          SumAlpha = NULL;
-        delete[] AlphaLocal;        AlphaLocal = NULL;
+        DEL(SumAlpha);
+        DEL(AlphaLocal);
 
         if (!admix)
         {
-            delete[] Eta;           Eta = NULL;
-            delete[] Gamma;         Gamma = NULL;
-            delete[] Di;            Di = NULL;
+            DEL(Eta);
+            DEL(Gamma);
+            DEL(Di);
         }
     }
 }
@@ -2331,29 +2305,29 @@ THREAD2(ArrangeLocus)
             ngeno_bucket.FilterLocusGT(&geno_bucket, true, g_nthread_val, nlocus_memory, nslocus, NULL);
             geno_bucket.Replace(ngeno_bucket);
         }
-        
-        delete[] locus_memory;  locus_memory = nlocus_memory;
-        delete[] slocus;        slocus = nslocus;
+        DEL(locus_memory);  locus_memory = nlocus_memory;
+        DEL(slocus);        slocus = nslocus;
     }
 
     //force Gtab in ascending order
     {
         MEMORY* nlocus_memory = new MEMORY[g_nthread_val];
         SLOCUS* nslocus = new SLOCUS[nloc];
-
+        
         uint64 tsize = 0;
         for (int tid = 0; tid < g_nthread_val; ++tid)
             for (int bid = 0; bid < locus_memory[tid].nblocks; ++bid)
                 tsize += locus_memory[tid].blocks[bid].used;
-
+        
         nlocus_memory->blocks[0].size = tsize;
-        delete[] nlocus_memory->blocks[0].bucket;
+        DEL(nlocus_memory->blocks[0].bucket);
+        
         nlocus_memory->blocks[0].bucket = new bool[tsize];
         for (int64 l = 0; l < nloc; ++l)
             new(&nslocus[l]) SLOCUS(nlocus_memory[0], slocus[l]);
-
-        delete[] locus_memory;  locus_memory = nlocus_memory;
-        delete[] slocus;        slocus = nslocus;
+        
+        DEL(locus_memory);  locus_memory = nlocus_memory;
+        DEL(slocus);        slocus = nslocus;
     }
 
     nloc = nfilter;
@@ -2379,7 +2353,7 @@ TARGET void CalcBayesian()
     QUICKSORT_PARAMETER par = { 0, nloc - 1 };
     qslstack.Push(par);
     RunThreads(&QSWorker2, NULL, NULL, nloc, nloc, "\nSorting loci according to genotype bitsize:\n", g_nthread_val, true);
-    delete[] structure_loc_original_idx;
+    DEL(structure_loc_original_idx);
 
     structure_loc_size_min = geno_bucket.offset[0].size;
     structure_loc_size_max = geno_bucket.offset[nloc - 1].size;
@@ -2469,12 +2443,12 @@ TARGET void CalcBayesian()
         begin = GetNow();
     }
 
-    delete[] structure_cuda_taskid;
+    DEL(structure_cuda_taskid);
 
-    BAYESIAN<REAL>::PrintSummary(structure_par, structure_totalruns);
+    BAYESIAN<REAL>::WriteStructureSummary(structure_par, structure_totalruns);
 
-    delete[] structure_par;
-    delete[] structure_loc_lend;
+    DEL(structure_par);
+    DEL(structure_loc_lend);
 
     if (g_gpu_val == 2)
     {
@@ -2504,7 +2478,7 @@ THREAD2(BayesianThread)
             Structure.ReadPar(&structure_par[i]);
             Structure.iscudastream = true;
             Structure.MCMC();
-            Structure.PrintStructure();
+            Structure.WriteStructure();
         }
 
         atomic<int>& navail = *(atomic<int>*) & structure_navailable_cuda;
@@ -2521,7 +2495,7 @@ THREAD2(BayesianThread)
             Structure.iscudastream = false;
             Structure.ReadPar(&structure_par[i]);
             Structure.MCMC();
-            Structure.PrintStructure();
+            Structure.WriteStructure();
         }
     }
 }

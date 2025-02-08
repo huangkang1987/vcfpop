@@ -1,5 +1,1 @@
-install.packages("ggplot2")
-install.packages("cowplot")
-install.packages("ggh4x")
-install.packages("paletteer")
-install.packages("ape")
+install.packages(c('ggplot2','ggplotify','grid','cowplot','heatmaply','ggh4x','paletteer','ape','BioCircos','htmlwidgets','hash','qqman','gtools')) 

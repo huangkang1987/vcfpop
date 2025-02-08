@@ -1,6 +1,3 @@
-vcfpop.linux.gcc	Compiled by GCC 11 on WSL2
-vcfpop.linux.clang	Compiled by clang13 on WSL2
-vcfpop.msvc.exe		Compile by Visual Studio 2022 on Windows 10 22H2
-vcfpop.msvc.clang.exe	Compile by Visual Studio 2022 with clang on Windows 10 22H2
-vcfpop.mac.amd64	Compiled by GCC 11 on Mac OS X 10.13
-vcfpop.mac.arm64	Compiled by llvm clang 14 on Mac OS X 12.2
+vcfpop.ubuntu	Compiled by clang 17 on WSL2 (Windows 10 22H2)
+vcfpop.exe		Compile by Visual Studio 2022 with clang 15 on Windows 10 22H2
+vcfpop.mac		Compiled by clang 17 on Mac OS X 15.3

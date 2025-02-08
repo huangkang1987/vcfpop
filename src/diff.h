@@ -90,16 +90,16 @@ struct FST
 	TARGET static double dxy(POP<REAL>** grps, int n, double* buf, int64 l);
 
 	/* Write results file in column format */
-	TARGET static void ColumnPrint(FILE* fout);
+	TARGET static void ColumnFormat(FILE* fout);
 
 	/* Write results file in matrix format */
-	TARGET static void MatrixPrint(FILE* fout, FST* Fst, int n, int type);
+	TARGET static void MatrixFormat(FILE* fout, FST* Fst, int n, int type);
 };
 
 #pragma pack(pop)
 
-extern void* fst_buf_[6];								//Read/Write buffer for each type of fst
-#define fst_buf ((FST<REAL>**)fst_buf_)
+template<typename REAL>
+extern FST<REAL>* fst_buf[6];							//Read/Write buffer for each type of fst
 extern int fst_type;									//1 Among regions, 2 among pops, 3 among pops/regs in region, 4 between regions, 5 between pops 
 
 /* Calculate genetic differentiation */

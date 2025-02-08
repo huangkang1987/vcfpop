@@ -27,19 +27,113 @@ TARGET void* Malloc(uint64 size)
         if (re) break;
         printf("Fail to allocate %0.3f Gib memory, increase virtual memory and retry (this will not terminate this process).", size / 1024.0 / 1024.0 / 1024.0);
         Pause();
-    }
+    } 
     return re;
 }
 
 #ifdef CUDA
 
 #include <cuda_runtime.h>
-//#include <cuda.h>
-//#include "device_launch_parameters.h"
-//#include <device_atomic_functions.h>
+#include <cusolverDn.h>
+#include <cublas_v2.h>
+
+//cublas.so
+decltype(&cublasCreate_v2) cublasCreateA;
+decltype(&cublasDestroy_v2) cublasDestroyA;
+decltype(&cublasSgemm_v2) cublasSgemmA;
+decltype(&cublasDgemm_v2) cublasDgemmA;
+
+//cusolver.so
+decltype(&cusolverDnCreate) cusolverDnCreateA;
+decltype(&cusolverDnDestroy) cusolverDnDestroyA;
+decltype(&cusolverDnSetStream) cusolverDnSetStreamA;
+decltype(&cusolverDnDgesvd) cusolverDnDgesvdA;
+decltype(&cusolverDnSgesvd) cusolverDnSgesvdA;
+decltype(&cusolverDnDsyevd) cusolverDnDsyevdA;
+decltype(&cusolverDnSsyevd) cusolverDnSsyevdA;
+decltype(&cusolverDnDgesvd_bufferSize) cusolverDnDgesvd_bufferSizeA;
+decltype(&cusolverDnSgesvd_bufferSize) cusolverDnSgesvd_bufferSizeA;
+decltype(&cusolverDnDsyevd_bufferSize) cusolverDnDsyevd_bufferSizeA;
+decltype(&cusolverDnSsyevd_bufferSize) cusolverDnSsyevd_bufferSizeA;
+
+TARGETCUDA void InitCUDA()
+{
+    string cudaPath = std::getenv("CUDA_PATH");
+#ifdef _WIN64
+    #define LoadLib(x) LoadLibraryA(x)
+    #define LoadFunc(x,y) GetProcAddress(x,y)
+    #define LibExt ".dll"
+    HMODULE hblas = NULL, hsolver = NULL;
+#else
+    #define LoadLib(x) dlopen(x, RTLD_LAZY)
+    #define LoadFunc(x,y) dlsym(x,y)
+    #define LibExt ".so"
+    void* hblas = NULL, *hsolver = NULL;
+#endif
+    
+    for (int i = 19; i >= 10; --i)
+    {
+        string cublas = cudaPath + PATH_DELIM + "bin" + PATH_DELIM + "cublas64_" + std::to_string(i) + LibExt;
+        string cusolver = cudaPath + PATH_DELIM + "bin" + PATH_DELIM + "cusolver64_" + std::to_string(i) + LibExt;
+        if (!hblas && FileExists(cublas.c_str()))
+            hblas = LoadLib(cublas.c_str());
+        if (!hsolver && FileExists(cusolver.c_str()))
+            hsolver = LoadLib(cusolver.c_str());
+    }
+	
+    if (!hblas) Exit("\nError: cublas.dll is not found!\n");
+    if (!hsolver) Exit("\nError: cusolver.dll is not found!\n");
+
+    cublasCreateA  = (decltype(cublasCreateA)) LoadFunc(hblas, "cublasCreate_v2");
+    cublasDestroyA = (decltype(cublasDestroyA))LoadFunc(hblas, "cublasDestroy_v2");
+    cublasSgemmA   = (decltype(cublasSgemmA))  LoadFunc(hblas, "cublasSgemm_v2");
+    cublasDgemmA   = (decltype(cublasDgemmA))  LoadFunc(hblas, "cublasDgemm_v2");
+    
+    cusolverDnCreateA            = (decltype(cusolverDnCreateA))           LoadFunc(hsolver, "cusolverDnCreate");
+    cusolverDnDestroyA           = (decltype(cusolverDnDestroyA))          LoadFunc(hsolver, "cusolverDnDestroy");
+    cusolverDnSetStreamA         = (decltype(cusolverDnSetStreamA))        LoadFunc(hsolver, "cusolverDnSetStream");
+    cusolverDnDgesvdA            = (decltype(cusolverDnDgesvdA))           LoadFunc(hsolver, "cusolverDnDgesvd");
+    cusolverDnSgesvdA            = (decltype(cusolverDnSgesvdA))           LoadFunc(hsolver, "cusolverDnSgesvd");
+    cusolverDnDsyevdA            = (decltype(cusolverDnDsyevdA))           LoadFunc(hsolver, "cusolverDnDsyevd");
+    cusolverDnSsyevdA            = (decltype(cusolverDnSsyevdA))           LoadFunc(hsolver, "cusolverDnSsyevdA");
+    cusolverDnDgesvd_bufferSizeA = (decltype(cusolverDnDgesvd_bufferSizeA))LoadFunc(hsolver, "cusolverDnDgesvd_bufferSize");
+    cusolverDnSgesvd_bufferSizeA = (decltype(cusolverDnSgesvd_bufferSizeA))LoadFunc(hsolver, "cusolverDnSgesvd_bufferSize");
+    cusolverDnDsyevd_bufferSizeA = (decltype(cusolverDnDsyevd_bufferSizeA))LoadFunc(hsolver, "cusolverDnDsyevd_bufferSize");
+    cusolverDnSsyevd_bufferSizeA = (decltype(cusolverDnSsyevd_bufferSizeA))LoadFunc(hsolver, "cusolverDnSsyevd_bufferSize");
+}
 
 #define BLOCK_DIM (64)
 #define checkErrors(val) Check((val), #val, __FILE__, __LINE__)
+
+// CUDA API error checking
+#define CUDA_CHECK(err)                                             \
+  do {                                                              \
+    cudaError_t err_ = (err);                                       \
+    if (err_ != cudaSuccess) {                                      \
+      printf("CUDA error %d at %s:%d\n", err_, __FILE__, __LINE__); \
+      throw std::runtime_error("CUDA error");                       \
+    }                                                               \
+  } while (0)
+
+// cusolver API error checking
+#define CUSOLVER_CHECK(err)                                             \
+  do {                                                                  \
+    cusolverStatus_t err_ = (err);                                      \
+    if (err_ != CUSOLVER_STATUS_SUCCESS) {                              \
+      printf("cusolver error %d at %s:%d\n", err_, __FILE__, __LINE__); \
+      throw std::runtime_error("cusolver error");                       \
+    }                                                                   \
+  } while (0)
+
+// cublas API error checking
+#define CUBLAS_CHECK(err)                                                                          \
+    do {                                                                                           \
+        cublasStatus_t err_ = (err);                                                               \
+        if (err_ != CUBLAS_STATUS_SUCCESS) {                                                       \
+            std::printf("cublas error %d at %s:%d\n", err_, __FILE__, __LINE__);                   \
+            throw std::runtime_error("cublas error");                                              \
+        }                                                                                          \
+    } while (0)
 
 template <typename T>
 void Check(T result, char const* const func, const char* const file, int const line)
@@ -259,7 +353,7 @@ struct RNG_CUDA<double>
     // Draw a real number from gamma distribution
     __device__ double Gamma(double alpha, double beta = 1);
 
-    // Draw a normally distriubted real number
+    // Draw a normal distriubted real number
     __device__ double Normal();
 
     // Draw a uniform distriubted real number
@@ -299,7 +393,7 @@ struct RNG_CUDA<float >
     //Draw a real number from gamma distribution
     __device__ double Gamma(double alpha, double beta = 1);
 
-    //Draw a normally distriubted real number
+    //Draw a normal distriubted real number
     __device__ double Normal();
 
     //Draw a uniform distriubted real number
@@ -314,8 +408,8 @@ struct RNG_CUDA<float >
 
 MEMORY_CUDA* cuda_mem;
 
-_thread cudaStream_t GPUstream;
-_thread cudaDeviceProp GPUprop;
+thread_local cudaStream_t GPUstream;
+thread_local cudaDeviceProp GPUprop;
 __device__ cudaDeviceProp GPUprop_device;
 __device__ MEMORY_CUDA cuda_mem_device;
 __device__ ushort missing_array_CUDA[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
@@ -581,7 +675,7 @@ __device__ int PT_PLOIDY[150] = 									//Pattern index to ploidy level
         return beta * d * v;
     }
 
-    // Draw a normally distriubted real number
+    // Draw a normal distriubted real number
     __device__ double RNG_CUDA<double>::Normal()
     {
         //normal distribution
@@ -726,7 +820,7 @@ __device__ int PT_PLOIDY[150] = 									//Pattern index to ploidy level
         return beta * d * v;
     }
 
-    // Draw a normally distriubted real number
+    // Draw a normal distriubted real number
     __device__ double RNG_CUDA<float>::Normal()
     {
         //normal distribution
@@ -739,7 +833,7 @@ __device__ int PT_PLOIDY[150] = 									//Pattern index to ploidy level
 
         volatile double v1 = Uniform();
         volatile double v2 = Uniform();
-        U1 = MySqrtDevice(-2.0 * log(Max(MIN_FREQ, v1)));
+        U1 = MySqrtDevice(-2.0 * log(std::max(MIN_FREQ, v1)));
         U2 = 2.0 * M_PI * v2;
         return U1 * MyCosDevice(U2);
     }
@@ -882,7 +976,7 @@ TARGETCUDA void CopyStructureMemory(int devID)
             offset[l] = OFFSET{ (uint64)base_addr + geno_bucket.offset[l].offset, geno_bucket.offset[l].size };
         MemcpyCUDA(cmem.loc_addr, offset, nloc * sizeof(uint64), true);
         WaitCUDA();
-        delete[] offset;
+        DEL(offset);
     }
 
     /*allele_freq_offset*/
@@ -948,8 +1042,8 @@ TARGETCUDA void CopyStructureMemory(int devID)
         SetDeviceMemory<<<1, 1, 0, GPUstream>>> (cmem.device_mem);
         WaitCUDA();
 
-        delete[] locbufo;
-        delete[] sloc1;
+        DEL(locbufo);
+        DEL(sloc1);
         checkErrors(cudaStreamDestroy(GPUstream));
     }
 }
@@ -1027,11 +1121,12 @@ TARGETCUDA void AllocMemoryCUDA()
 
 TARGETCUDA void FreeMemoryCUDA()
 {
-    delete[] cuda_mem;
+    DEL(cuda_mem);
 }
 
 TARGETCUDA void ShowDevicesCUDA()
 {
+    InitCUDA();
     printf("List of CUDA devices:");
     for (int dev = 0; dev < nGPU; ++dev)
     {
@@ -1060,6 +1155,387 @@ TARGETCUDA void ResetDeviceCUDA()
     }
 }
 
+TARGETCUDA void Eig64CUDA(double* A, double* U, double* V, int64 n)
+{
+    cusolverDnHandle_t handle = nullptr;
+    cudaStream_t stream = nullptr;
+    double* dA = nullptr, * dV = nullptr, * dwork = nullptr;
+    int* dinfo = nullptr, lwork = 0, info = 0;
+    cusolverStatus_t cusolverStatus = CUSOLVER_STATUS_SUCCESS;
+    cudaError_t cudaStatus = cudaSuccess;
+
+    // Step 1: Create cusolver handle and bind a stream
+    cusolverStatus = cusolverDnCreateA(&handle);
+    if (cusolverStatus != CUSOLVER_STATUS_SUCCESS)
+        Exit("\nError: Failed to create cusolver handle.\n");
+
+    cudaStatus = cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to create CUDA stream.\n");
+    cusolverDnSetStreamA(handle, stream);
+
+    // Step 2: Allocate device memory for A, eigenvalues (V), and info
+    size_t dA_size = n * n * sizeof(double);
+    size_t dV_size = n * sizeof(double);
+    size_t dinfo_size = sizeof(int);
+
+    cudaStatus = cudaMalloc((void**)&dA, dA_size + dV_size + dinfo_size);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to allocate device memory.\n");
+
+    dV = dA + n * n;
+    dinfo = (int*)(dV + n);
+
+    // Step 3: Copy matrix A to the device
+    cudaStatus = cudaMemcpy(dA, A, dA_size, cudaMemcpyHostToDevice);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy matrix A to device.\n");
+
+    // Step 4: Query working space for eigenvalue decomposition
+    cusolverStatus = cusolverDnDsyevd_bufferSizeA(handle, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER, n, dA, n, dV, &lwork);
+    if (cusolverStatus != CUSOLVER_STATUS_SUCCESS)
+        Exit("\nError: Failed to query workspace size for eigenvalue decomposition.\n");
+
+    cudaStatus = cudaMalloc((void**)&dwork, lwork * sizeof(double));
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to allocate device memory for workspace.\n");
+
+    // Step 5: Perform eigenvalue decomposition
+    cusolverStatus = cusolverDnDsyevdA(handle, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER, n, dA, n, dV, dwork, lwork, dinfo);
+    if (cusolverStatus != CUSOLVER_STATUS_SUCCESS)
+        Exit("\nError: Failed to perform eigenvalue decomposition.\n");
+
+    // Step 6: Check for errors in the decomposition
+    cudaStatus = cudaMemcpy(&info, dinfo, dinfo_size, cudaMemcpyDeviceToHost);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy info from device to host.\n");
+
+    if (info != 0)
+        Exit("\nError: Eigenvalue decomposition failed. Info = %d\n", info);
+
+    // Step 7: Copy eigenvalues and eigenvectors back to host
+    cudaStatus = cudaMemcpyAsync(V, dV, dV_size, cudaMemcpyDeviceToHost, stream);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy eigenvalues to host.\n");
+
+    cudaStatus = cudaMemcpyAsync(U, dA, dA_size, cudaMemcpyDeviceToHost, stream);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy eigenvectors to host.\n");
+
+    // Synchronize the stream to ensure all operations are complete
+    cudaStreamSynchronize(stream);
+
+    // Step 8: Free resources
+    if (dA) cudaFree(dA);
+    if (dwork) cudaFree(dwork);
+    if (handle) cusolverDnDestroyA(handle);
+    if (stream) cudaStreamDestroy(stream);
+}
+
+TARGETCUDA void Eig32CUDA(float* A, float* U, float* V, int64 n)
+{
+    cusolverDnHandle_t handle = nullptr;
+    cudaStream_t stream = nullptr;
+    float* dA = nullptr, * dV = nullptr, * dwork = nullptr;
+    int* dinfo = nullptr, lwork = 0, info = 0;
+    cusolverStatus_t cusolverStatus = CUSOLVER_STATUS_SUCCESS;
+    cudaError_t cudaStatus = cudaSuccess;
+
+    // Step 1: Create cusolver handle and bind a stream
+    cusolverStatus = cusolverDnCreateA(&handle);
+    if (cusolverStatus != CUSOLVER_STATUS_SUCCESS)
+        Exit("\nError: Failed to create cusolver handle.\n");
+
+    cudaStatus = cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to create CUDA stream.\n");
+    cusolverDnSetStreamA(handle, stream);
+
+    // Step 2: Allocate device memory for A, eigenvalues (V), and info
+    size_t dA_size = n * n * sizeof(float);
+    size_t dV_size = n * sizeof(float);
+    size_t dinfo_size = sizeof(int);
+
+    cudaStatus = cudaMalloc((void**)&dA, dA_size + dV_size + dinfo_size);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to allocate device memory.\n");
+
+    dV = dA + n * n;
+    dinfo = (int*)(dV + n);
+
+    // Step 3: Copy matrix A to the device
+    cudaStatus = cudaMemcpy(dA, A, dA_size, cudaMemcpyHostToDevice);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy matrix A to device.\n");
+
+    // Step 4: Query working space for eigenvalue decomposition
+    cusolverStatus = cusolverDnSsyevd_bufferSizeA(handle, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER, n, dA, n, dV, &lwork);
+    if (cusolverStatus != CUSOLVER_STATUS_SUCCESS)
+        Exit("\nError: Failed to query workspace size for eigenvalue decomposition.\n");
+
+    cudaStatus = cudaMalloc((void**)&dwork, lwork * sizeof(float));
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to allocate device memory for workspace.\n");
+
+    // Step 5: Perform eigenvalue decomposition
+    cusolverStatus = cusolverDnSsyevdA(handle, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER, n, dA, n, dV, dwork, lwork, dinfo);
+    if (cusolverStatus != CUSOLVER_STATUS_SUCCESS)
+        Exit("\nError: Failed to perform eigenvalue decomposition.\n");
+
+    // Step 6: Check for errors in the decomposition
+    cudaStatus = cudaMemcpy(&info, dinfo, dinfo_size, cudaMemcpyDeviceToHost);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy info from device to host.\n");
+
+    if (info != 0)
+        Exit("\nError: Eigenvalue decomposition failed. Info = %d\n", info);
+
+    // Step 7: Copy eigenvalues and eigenvectors back to host
+    cudaStatus = cudaMemcpyAsync(V, dV, dV_size, cudaMemcpyDeviceToHost, stream);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy eigenvalues to host.\n");
+
+    cudaStatus = cudaMemcpyAsync(U, dA, dA_size, cudaMemcpyDeviceToHost, stream);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy eigenvectors to host.\n");
+
+    // Synchronize the stream to ensure all operations are complete
+    cudaStreamSynchronize(stream);
+
+    // Step 8: Free resources
+    if (dA) cudaFree(dA);
+    if (dwork) cudaFree(dwork);
+    if (handle) cusolverDnDestroyA(handle);
+    if (stream) cudaStreamDestroy(stream);
+}
+
+TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* VT, int64 m, int64 n)
+{
+    cusolverDnHandle_t handle = NULL;
+    cudaStream_t stream = NULL;
+
+    int64 mn = std::min(m, n);
+    double* dA = nullptr, *dS = nullptr, *dU = nullptr, *dV = nullptr, *dwork = nullptr;
+    int* dinfo = nullptr, lwork = 0, info = 0;
+
+    // Step 1: Create cusolver handle and bind a stream
+    cusolverDnCreateA(&handle);
+    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    cusolverDnSetStreamA(handle, stream);
+
+    // Step 2: Query working space of SVD
+    cusolverDnDgesvd_bufferSizeA(handle, m, n, &lwork);
+
+    // Step 3: Allocate device memory and copy A to device
+    cudaMalloc((void**)(&dA), sizeof(double) * (m * n + m * mn + mn + mn * n + lwork) + sizeof(int));
+    dU = dA + m * n;
+    dS = dU + m * mn;
+    dV = dS + mn;
+    dwork = dV + mn * n;
+    dinfo = (int*)(dwork + lwork);
+
+    cudaMemcpyAsync(dA, A, sizeof(double) * m * n, cudaMemcpyHostToDevice, stream);
+    cudaMemsetAsync(dinfo, 0, sizeof(int), stream); // Initialize dinfo to zero
+
+    // Step 4: Compute SVD
+    cusolverStatus_t t1 = cusolverDnDgesvdA(handle, 'S', 'S', m, n, dA, m, dS, dU, m, dV, n, dwork, lwork, NULL, dinfo);
+    if (t1 != CUSOLVER_STATUS_SUCCESS) Exit("\nError: cusolverDnDgesvd failed.\n");
+
+    // Step 5: Copy results back to host
+    cudaMemcpyAsync(U, dU, sizeof(double) * m * mn, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(S, dS, sizeof(double) * mn, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(VT, dV, sizeof(double) * mn * n, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(&info, dinfo, sizeof(int), cudaMemcpyDeviceToHost, stream);
+
+    // Synchronize the stream to ensure all operations are complete
+    cudaStreamSynchronize(stream);
+    if (info != 0) Exit("\nError: CUDA failed to perform singular value decomposition.\n");
+
+    // Step 6: Free resources
+    cudaFree(dA);
+    cusolverDnDestroyA(handle);
+    cudaStreamDestroy(stream);
+}
+
+TARGETCUDA void Svd32CUDA(float* A, float* U, float* S, float* VT, int64 m, int64 n)
+{
+    cusolverDnHandle_t handle = NULL;
+    cudaStream_t stream = NULL;
+
+    int64 mn = std::min(m, n);
+    float* dA = nullptr, *dS = nullptr, *dU = nullptr, *dV = nullptr, *dwork = nullptr;
+    int* dinfo = nullptr, lwork = 0, info = 0;
+
+    // Step 1: Create cusolver handle and bind a stream
+    cusolverDnCreateA(&handle);
+    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    cusolverDnSetStreamA(handle, stream);
+
+    // Step 2: Query working space of SVD
+    cusolverDnSgesvd_bufferSizeA(handle, m, n, &lwork);
+
+    // Step 3: Allocate device memory and copy A to device
+    cudaMalloc((void**)(&dA), sizeof(float) * (m * n + m * mn + mn + mn * n + lwork) + sizeof(int));
+    dU = dA + m * n;
+    dS = dU + m * mn;
+    dV = dS + mn;
+    dwork = dV + mn * n;
+    dinfo = (int*)(dwork + lwork);
+
+    cudaMemcpyAsync(dA, A, sizeof(float) * m * n, cudaMemcpyHostToDevice, stream);
+    cudaMemsetAsync(dinfo, 0, sizeof(int), stream); // Initialize dinfo to zero
+
+    // Step 4: Compute SVD
+    cusolverStatus_t t1 = cusolverDnSgesvdA(handle, 'S', 'S', m, n, dA, m, dS, dU, m, dV, n, dwork, lwork, NULL, dinfo);
+    if (t1 != CUSOLVER_STATUS_SUCCESS) Exit("\nError: cusolverDnSgesvd failed.\n");
+
+    // Step 5: Copy results back to host
+    cudaMemcpyAsync(U, dU, sizeof(float) * m * mn, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(S, dS, sizeof(float) * mn, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(VT, dV, sizeof(float) * mn * n, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(&info, dinfo, sizeof(int), cudaMemcpyDeviceToHost, stream);
+
+    // Synchronize the stream to ensure all operations are complete
+    cudaStreamSynchronize(stream);
+    if (info != 0) Exit("\nError: CUDA failed to perform singular value decomposition.\n");
+
+    // Step 6: Free resources
+    cudaFree(dA);
+    cusolverDnDestroyA(handle);
+    cudaStreamDestroy(stream);
+}
+
+TARGETCUDA void MatrixMul64CUDA(double* A, double* B, double* res, int64 m, int64 n, int64 p, bool Atrans, bool Btrans)
+{
+    // Allocate device memory for matrices A, B, and res
+    double* dA = nullptr, * dB = nullptr, * dres = nullptr;
+    cublasHandle_t handle = nullptr;
+    cublasStatus_t cublasStatus = CUBLAS_STATUS_SUCCESS;
+    cudaError_t cudaStatus = cudaSuccess;
+
+    // Step 1: Allocate device memory
+    size_t dA_size = m * n * sizeof(double);
+    size_t dB_size = n * p * sizeof(double);
+    size_t dres_size = m * p * sizeof(double);
+
+    cudaStatus = cudaMalloc((void**)&dA, dA_size + dB_size + dres_size);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to allocate device memory for dA.\n");
+    
+    dB = dA + m * n;
+    dres = dB + n * p;
+
+    // Step 2: Copy matrices A and B from the host to the device
+    cudaStatus = cudaMemcpy(dA, A, dA_size, cudaMemcpyHostToDevice);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy matrix A to device.\n");
+
+    cudaStatus = cudaMemcpy(dB, B, dB_size, cudaMemcpyHostToDevice);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy matrix B to device.\n");
+
+    // Step 3: Create a cuBLAS handle
+    cublasStatus = cublasCreateA(&handle);
+    if (cublasStatus != CUBLAS_STATUS_SUCCESS)
+        Exit("\nError: Failed to create cuBLAS handle.\n");
+
+    // Step 4: Perform matrix multiplication using cuBLAS
+    double alpha = 1.0, beta = 0.0;
+    cublasStatus = cublasDgemmA(
+        handle,
+        Atrans ? CUBLAS_OP_T : CUBLAS_OP_N,  // Transpose A if Atrans is true
+        Btrans ? CUBLAS_OP_T : CUBLAS_OP_N,  // Transpose B if Btrans is true
+        m,                                   // Number of rows in A (or A^T)
+        p,                                   // Number of columns in B (or B^T)
+        n,                                   // Number of columns in A (or A^T) and rows in B (or B^T)
+        &alpha,                              // Scalar multiplier for A * B
+        dA,                                  // Pointer to matrix A on device
+        Atrans ? n : m,                      // Leading dimension of A (or A^T)
+        dB,                                  // Pointer to matrix B on device
+        Btrans ? p : n,                      // Leading dimension of B (or B^T)
+        &beta,                               // Scalar multiplier for result matrix
+        dres,                                // Pointer to result matrix on device
+        m                                    // Leading dimension of result matrix
+    );
+
+    if (cublasStatus != CUBLAS_STATUS_SUCCESS)
+        Exit("\nError: cuBLAS failed to perform matrix multiplication.\n");
+
+    // Step 5: Copy the result matrix from device to host
+    cudaStatus = cudaMemcpy(res, dres, dres_size, cudaMemcpyDeviceToHost);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy result matrix from device to host.\n");
+
+    // Step 6: Free resources
+    if (dA) cudaFree(dA);
+    if (handle) cublasDestroyA(handle);
+}
+
+TARGETCUDA void MatrixMul32CUDA(float* A, float* B, float* res, int64 m, int64 n, int64 p, bool Atrans, bool Btrans)
+{
+    // Allocate device memory for matrices A, B, and res
+    float* dA = nullptr, * dB = nullptr, * dres = nullptr;
+    cublasHandle_t handle = nullptr;
+    cublasStatus_t cublasStatus = CUBLAS_STATUS_SUCCESS;
+    cudaError_t cudaStatus = cudaSuccess;
+
+    // Step 1: Allocate device memory
+    size_t dA_size = m * n * sizeof(float);
+    size_t dB_size = n * p * sizeof(float);
+    size_t dres_size = m * p * sizeof(float);
+
+    cudaStatus = cudaMalloc((void**)&dA, dA_size + dB_size + dres_size);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to allocate device memory for dA.\n");
+    
+    dB = dA + m * n;
+    dres = dB + n * p;
+
+    // Step 2: Copy matrices A and B from the host to the device
+    cudaStatus = cudaMemcpy(dA, A, dA_size, cudaMemcpyHostToDevice);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy matrix A to device.\n");
+
+    cudaStatus = cudaMemcpy(dB, B, dB_size, cudaMemcpyHostToDevice);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy matrix B to device.\n");
+
+    // Step 3: Create a cuBLAS handle
+    cublasStatus = cublasCreateA(&handle);
+    if (cublasStatus != CUBLAS_STATUS_SUCCESS)
+        Exit("\nError: Failed to create cuBLAS handle.\n");
+
+    // Step 4: Perform matrix multiplication using cuBLAS
+    float alpha = 1.0, beta = 0.0;
+    cublasStatus = cublasSgemmA(
+        handle,
+        Atrans ? CUBLAS_OP_T : CUBLAS_OP_N,  // Transpose A if Atrans is true
+        Btrans ? CUBLAS_OP_T : CUBLAS_OP_N,  // Transpose B if Btrans is true
+        m,                                   // Number of rows in A (or A^T)
+        p,                                   // Number of columns in B (or B^T)
+        n,                                   // Number of columns in A (or A^T) and rows in B (or B^T)
+        &alpha,                              // Scalar multiplier for A * B
+        dA,                                  // Pointer to matrix A on device
+        Atrans ? n : m,                      // Leading dimension of A (or A^T)
+        dB,                                  // Pointer to matrix B on device
+        Btrans ? p : n,                      // Leading dimension of B (or B^T)
+        &beta,                               // Scalar multiplier for result matrix
+        dres,                                // Pointer to result matrix on device
+        m                                    // Leading dimension of result matrix
+    );
+
+    if (cublasStatus != CUBLAS_STATUS_SUCCESS)
+        Exit("\nError: cuBLAS failed to perform matrix multiplication.\n");
+
+    // Step 5: Copy the result matrix from device to host
+    cudaStatus = cudaMemcpy(res, dres, dres_size, cudaMemcpyDeviceToHost);
+    if (cudaStatus != cudaSuccess)
+        Exit("\nError: Failed to copy result matrix from device to host.\n");
+
+    // Step 6: Free resources
+    if (dA) cudaFree(dA);
+    if (handle) cublasDestroyA(handle);
+}
 
 /*=============================== DEVICE FUNCTIONS ===============================*/
 
@@ -1160,7 +1636,6 @@ __device__ double ReduceProd(volatile double* A)
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 
 #else
-
 __device__ double atomicAdd(double* address, double val)
 {
     uint64* addr = (uint64*)address;
@@ -1180,7 +1655,7 @@ __device__ double atomicAdd(double* address, double val)
 template<typename REAL>
 __device__ REAL atomicMul(REAL* address, REAL val)
 {
-    if constexpr (sizeof(REAL) == 8)
+    if constexpr (std::is_same_v<REAL, double>)
     {
         uint64* addr = (uint64*)address;
         uint64 old = *addr, assumed;
@@ -1207,7 +1682,7 @@ __device__ REAL atomicMul(REAL* address, REAL val)
 template<typename REAL>
 __device__ void AddExponent1AtomicDevice(int64& slog2, REAL& val)
 {
-    if constexpr (sizeof(REAL) == 8)
+    if constexpr (std::is_same_v<REAL, double>)
     {
         int64& vv = *(int64*)&val;
 
@@ -1255,7 +1730,7 @@ __device__ void AddExponent2AtomicDevice(int64& slog2, double& val)
 template<typename REAL>
 __device__ void ChargeLogAtomicDevice(int64& slog, double& prod, REAL val)
 {
-    if constexpr (sizeof(REAL) == 8)
+    if constexpr (std::is_same_v<REAL, double>)
         if (val < DOUBLE_UNDERFLOW || val > DOUBLE_OVERFLOW) [[unlikely]]
             AddExponent1AtomicDevice(slog, val);
 
@@ -1276,7 +1751,7 @@ __device__ void ChargeLogAtomicDevice(int64* slog, double* prod, REAL* val, int6
 template<typename REAL>
 __device__ void AddExponentDevice(int64& slog2, REAL& val)
 {
-    if constexpr (sizeof(REAL) == 8)
+    if constexpr (std::is_same_v<REAL, double>)
     {
         int64& vv = *(int64*)&val;
 
@@ -1301,7 +1776,7 @@ __device__ void AddExponentDevice(int64& slog2, REAL& val)
 template<typename REAL>
 __device__ void ChargeLogDevice(int64& slog, double& prod, REAL val)
 {
-    if constexpr (sizeof(REAL) == 8)
+    if constexpr (std::is_same_v<REAL, double>)
         if (val < DOUBLE_UNDERFLOW || val > DOUBLE_OVERFLOW) [[unlikely]]
             AddExponentDevice(slog, val);
 
@@ -1473,7 +1948,7 @@ TARGET void BAYESIAN<REAL>::UpdateZNoAdmixCUDA()
     // Z in already updated in update Q
     //Count number of allele copies in individual i and cluster k
     for (int i = 0; i < N; ++i)
-        Mi[i * K + Z[i]] = ainds[i]->vt;
+        Mi[i * K + Z[i]] = ainds<REAL>[i]->vt;
 
     int nthread = BLOCK_DIM;
     int nblock = (nloc + BLOCK_DIM - 1) / BLOCK_DIM;
@@ -1513,7 +1988,7 @@ __global__ void UpdateZAdmixCUDAKernel(BAYESIAN<REAL>* bayes, int64 m, bool uses
     RNG_CUDA<double> rngd; RNG_CUDA<float> rngs;
     int maxploidy = cuda_mem_device.maxploidy;
 
-    if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+    if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
         new (&rngd) RNG_CUDA<double>(m * cuda_mem_device.L + l + bayes->seed, RNG_SALT_UPDATEZ);
     else
         new (&rngs) RNG_CUDA<float >(m * cuda_mem_device.L + l + bayes->seed, RNG_SALT_UPDATEZ);
@@ -1546,7 +2021,7 @@ __global__ void UpdateZAdmixCUDAKernel(BAYESIAN<REAL>* bayes, int64 m, bool uses
             if (typed && (a == 0 || als[a] != als[a - 1]))
                 for (int k = 0; k < K; ++k)
                 {
-                    if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+                    if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                         bufkd[k] = (double)q[k] * (double)ClusterAlleleFreq(k, l, als[a]);
                     else
                         bufks[k] = q[k] * ClusterAlleleFreq(k, l, als[a]);
@@ -1554,7 +2029,7 @@ __global__ void UpdateZAdmixCUDAKernel(BAYESIAN<REAL>* bayes, int64 m, bool uses
 
             ushort k2;
             //draw cluster for each allele copy
-            if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+            if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                 k2 = (ushort)rngd.Poly(bufkd, K, typed);
             else
                 k2 = (ushort)rngs.Poly(bufks, K, typed);
@@ -1662,8 +2137,8 @@ TARGET void BAYESIAN<REAL>::UpdateQNoAdmixCUDA()
     double* buf1 = bufNK1, * buf2 = bufNK2;
     if (locpriori) for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
     {
-        if (ainds[i]->vt == 0) continue;
-        ChargeLog((int64*)buf1, buf2, Gamma + ainds[i]->popid * K, K);
+        if (ainds<REAL>[i]->vt == 0) continue;
+        ChargeLog((int64*)buf1, buf2, Gamma + ainds<REAL>[i]->popid * K, K);
     }
 
     int nthread = 64;
@@ -1683,10 +2158,10 @@ TARGET void BAYESIAN<REAL>::UpdateQNoAdmixCUDA()
     CloseLog((int64*)bufNK1, bufNK2, N * K);
     buf1 = bufNK1;
     REAL* q = Q;
-    RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+    RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//double
     for (int i = 0; i < N; ++i, buf1 += K, q += K)
     {
-        if (ainds[i]->vt == 0) continue;
+        if (ainds<REAL>[i]->vt == 0) continue;
         ushort k2 = (ushort)rng.PolyLog(buf1, K);
         q[k2] = 1;
         Z[i] = k2;
@@ -1733,7 +2208,7 @@ __global__ void UpdateQMetroCUDAKernel(BAYESIAN<REAL>* bayes)
 
         for (int a = 0; a < maxploidy; ++a)
         {
-            if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+            if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                 buf2t = a < ploidy ? SumProdDiv(bufi, q, p + als[a], KT, K) : 1;
             else
                 buf2t = a < ploidy ? SumProdDivx(bufi, q, p + als[a], KT, K) : 1;
@@ -1749,14 +2224,14 @@ __global__ void UpdateQMetroCUDAKernel(BAYESIAN<REAL>* bayes)
 template<typename REAL>
 TARGET void BAYESIAN<REAL>::UpdateQMetroCUDA()
 {
-    RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+    RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//REAL
     REAL* bufi = (REAL*)bufNK1;
     REAL* q = NULL;
 
     for (int i = 0; i < N; ++i, bufi += K)
     {
-        if (ainds[i]->vt == 0) continue;
-        if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds[i]->popid * K, K);
+        if (ainds<REAL>[i]->vt == 0) continue;
+        if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds<REAL>[i]->popid * K, K);
         else           rng.Dirichlet(bufi, Alpha, K);
     }
     OpenLog((int64*)bufN1, bufN2, (int64)N);
@@ -1785,7 +2260,7 @@ TARGET void BAYESIAN<REAL>::UpdateQMetroCUDA()
     bufi = (REAL*)bufNK1; q = Q;
     for (int i = 0; i < N; ++i, q += K, bufi += K)
     {
-        if (ainds[i]->vt == 0) continue;
+        if (ainds<REAL>[i]->vt == 0) continue;
         if (bufN1[i] >= NZERO || rng.Uniform() < exp(bufN1[i]))
             SetVal(q, bufi, K);
     }
@@ -1836,7 +2311,7 @@ __global__ void RecordCUDAKernel(BAYESIAN<REAL>* bayes)
         {
             if constexpr (isadmix)
             {
-                if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+                if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
                     buf2t = a < ploidy ? SumProd(q, p + als[a], KT, K) : 1;
                 else
                     buf2t = a < ploidy ? SumProdx(q, p + als[a], KT, K) : 1;
@@ -1937,5 +2412,17 @@ TARGET void BAYESIAN<REAL>::UpdateQMetroCUDA() { }
 
 template<typename REAL>
 TARGET void BAYESIAN<REAL>::RecordCUDA() { }
+
+TARGETCUDA void Eig64CUDA(double* A, double* U, double* V, int64 n) { }
+
+TARGETCUDA void Eig32CUDA(float* A, float* U, float* V, int64 n) { }
+
+TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* VT, int64 m, int64 n) { }
+
+TARGETCUDA void Svd32CUDA(float* A, float* U, float* S, float* VT, int64 m, int64 n) { }
+
+TARGETCUDA void MatrixMul64CUDA(double* A, double* B, double* res, int64 m, int64 n, int64 p, bool Atrans, bool Btrans) { }
+
+TARGETCUDA void MatrixMul32CUDA(float* A, float* B, float* res, int64 m, int64 n, int64 p, bool Atrans, bool Btrans) { }
 
 #endif

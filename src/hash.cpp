@@ -9,7 +9,7 @@ template TARGET void HashHaplotype<float >(IND<float >* ti, int64 st, int64 ed, 
 uint crc32_u64(uint prev, uint64 val)
 {
 #ifdef __aarch64__
-	return __crc32cd(prev, val);
+    return __builtin_arm_crc32d(prev, val);
 #else
 	return (uint)_mm_crc32_u64((uint)prev, val);
 #endif
@@ -75,6 +75,8 @@ TARGET HASH HashString(char* str, int len)
 {
 	uint crc1 = 0xB385FDA9, crc2 = 0x7FED5EA6;
 	if (len == -1) len = (int)strlen(str);
+	
+	UNROLLHEAD(4)
 	for (; len >= 8; len -= 8, str += 8)
 	{
 		crc1 = crc32_u64(crc1, *(uint64*)str);
@@ -180,6 +182,7 @@ TARGET HASH HashString(char* str, int len)
 	HASH crc1 = 0xB385FDA9;
 	if (len == -1) len = (int)strlen(str);
 
+	UNROLLHEAD(4)
 	for (; len >= 8; len -= 8, str += 8)
 		crc1 = crc32_u64(crc1, *(uint64*)str);
 
@@ -452,8 +455,7 @@ TARGET uint64 MurmurHash64(uint64 data, uint64 seed)
 	d[1] = (~d[0]) ^ d[1];
 	s[1] = (~s[0]) ^ s[1];
 
-	return ((uint64)MurmurHash2(d[1], s[1]) << 32) |
-		((uint64)MurmurHash2(d[0], s[0]));
+	return ((uint64)MurmurHash2(d[1], s[1]) << 32) | ((uint64)MurmurHash2(d[0], s[0]));
 }
 
 /* 64 bit Integer Hashing */

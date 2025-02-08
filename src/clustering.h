@@ -51,15 +51,15 @@ struct HCLUSTERING
 	/* Reduce distance matrix from nxn to (n-1)x(n-1) */
 	TARGET void ReduceMatrix(int _a, int _b);
 
-	/* Print clustering results */
-	TARGET void PrintClustering(FILE* fout, HCLUSTER<REAL>* c = NULL, REAL cy = 0);
+	/* Write clustering results */
+	TARGET void WriteClustering(FILE* fout, HCLUSTER<REAL>* c = NULL, REAL cy = 0);
 };
 
 #pragma pack(pop)
 
 extern MEMORY* clustering_memory;						//Genetic distance memory class
-extern void* clustering_matrix_;						//Genetic distance array of genetic distance to perform PCoA
-#define clustering_matrix (*(REAL**)&clustering_matrix_)
+template<typename REAL>
+extern REAL* clustering_matrix;							//Genetic distance array of genetic distance to perform PCoA
 
 /* Calculate hierarchical clustering */
 template<typename REAL>

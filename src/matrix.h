@@ -3,57 +3,22 @@
 #pragma once
 #include "vcfpop.h"
 
-/* Maximum diagonal element */
-TARGET double MaxDiag(double* a, int m, int n);
-
-/* Matrix multiplication G = C * D * C */
-TARGET void MatrixMul2(double* side, double* mid, int N, double* res);
-
-/* Matrix multiplication G = C * D * C */
-TARGET void MatrixMul2(float* side, float* mid, int N, float* res);
-
-/* Eigen value decomposition for PCoA */
-TARGET void EigenValueDecomp(double* mat, int N, double*& U, double*& V, int& maxp, int* idx);
-
-/* Eigen value decomposition for PCoA */
-TARGET void EigenValueDecomp(float* mat, int N, float*& U, float*& V, int& maxp, int* idx);
-
+/* econ SVD decomposition, eigen values are in descending order */
 template<typename REAL>
-TARGET void MatrixSPA(double* f, double* x, int spa_tn, int spa_np, double* a,
-	int64 l, double* am, double* h, double* g, double* a2);
+TARGET void Svd(rmat& A, rmat& U, rcol& S, rmat& V);
 
-/* Matrix multiplication */
-TARGET int MatrixMul(double* l, int lr, int lc, double* r, int rr, int rc, double* res);
+/* econ EVD decomposition, singular values are in descending order */
+template<typename REAL>
+TARGET void Evd(rmat& A, rmat& U, rcol& V);
 
-/* Matrix multiplication */
-TARGET int MatrixMul(float* l, int lr, int lc, float* r, int rr, int rc, float* res);
+/* Use CUDA to perform SVD decomposition */
+template<typename REAL>
+TARGET void SvdCUDA(rmat& A, rmat& U, rcol& S, rmat& V);
 
-/* Matrix inverstion */
-TARGET void MatrixInv2(double* M, int m);
+/* Use CUDA to perform Eigen value decomposition */
+template<typename REAL>
+TARGET void EigCUDA(rmat& A, rmat& U, rcol& V);
 
-/* Matrix inverstion */
-TARGET void MatrixInv2(float* M, int m);
-
-/* Matrix inverstion */
-TARGET int MatrixInv(double* M, int m);
-
-/* SVD decomposition */
-TARGET void S(double fg[2], double cs[2]);
-
-/* SVD decomposition */
-TARGET void D(double* a, double* b, int m, int n, int k, double* c);
-
-/* SVD decomposition */
-TARGET void P(double* a, double* e, double* s, double* v, int m, int n);
-
-/* SVD decomposition */
-TARGET int MatrixSVD(double* a, int m, int n, double* u, double* v, double eps = EPSILON_SVD);
-
-/* L2 norm */
-TARGET double MatrixNorm(double* a, int m, int n);
-
-/* Condition number */
-TARGET double MatrixCond(double* a, int m, int n);
-
-/* Solve Ax = B */
-TARGET bool SolveEquation(double* A, double* B, double* x, int n);
+/* Use CUDA to perform matrix multiplication */
+template<typename REAL>
+TARGET void MatrixMulCUDA(rmat& A, rmat& B, rmat& res, bool Atrans, bool Btrans);

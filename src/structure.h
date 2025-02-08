@@ -172,10 +172,10 @@ struct BAYESIAN
     TARGET BAYESIAN();
 
     /* Write results for a run */
-    TARGET void PrintStructure();
+    TARGET void WriteStructure();
 
     /* Write results summary for all runs */
-    TARGET static void PrintSummary(STRUCTURE_RUNINFO* sp, int len);
+    TARGET static void WriteStructureSummary(STRUCTURE_RUNINFO* sp, int len);
 
     /* Copy parameters */
     TARGET void ReadPar(STRUCTURE_RUNINFO* _par2);

@@ -135,7 +135,7 @@ TARGET void printi(const char* a)
 	while (len > 0)
 	{
 		printf("    ");
-		int64 plen = Min(len, 116ll);
+		int64 plen = std::min(len, 116ll);
 		memmove(abuf, a, plen);
 		abuf[plen] = '\0';
 		printf((const char*)abuf);
@@ -150,14 +150,14 @@ TARGET string TrimQuote(const string& a)
 	if (a.size() == 0) return a;
 
 	string re = a;
-	if (re[0] == '\'' || re[0] == '\"')
+	if (re[0] == '\"')
 		re = re.substr(1, re.size() - 1);
 
-	if (re[re.size() - 1] == '\'' || re[re.size() - 1] == '\"')
+	if (re[re.size() - 1] == '\"')
 		re = re.substr(0, re.size() - 1);
 
 	int idx = (int)re.find_first_of('=');
-	if (idx != -1 && re.size() > idx && (re[idx + 1] == '\'' || re[idx + 1] == '\"'))
+	if (idx != -1 && re.size() > idx && re[idx + 1] == '\"')
 		re.erase(idx + 1, 1);
 
 	return re;
@@ -168,10 +168,10 @@ TARGET string TrimParQuote(const string& a)
 {
 	string re = a.substr(a.find_first_of('=') + 1);;
 
-	if (re[0] == '\'' || re[0] == '\"')
+	if (re[0] == '\"')
 		re = re.substr(1, re.size() - 1);
 
-	if (re[re.size() - 1] == '\'' || re[re.size() - 1] == '\"')
+	if (re[re.size() - 1] == '\"')
 		re = re.substr(0, re.size() - 1);
 
 	return re;
@@ -264,7 +264,7 @@ TARGET int LwrParCmp(const char* a, const char* b)
 		if ((*a == '\r' || *a == '\n' || !*a || *a == '|' || *a == ',') ||
 			(*b == '\r' || *b == '\n' || !*b || *b == '|' || *b == ','))
 			return !((*a == '\r' || *a == '\n' || !*a || *a == '|' || *a == ',') &&
-				(*b == '\r' || *b == '\n' || !*b || *b == '|' || *b == ','));
+				     (*b == '\r' || *b == '\n' || !*b || *b == '|' || *b == ','));
 		if (*a + ((*a >= 65 && *a <= 90) ? 32 : 0) != *b + ((*b >= 65 && *b <= 90) ? 32 : 0))
 			return 1;
 	}
@@ -310,7 +310,7 @@ TARGET string ReadAllText(const string& file)
 
 	buf[flen] = '\0';
 	string re = buf;
-	delete[] buf;
+	DEL(buf);
 	return re;
 }
 
@@ -1162,15 +1162,14 @@ TARGET void GetParStringMultiSel(string gpar, const string& ref, bool& parid, by
 	}
 }
 
-/* Print a real number to a file */
-
+/* Write a real number to a file */
 TARGET void WriteReal(FILE* fout, double val)
 {
 	if (IsError(val)) fprintf(fout, "nan");
 	else fprintf(fout, g_decimal_str, val);
 }
 
-/* Print a real number to a string */
+/* Write a real number to a string */
 TARGET void WriteReal(char*& fout, double val)
 {
 	if (IsError(val)) sprintf(fout, "nan");
@@ -1185,13 +1184,14 @@ TARGET void AppendReal(char* sout, double val)
 	else sprintf(sout, g_decimal_str, val);
 }
 
+/* Write a real number to a file */
 TARGET void WriteReal(FILE* fout, float val)
 {
 	if (IsError(val)) fprintf(fout, "nan");
 	else fprintf(fout, g_decimal_str, val);
 }
 
-/* Print a real number to a string */
+/* Write a real number to a string */
 TARGET void WriteReal(char*& fout, float val)
 {
 	if (IsError(val)) sprintf(fout, "nan");
@@ -1204,4 +1204,48 @@ TARGET void AppendReal(char* sout, float val)
 {
 	if (IsError(val)) sprintf(sout, "nan");
 	else sprintf(sout, g_decimal_str, val);
+}
+
+/* Write a real number to a file in scientific notation */
+TARGET void WriteScientific(FILE* fout, double val)
+{
+	if (IsError(val)) fprintf(fout, "nan");
+	else fprintf(fout, g_decimal_scientific_str, val);
+}
+
+/* Write a real number to a string in scientific notation */
+TARGET void WriteScientific(char*& fout, double val)
+{
+	if (IsError(val)) sprintf(fout, "nan");
+	else sprintf(fout, g_decimal_scientific_str, val);
+	fout += strlen(fout);
+}
+
+/* Append a real number to a string in scientific notation */
+TARGET void AppendScientific(char* sout, double val)
+{
+	if (IsError(val)) sprintf(sout, "nan");
+	else sprintf(sout, g_decimal_scientific_str, val);
+}
+
+/* Write a real number to a file in scientific notation */
+TARGET void WriteScientific(FILE* fout, float val)
+{
+	if (IsError(val)) fprintf(fout, "nan");
+	else fprintf(fout, g_decimal_scientific_str, val);
+}
+
+/* Write a real number to a string in scientific notation */
+TARGET void WriteScientific(char*& fout, float val)
+{
+	if (IsError(val)) sprintf(fout, "nan");
+	else sprintf(fout, g_decimal_scientific_str, val);
+	fout += strlen(fout);
+}
+
+/* Append a real number to a string in scientific notation */
+TARGET void AppendScientific(char* sout, float val)
+{
+	if (IsError(val)) sprintf(sout, "nan");
+	else sprintf(sout, g_decimal_scientific_str, val);
 }

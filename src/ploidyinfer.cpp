@@ -1,6 +1,5 @@
 /* Ploidy Inference Functions */
 
-#pragma once
 #include "vcfpop.h"
 
 template struct SPF<double>;
@@ -11,16 +10,16 @@ template TARGET void CalcPloidyInference<float >();
 
 template TARGET void IND<double>::PloidyInferenceHeader(FILE* fout);
 template TARGET void IND<float >::PloidyInferenceHeader(FILE* fout);
-template TARGET void IND<double>::PrintPloidyInference(FILE* fout);
-template TARGET void IND<float >::PrintPloidyInference(FILE* fout);
+template TARGET void IND<double>::WritePloidyInference(FILE* fout);
+template TARGET void IND<float >::WritePloidyInference(FILE* fout);
 template TARGET double IND<double>::AvgG(int v, int m, double f);
 template TARGET double IND<float >::AvgG(int v, int m, double f);
-template TARGET void IND<double>::PloidyInferlnL3(map<int64, SPF<double>>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2);
-template TARGET void IND<float >::PloidyInferlnL3(map<int64, SPF<float >>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2);
-template TARGET double IND<double>::PloidyInferlnL(map<int64, SPF<double>>& depth, int v, double f);
-template TARGET double IND<float >::PloidyInferlnL(map<int64, SPF<float >>& depth, int v, double f);
-template TARGET void IND<double>::PloidyInference(int v, double& lnL, double& f, map<int64, SPF<double>>& depth);
-template TARGET void IND<float >::PloidyInference(int v, double& lnL, double& f, map<int64, SPF<float >>& depth);
+template TARGET void IND<double>::PloidyInferlnL3(umap<int64, SPF<double>>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2);
+template TARGET void IND<float >::PloidyInferlnL3(umap<int64, SPF<float >>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2);
+template TARGET double IND<double>::PloidyInferlnL(umap<int64, SPF<double>>& depth, int v, double f);
+template TARGET double IND<float >::PloidyInferlnL(umap<int64, SPF<float >>& depth, int v, double f);
+template TARGET void IND<double>::PloidyInference(int v, double& lnL, double& f, umap<int64, SPF<double>>& depth);
+template TARGET void IND<float >::PloidyInference(int v, double& lnL, double& f, umap<int64, SPF<float >>& depth);
 
 #define extern 
 
@@ -34,7 +33,7 @@ THREAD2(PloidyInferenceThread)
 	int st = (int)(threadid * nsec), ed = (int)((threadid + 1) * nsec);
 	for (int i = st; i < ed; ++i)
 	{
-		ainds[i]->PrintPloidyInference(TEMP_FILES[threadid]);
+		ainds<REAL>[i]->WritePloidyInference(TEMP_FILES[threadid]);
 		PROGRESS_VALUE++;
 	}
 }
@@ -65,14 +64,13 @@ TARGET void CalcPloidyInference()
 template<typename REAL>
 TARGET void IND<REAL>::PloidyInferenceHeader(FILE* fout)
 {
-	const char* ploidy_name[] = { "", "Haploid", "Diploid", "Triploid", "Tetraploid", "Pentaploid", "Hexaploid", "Heptaploid", "Octoploid", "Nonaploid", "Decaploid", "Undecaploid", "Dodecaploid" };
 
 	fprintf(fout, "%s%s%c%c%c%c%c%c%c", g_linebreak_val, g_linebreak_val, g_delimiter_val, g_delimiter_val, g_delimiter_val, g_delimiter_val, g_delimiter_val, g_delimiter_val, g_delimiter_val);
 	for (int rl = 0; rl < lreg; ++rl)
 		fprintf(fout, "%c", g_delimiter_val);
 	for (int i = 1; i <= N_MAX_PLOIDY; ++i)
 		if (ploidyinfer_type_val[i])
-			fprintf(fout, "%s%c%c%c", ploidy_name[i], g_delimiter_val, g_delimiter_val, g_delimiter_val);
+			fprintf(fout, "%s%c%c%c", PLOIDY_NAME[i], g_delimiter_val, g_delimiter_val, g_delimiter_val);
 	if (ploidyinfer_histogram_val == 1)
 		fprintf(fout, "Histogram Data");
 
@@ -99,14 +97,14 @@ TARGET void IND<REAL>::PloidyInferenceHeader(FILE* fout)
 
 /* Write result row for ploidy inference, TEST */
 template<typename REAL>
-TARGET void IND<REAL>::PrintPloidyInference(FILE* fout)
+TARGET void IND<REAL>::WritePloidyInference(FILE* fout)
 {
-	POP<REAL>* tpop = apops[popid];
+	POP<REAL>* tpop = apops<REAL>[popid];
 	POP<REAL>* treg[N_MAX_REG] = { 0 }; //20200505
-	if (lreg >= 1) treg[0] = aregs[0][tpop->rid]; //20200505
+	if (lreg >= 1) treg[0] = aregs<REAL>[0][tpop->rid]; //20200505
 
 	for (int rl = 1; rl < lreg; ++rl)
-		treg[rl] = aregs[rl][treg[rl - 1]->rid];
+		treg[rl] = aregs<REAL>[rl][treg[rl - 1]->rid];
 
 	int estploidy = 0;
 	double sumprob = 0, max_lnL = -1e30;
@@ -114,7 +112,7 @@ TARGET void IND<REAL>::PrintPloidyInference(FILE* fout)
 	int64 used = 0, unused = 0, miss = 0;
 
 	//extract ad
-	map<int64, SPF<REAL>> depth;
+	umap<int64, SPF<REAL>> depth;
 	SPF<REAL> tspf;
 	tspf.count = 0;
 	uint adb[16];
@@ -154,7 +152,7 @@ TARGET void IND<REAL>::PrintPloidyInference(FILE* fout)
 		if (depth.find(ha) == depth.end()) depth[ha] = tspf;
 		depth[ha].count++;
 		used++;
-		fprintf(f1, "%d\t%d\r\n", ad2[0], ad2[1]);
+		fprintf(f1, "%d%c%d\r\n", ad2[0], g_delimiter_val, ad2[1]);
 	}
 
 	fclose(f1);
@@ -344,7 +342,7 @@ TARGET double IND<REAL>::AvgG(int v, int m, double f)
 
 /* Calculate the likelihood for ploidy inference */
 template<typename REAL>
-TARGET void IND<REAL>::PloidyInferlnL3(map<int64, SPF<REAL>>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2)
+TARGET void IND<REAL>::PloidyInferlnL3(umap<int64, SPF<REAL>>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2)
 {
 	double re0 = 0, re1 = 0, re2 = 0;
 	for (auto d = depth.begin(); d != depth.end(); ++d)
@@ -379,7 +377,7 @@ TARGET void IND<REAL>::PloidyInferlnL3(map<int64, SPF<REAL>>& depth, int v, doub
 
 /* Calculate the likelihood for ploidy inference */
 template<typename REAL>
-TARGET double IND<REAL>::PloidyInferlnL(map<int64, SPF<REAL>>& depth, int v, double f)
+TARGET double IND<REAL>::PloidyInferlnL(umap<int64, SPF<REAL>>& depth, int v, double f)
 {
 	double re = 0;
 	for (auto d = depth.begin(); d != depth.end(); ++d)
@@ -401,7 +399,7 @@ TARGET double IND<REAL>::PloidyInferlnL(map<int64, SPF<REAL>>& depth, int v, dou
 
 /* Infer the ploidy level from allelic depth distribution */
 template<typename REAL>
-TARGET void IND<REAL>::PloidyInference(int v, double& lnL, double& f, map<int64, SPF<REAL>>& depth)
+TARGET void IND<REAL>::PloidyInference(int v, double& lnL, double& f, umap<int64, SPF<REAL>>& depth)
 {
 	static double LOGFRAC[N_MAX_PLOIDY + 1][N_MAX_PLOIDY + 1]		//Logarithm of fractions
 		= { {0.0000000000000000E+00, -1.0000000000000000e+10, -1.0000000000000000e+10, -1.0000000000000000e+10, -1.0000000000000000e+10, -1.0000000000000000e+10, -1.0000000000000000e+10, -1.0000000000000000e+10, -1.0000000000000000e+10, -1.0000000000000000e+10, -1.0000000000000000e+10}, {1.0000000000000000e+10, 0.0000000000000000E+00, -6.9314718055994500E-01, -1.0986122886681100E+00, -1.3862943611198900E+00, -1.6094379124341000E+00, -1.7917594692280500E+00, -1.9459101490553100E+00, -2.0794415416798400E+00, -2.1972245773362200E+00, -2.3025850929940500E+00}, {1.0000000000000000e+10, 6.9314718055994500E-01, 0.0000000000000000E+00, -4.0546510810816400E-01, -6.9314718055994500E-01, -9.1629073187415500E-01, -1.0986122886681100E+00, -1.2527629684953700E+00, -1.3862943611198900E+00, -1.5040773967762700E+00, -1.6094379124341000E+00}, {1.0000000000000000e+10, 1.0986122886681100E+00, 4.0546510810816400E-01, 0.0000000000000000E+00, -2.8768207245178100E-01, -5.1082562376599100E-01, -6.9314718055994500E-01, -8.4729786038720400E-01, -9.8082925301172600E-01, -1.0986122886681100E+00, -1.2039728043259400E+00}, {1.0000000000000000e+10, 1.3862943611198900E+00, 6.9314718055994500E-01, 2.8768207245178100E-01, 0.0000000000000000E+00, -2.2314355131421000E-01, -4.0546510810816400E-01, -5.5961578793542300E-01, -6.9314718055994500E-01, -8.1093021621632900E-01, -9.1629073187415500E-01}, {1.0000000000000000e+10, 1.6094379124341000E+00, 9.1629073187415500E-01, 5.1082562376599100E-01, 2.2314355131421000E-01, 0.0000000000000000E+00, -1.8232155679395500E-01, -3.3647223662121300E-01, -4.7000362924573600E-01, -5.8778666490211900E-01, -6.9314718055994500E-01}, {1.0000000000000000e+10, 1.7917594692280500E+00, 1.0986122886681100E+00, 6.9314718055994500E-01, 4.0546510810816400E-01, 1.8232155679395500E-01, 0.0000000000000000E+00, -1.5415067982725800E-01, -2.8768207245178100E-01, -4.0546510810816400E-01, -5.1082562376599100E-01}, {1.0000000000000000e+10, 1.9459101490553100E+00, 1.2527629684953700E+00, 8.4729786038720400E-01, 5.5961578793542300E-01, 3.3647223662121300E-01, 1.5415067982725800E-01, 0.0000000000000000E+00, -1.3353139262452300E-01, -2.5131442828090600E-01, -3.5667494393873200E-01}, {1.0000000000000000e+10, 2.0794415416798400E+00, 1.3862943611198900E+00, 9.8082925301172600E-01, 6.9314718055994500E-01, 4.7000362924573600E-01, 2.8768207245178100E-01, 1.3353139262452300E-01, 0.0000000000000000E+00, -1.1778303565638400E-01, -2.2314355131421000E-01}, {1.0000000000000000e+10, 2.1972245773362200E+00, 1.5040773967762700E+00, 1.0986122886681100E+00, 8.1093021621632900E-01, 5.8778666490211900E-01, 4.0546510810816400E-01, 2.5131442828090600E-01, 1.1778303565638300E-01, 0.0000000000000000E+00, -1.0536051565782600E-01}, {1.0000000000000000e+10, 2.3025850929940500E+00, 1.6094379124341000E+00, 1.2039728043259400E+00, 9.1629073187415500E-01, 6.9314718055994500E-01, 5.1082562376599100E-01, 3.5667494393873200E-01, 2.2314355131421000E-01, 1.0536051565782600E-01, 0.0000000000000000E+00} };

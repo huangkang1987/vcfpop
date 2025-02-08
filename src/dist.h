@@ -54,19 +54,19 @@ struct GDIST
 	double Reynolds_Huang2021_aneu;		//AMOVA aneuploid
 
 	/* Write column format header row for genetic distance estimation */
-	TARGET static void ColumnPrintHeader();
+	TARGET static void ColumnFormatHeader();
 
 	/* Write column format result row for genetic distance estimation */
-	TARGET void ColumnPrintLine(int i, int j);
+	TARGET void ColumnFormatLine(int i, int j);
 
 	/* Write matrix format header for genetic distance estimation */
-	TARGET static void MatrixPrintMatrixHeader(int k, int n);
+	TARGET static void MatrixFormatHeader(int k, int n);
 
 	/* Write matrix format row header for genetic distance estimation */
-	TARGET static void MatrixPrintRowHeader(int k, int i);
+	TARGET static void MatrixFormatRowHeader(int k, int i);
 
 	/* Write matrix format grid for genetic distance estimation */
-	TARGET void MatrixPrintCell(int k);
+	TARGET void MatrixFormatCell(int k);
 
 	/* Use population/region allele frequency as the missing data */
 	TARGET static void GetMissingFreq(GENOTYPE& gt, int64 l, REAL* p, int k);
@@ -84,10 +84,10 @@ struct GDIST
 #pragma pack(pop)
 extern int gdist_type;												//1 between inds, 2 between pops, 3 + between regions
 extern int gdindex[N_GD_ESTIMATOR + 1];								//Index of ith used estimator
-#define gdist_buf (*(GDIST<REAL>**)&gdist_buf_)
-extern void* gdist_buf_;
-#define gd_tab (*(INDGD<REAL>***)&gd_tab_)
-extern void* gd_tab_;
+template<typename REAL>
+extern GDIST<REAL>* gdist_buf;
+template<typename REAL>
+extern INDGD<REAL>** gd_tab;
 
 /* Calculate genetic distance */
 template<typename REAL>

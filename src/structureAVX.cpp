@@ -52,7 +52,7 @@ struct GENO_READERAVX
 	{
 		//set pos and size
 		SetZero(this, 1);
-		num = Min(num, 64);
+		num = std::min(num, 64LL);
 
 		//set bucket from default bucket or assigned bucket
 		if (bucket == NULL) bucket = &geno_bucket;
@@ -100,8 +100,7 @@ struct GENO_READERAVX
 		}
 	}
 
-	__forceinline
-	TARGETAVX void Read(__m256i* gid)
+	forceinline TARGETAVX void Read(__m256i* gid)
 	{
 		// if data is empty
 		if (nbits < size) [[unlikely]]
@@ -161,7 +160,7 @@ struct GENO_READERSSE
 	{
 		//set pos and size
 		SetZero(this, 1);
-		num = Min(num, 64);
+		num = std::min(num, 64LL);
 
 		//set bucket from default bucket or assigned bucket
 		if (bucket == NULL) bucket = &geno_bucket;
@@ -210,8 +209,7 @@ struct GENO_READERSSE
 		}
 	}
 
-	__forceinline
-	TARGETSSE void Read(__m256i* gid2)
+	forceinline TARGETSSE void Read(__m256i* gid2)
 	{
 		__m128i* gid = (__m128i*)gid2;
 		// if data is empty
@@ -251,40 +249,6 @@ struct GENO_READERSSE
 };
 #endif
 
-__forceinline TARGETAVX double _mm256_reduce_add_pd(__m256d v1)
-{
-	__m128d v2 = _mm_add_pd(_mm256_extractf128_pd(v1, 0), _mm256_extractf128_pd(v1, 1));
-	return simd_f64(v2, 0) + simd_f64(v2, 1);
-}
-
-__forceinline TARGETAVX double _mm256_reduce_mul_pd(__m256d v1)
-{
-	__m128d v2 = _mm_mul_pd(_mm256_extractf128_pd(v1, 0), _mm256_extractf128_pd(v1, 1));
-	return simd_f64(v2, 0) * simd_f64(v2, 1);
-}
-
-__forceinline TARGETAVX float _mm256_reduce_add_ps(__m256 v1)
-{
-	__m128 v2 = _mm_mul_ps(_mm256_extractf128_ps(v1, 0), _mm256_extractf128_ps(v1, 1));
-	__m128 v3 = _mm_mul_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
-	return simd_f64(v3, 0) + simd_f64(v3, 1);
-}
-
-__forceinline TARGETAVX float _mm256_reduce_mul_ps(__m256 v1)
-{
-	__m128 v2 = _mm_add_ps(_mm256_extractf128_ps(v1, 0), _mm256_extractf128_ps(v1, 1));
-	__m128 v3 = _mm_add_ps(v2, _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(v2), 8)));
-	return simd_f64(v3, 0) * simd_f64(v3, 1);
-}
-
-__forceinline __m128i _mm256_cvtepi64_epi32x(__m256i a)
-{
-	return _mm_castps_si128(_mm_shuffle_ps(
-		_mm_castpd_ps(_mm256_castpd256_pd128(_mm256_castsi256_pd(a))), 
-		_mm_castpd_ps(_mm256_extractf128_pd(_mm256_castsi256_pd(a), 1)), 
-		_MM_SHUFFLE(2, 0, 2, 0)));
-}
-
 /* Update a priori ancetral proportion for non-admix model */
 template<typename REAL>
 TARGETAVX void BAYESIAN<REAL>::UpdateQNoAdmixAVX(int tid)
@@ -298,8 +262,8 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQNoAdmixAVX(int tid)
 		double* buf1 = bufNK1, * buf2 = bufNK2;
 		if (locpriori) for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
 		{
-			if (ainds[i]->vt == 0) continue;
-			ChargeLog((int64*)buf1, buf2, Gamma + ainds[i]->popid * K, K);
+			if (ainds<REAL>[i]->vt == 0) continue;
+			ChargeLog((int64*)buf1, buf2, Gamma + ainds<REAL>[i]->popid * K, K);
 		}
 
 		//////////////////////////////////////////////////////////
@@ -314,10 +278,10 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQNoAdmixAVX(int tid)
 
 		buf1 = bufNK1;
 		REAL* q = Q;
-		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//double
 		for (int i = 0; i < N; ++i, buf1 += K, q += K)
 		{
-			if (ainds[i]->vt == 0) continue;
+			if (ainds<REAL>[i]->vt == 0) continue;
 			ushort k2 = (ushort)rng.PolyLog(buf1, K);
 			q[k2] = 1;
 			Z[i] = k2;
@@ -405,7 +369,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQNoAdmixAVX(int tid)
 					{
 						__m256i maxv1 = _mm256_max_epi32(_mm256_max_epi32(_mm256_max_epi32(gtploidy[0], gtploidy[1]), _mm256_max_epi32(gtploidy[2], gtploidy[3])), _mm256_max_epi32(_mm256_max_epi32(gtploidy[4], gtploidy[5]), _mm256_max_epi32(gtploidy[6], gtploidy[7])));
 						int* maxv2 = (int*)&maxv1;
-						maxv = Max(Max(Max(maxv2[0], maxv2[1]), Max(maxv2[2], maxv2[3])), Max(Max(maxv2[4], maxv2[5]), Max(maxv2[6], maxv2[7])));
+						maxv = std::max(std::max(std::max(maxv2[0], maxv2[1]), std::max(maxv2[2], maxv2[3])), std::max(std::max(maxv2[4], maxv2[5]), std::max(maxv2[6], maxv2[7])));
 					}
 
 					__m256i ai = _mm256_set1_epi32(0);
@@ -415,7 +379,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQNoAdmixAVX(int tid)
 						{
 							typed[kk] = _mm256_cmpgt_epi32(gtploidy[kk], ai);
 
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 							{
 								typed64[0 + (kk << 1)] = _mm256_cvtepi32_epi64(_mm256_extracti128_si256(typed[kk], 0));
 								typed64[1 + (kk << 1)] = _mm256_cvtepi32_epi64(_mm256_extracti128_si256(typed[kk], 1));
@@ -433,7 +397,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQNoAdmixAVX(int tid)
 						REAL* p2 = p;
 						for (int k = 0; k < K; ++k, p2 += KT)
 						{
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 								REP(16) freq[kk] = _mm256_mask_i32gather_pd(maskoned, p2, allele2[kk], _mm256_castsi256_pd(typed64[kk]), sizeof(double));
 							else
 								REP(8)
@@ -473,7 +437,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZNoAdmixAVX(int tid)
 		SetZero(Ni, K * KT);
 
 		for (int i = 0; i < N; ++i)
-			Mi[i * K + Z[i]] = ainds[i]->vt;
+			Mi[i * K + Z[i]] = ainds<REAL>[i]->vt;
 
 		//////////////////////////////////////////////////////////
 
@@ -559,7 +523,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZNoAdmixAVX(int tid)
 					{
 						__m256i maxv1 = _mm256_max_epi32(_mm256_max_epi32(_mm256_max_epi32(gtploidy[0], gtploidy[1]), _mm256_max_epi32(gtploidy[2], gtploidy[3])), _mm256_max_epi32(_mm256_max_epi32(gtploidy[4], gtploidy[5]), _mm256_max_epi32(gtploidy[6], gtploidy[7])));
 						int* maxv2 = (int*)&maxv1;
-						maxv = Max(Max(Max(maxv2[0], maxv2[1]), Max(maxv2[2], maxv2[3])), Max(Max(maxv2[4], maxv2[5]), Max(maxv2[6], maxv2[7])));
+						maxv = std::max(std::max(std::max(maxv2[0], maxv2[1]), std::max(maxv2[2], maxv2[3])), std::max(std::max(maxv2[4], maxv2[5]), std::max(maxv2[6], maxv2[7])));
 					}
 
 					int* ni = Ni + Z[i] * KT + o;
@@ -594,14 +558,14 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 {
 	if (tid == -1)
 	{
-		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//REAL
 		REAL* bufi = (REAL*)bufNK1;
 		REAL* q = NULL;
 
 		for (int i = 0; i < N; ++i, bufi += K)
 		{
-			if (ainds[i]->vt == 0) continue;
-			if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds[i]->popid * K, K);
+			if (ainds<REAL>[i]->vt == 0) continue;
+			if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds<REAL>[i]->popid * K, K);
 			else           rng.Dirichlet(bufi, Alpha, K);
 		}
 
@@ -620,7 +584,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 		bufi = (REAL*)bufNK1; q = Q;
 		for (int i = 0; i < N; ++i, q += K, bufi += K)
 		{
-			if (ainds[i]->vt == 0) continue;
+			if (ainds<REAL>[i]->vt == 0) continue;
 			if (bufN1[i] >= NZERO || rng.Uniform() < exp(bufN1[i]))
 				SetVal(q, bufi, K);
 		}
@@ -708,9 +672,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 					int maxv = maxploidy;
 					if (maxploidy != minploidy)
 					{
-						__m256i maxv1 = _mm256_max_epi32(_mm256_max_epi32(_mm256_max_epi32(gtploidy[0], gtploidy[1]), _mm256_max_epi32(gtploidy[2], gtploidy[3])), _mm256_max_epi32(_mm256_max_epi32(gtploidy[4], gtploidy[5]), _mm256_max_epi32(gtploidy[6], gtploidy[7])));
-						int* maxv2 = (int*)&maxv1;
-						maxv = Max(Max(Max(maxv2[0], maxv2[1]), Max(maxv2[2], maxv2[3])), Max(Max(maxv2[4], maxv2[5]), Max(maxv2[6], maxv2[7])));
+						maxv = _mm256_reduce_max_epi32(_mm256_max_epi32(_mm256_max_epi32(_mm256_max_epi32(gtploidy[0], gtploidy[1]), _mm256_max_epi32(gtploidy[2], gtploidy[3])), _mm256_max_epi32(_mm256_max_epi32(gtploidy[4], gtploidy[5]), _mm256_max_epi32(gtploidy[6], gtploidy[7]))));
 					}
 
 					__m256i ai = _mm256_set1_epi32(0);
@@ -732,7 +694,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 							allele[kk] = _mm256_add_epi32(allele[kk], oindex[kk]);
 						}
 
-						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+						if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 						{
 							REP(16) f1[kk] = _mm256_setzero_pd();
 							REP(16) f2[kk] = _mm256_setzero_pd();
@@ -746,9 +708,9 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 						REAL* p2 = p;
 						for (int k = 0; k < K; ++k, p2 += KT)
 						{
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 							{
-								__m256d pp[16], v1, v2, qq = _mm256_set1_pd(q[k]), ii = _mm256_set1_pd(bufi[k]);
+								__m256d pp[16], qq = _mm256_set1_pd(q[k]), ii = _mm256_set1_pd(bufi[k]);//, v1, v2
 								REP(16) pp[kk] = _mm256_i32gather_pd(p2, allele2[kk], sizeof(double));
 								REP(16)
 								{
@@ -762,7 +724,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 							}
 							else if constexpr (fast_fp32)
 							{
-								__m256 pp[8], v1, v2, qq = _mm256_set1_ps(q[k]), ii = _mm256_set1_ps(bufi[k]);
+								__m256 pp[8], qq = _mm256_set1_ps(q[k]), ii = _mm256_set1_ps(bufi[k]);//, v1, v2
 
 								REP(8) pp[kk] = _mm256_i32gather_ps(p2, allele[kk], sizeof(float));
 								REP(8)
@@ -777,7 +739,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 							}
 							else
 							{
-								__m256d pp[16], v1, v2, qq = _mm256_set1_pd(q[k]), ii = _mm256_set1_pd(bufi[k]);
+								__m256d pp[16], qq = _mm256_set1_pd(q[k]), ii = _mm256_set1_pd(bufi[k]);//, v1, v2
 
 								REP(16) pp[kk] = _mm256_cvtps_pd(_mm_i32gather_ps(p2, allele2[kk], sizeof(float)));
 								REP(16)
@@ -792,7 +754,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateQMetroAVX(int tid)
 							}
 						}
 
-						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						if constexpr (std::is_same_v<REAL, float> && fast_fp32)
 						{
 							__m128* f1t = (__m128*)f1s;
 
@@ -852,7 +814,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZAdmixAVX(int tid)
 	static __m256i mask02 = _mm256_set1_epi32(2);
 	static __m256i maskshift = _mm256_set_epi32(24, 25, 26, 27, 28, 29, 30, 31);
 	static __m256d minfreqd = _mm256_set1_pd(MIN_FREQ);
-	static __m256 minfreqs = _mm256_set1_ps(MIN_FREQ);
+	static __m256 minfreqs = _mm256_set1_ps((float)MIN_FREQ);
 	static int PT_PLOIDYxNALLELES[150] = 									//Pattern index to ploidy level
 	{ 0, 1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -862,8 +824,8 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZAdmixAVX(int tid)
 		int tid2 = thread_counter.fetch_add(1);
 
 		//64 * K  * sizeof(double)
-		__m256d* bufkd = (__m256d*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid2);
-		__m256* bufks = (__m256*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid2);
+		__m256d* bufkd = (__m256d*)Align64((byte*)bufNK2 + (std::max(N, 64) * K * sizeof(double) + 63) * tid2);
+		__m256* bufks = (__m256*)Align64((byte*)bufNK2 + (std::max(N, 64) * K * sizeof(double) + 63) * tid2);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -910,12 +872,12 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZAdmixAVX(int tid)
 
 				__m256i gtaddr[8], gtlow[8], gtploidy[8], gtals[8], allele[8], allele64[16], k2[16], typed[8], typed64[16];
 				__m128i* allele3 = (__m128i*)allele, * typed3 = (__m128i*)typed;
-				int* typed2 = (int*)typed, * allele2 = (int*)allele;
+				int* typed2 = (int*)typed;
 				uint64* k22 = (uint64*)&k2;
 
 				RNGAVX<double> rngd; RNGAVX<float > rngs;
 
-				if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+				if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 					new (&rngd) RNGAVX<double>(seed + m * L + l, RNG_SALT_UPDATEZ);
 				else
 					new (&rngs) RNGAVX<float >(seed + m * L + l, RNG_SALT_UPDATEZ);
@@ -961,7 +923,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZAdmixAVX(int tid)
 						REP(16)
 						{
 							allele64[kk] = _mm256_cvtepi32_epi64(allele3[kk]);
-							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 								typed64[kk] = _mm256_cvtepi32_epi64(typed3[kk]);
 						}
 
@@ -970,7 +932,7 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZAdmixAVX(int tid)
 						{
 							__m256d qd; __m256 qs;
 
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 							{
 								qd = _mm256_set1_pd(q[k]);
 								REP(16) bufkd[kk + (k << 4)] = _mm256_i32gather_pd(p2, allele3[kk], sizeof(double));
@@ -997,10 +959,10 @@ TARGETAVX void BAYESIAN<REAL>::UpdateZAdmixAVX(int tid)
 						}
 
 						//draw cluster for each allele copy
-						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
-							rngd.Poly<64>(bufkd, K, k2);
+						if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
+							rngd.Poly(bufkd, K, k2);
 						else
-							rngs.Poly<64>(bufks, K, k2);
+							rngs.Poly(bufks, K, k2);
 
 						//Update Mi
 						REP(64) mi[k22[kk]] -= typed2[kk];
@@ -1106,7 +1068,7 @@ TARGETAVX void BAYESIAN<REAL>::RecordAVX(int tid)
 				REP(16) ot[kk] = _mm256_sub_epi64(ot[kk], oindex0);
 				REP(16) oindex2[kk] = _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(ot2[0 + (kk << 1)]), _mm_castsi128_ps(ot2[1 + (kk << 1)]), _MM_SHUFFLE(2, 0, 2, 0)));
 
-				__m256i gtaddr[8], gtlow[8], gtploidy[8], gtals[8], allele[8], allele64[16], k2[16], typed[8], typed64[16];
+				__m256i gtaddr[8], gtlow[8], gtploidy[8], gtals[8], allele[8], allele64[16], typed[8], typed64[16];
 				__m256d f2[16];
 				__m256 f2s[8];
 				__m128i* allele3 = (__m128i*)allele, * typed3 = (__m128i*)typed;
@@ -1132,9 +1094,7 @@ TARGETAVX void BAYESIAN<REAL>::RecordAVX(int tid)
 					int maxv = maxploidy;
 					if (maxploidy != minploidy)
 					{
-						__m256i maxv1 = _mm256_max_epi32(_mm256_max_epi32(_mm256_max_epi32(gtploidy[0], gtploidy[1]), _mm256_max_epi32(gtploidy[2], gtploidy[3])), _mm256_max_epi32(_mm256_max_epi32(gtploidy[4], gtploidy[5]), _mm256_max_epi32(gtploidy[6], gtploidy[7])));
-						int* maxv2 = (int*)&maxv1;
-						maxv = Max(Max(Max(maxv2[0], maxv2[1]), Max(maxv2[2], maxv2[3])), Max(Max(maxv2[4], maxv2[5]), Max(maxv2[6], maxv2[7])));
+						maxv = _mm256_reduce_max_epi32(_mm256_max_epi32(_mm256_max_epi32(_mm256_max_epi32(gtploidy[0], gtploidy[1]), _mm256_max_epi32(gtploidy[2], gtploidy[3])), _mm256_max_epi32(_mm256_max_epi32(gtploidy[4], gtploidy[5]), _mm256_max_epi32(gtploidy[6], gtploidy[7]))));
 					}
 
 					__m256i ai = _mm256_set1_epi32(0);
@@ -1159,7 +1119,7 @@ TARGETAVX void BAYESIAN<REAL>::RecordAVX(int tid)
 							typed64[kk] = _mm256_cvtepi32_epi64(typed3[kk]);
 						}
 
-						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+						if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 							REP(16) f2[kk] = _mm256_setzero_pd();
 						else
 							REP(8) f2s[kk] = _mm256_setzero_ps();
@@ -1168,7 +1128,7 @@ TARGETAVX void BAYESIAN<REAL>::RecordAVX(int tid)
 						{
 							REAL* p2 = p + Z[i] * KT;
 
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 								REP(16) f2[kk] = _mm256_mask_i32gather_pd(maskoned, p2, allele3[kk], _mm256_castsi256_pd(typed64[kk]), sizeof(double));
 							else if constexpr (fast_fp32)
 								REP(8) f2s[kk] = _mm256_mask_i32gather_ps(maskones, p2, allele[kk], _mm256_castsi256_ps(typed[kk]), sizeof(float));
@@ -1180,7 +1140,7 @@ TARGETAVX void BAYESIAN<REAL>::RecordAVX(int tid)
 							REAL* p2 = p;
 							for (int k = 0; k < K; ++k, p2 += KT)
 							{
-								if constexpr (sizeof(REAL) == 8)
+								if constexpr (std::is_same_v<REAL, double>)
 								{
 									__m256d pp[16], qq = _mm256_set1_pd(q[k]);
 
@@ -1204,7 +1164,7 @@ TARGETAVX void BAYESIAN<REAL>::RecordAVX(int tid)
 							}
 						}
 
-						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						if constexpr (std::is_same_v<REAL, float> && fast_fp32)
 						{
 							__m128* f2t = (__m128*)f2s;
 							REP(16) f2[kk] = _mm256_cvtps_pd(f2t[kk]);

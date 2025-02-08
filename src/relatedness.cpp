@@ -9,18 +9,64 @@ template struct RELATEDNESS<float >;
 template TARGET void CalcRelatedness<double>();
 template TARGET void CalcRelatedness<float >();
 
+template<> RELATEDNESS<double>* relatedness_buf<double>;
+template<> RELATEDNESS<float >* relatedness_buf<float >;
+template<> LOCSTAT2<double>* relatedness_loc_stat<double>;
+template<> LOCSTAT2<float >* relatedness_loc_stat<float >;
+
 #ifndef _RELATEDNESS
+
+TARGET bool SolveRelatedness(double* A, double* B, double* x, int n)
+{
+	Mat<double> mA(A, n, n, false, true);
+	Mat<double> mB(B, n, 1, false, true);
+	Mat<double> mX(x, n, 1, false, true);
+	solve(mX, mA.t(), mB);
+
+	double t = 0;
+	switch (n)
+	{
+	case 1:
+		t = x[0];
+		break;
+	case 2:
+		t = x[0] + 0.5 * x[1];
+		break;
+	case 3:
+		t = x[0] + 0.6666666666666666667 * x[1] + 0.3333333333333333333 * x[2];
+		break;
+	case 4:
+		t = x[0] + 0.75 * x[1] + 0.5 * x[2] + 0.25 * x[3];
+		break;
+	case 5:
+		t = x[0] + 0.8 * x[1] + 0.6 * x[2] + 0.4 * x[3] + 0.2 * x[4];
+		break;
+	case 6:
+		t = x[0] + 0.8333333333333333333 * x[1] + 0.6666666666666666667 * x[2] + 0.5 * x[3] + 0.3333333333333333333 * x[4] + 0.1666666666666666667 * x[5];
+		break;
+	case 7:
+		t = x[0] + 0.857142857142857143 * x[1] + 0.714285714285714286 * x[2] + 0.571428571428571429 * x[3] + 0.428571428571428571 * x[4] + 0.285714285714285714 * x[5] + 0.142857142857142857 * x[6];
+		break;
+	case 8:
+		t = x[0] + 0.875 * x[1] + 0.75 * x[2] + 0.625 * x[3] + 0.5 * x[4] + 0.375 * x[5] + 0.25 * x[6] + 0.125 * x[7];
+		break;
+	}
+	if (t > 1.001 || t < -16 || IsError(t))
+		return false;
+	return true;
+}
+
 /* Write header row for relatedness estimation */
 template<typename REAL>
-TARGET void RELATEDNESS<REAL>::ColumnPrintHeader()
+TARGET void RELATEDNESS<REAL>::ColumnFormatHeader()
 {
-	fprintf(FRES, "%s%s%s%sA%cpop",
+	fprintf(FRES, "%s%s%s%sA%cpop<REAL>",
 		g_linebreak_val, g_linebreak_val,
-		cpop->name, g_linebreak_val,
+		cpop<REAL>->name, g_linebreak_val,
 		g_delimiter_val);
 	for (int rl = 0; rl < lreg; ++rl)
 		fprintf(FRES, "%cregL%d", g_delimiter_val, rl + 1);
-	fprintf(FRES, "%cB%cpop", g_delimiter_val, g_delimiter_val);
+	fprintf(FRES, "%cB%cpop<REAL>", g_delimiter_val, g_delimiter_val);
 	for (int rl = 0; rl < lreg; ++rl)
 		fprintf(FRES, "%cregL%d", g_delimiter_val, rl + 1);
 	fprintf(FRES, "%cAB_typed%cA_typed%cB_typed", g_delimiter_val, g_delimiter_val, g_delimiter_val);
@@ -32,29 +78,29 @@ TARGET void RELATEDNESS<REAL>::ColumnPrintHeader()
 
 /* Write result row for relatedness estimation */
 template<typename REAL>
-TARGET void RELATEDNESS<REAL>::ColumnPrintLine(int i, int j)
+TARGET void RELATEDNESS<REAL>::ColumnFormatLine(int i, int j)
 {
 	fprintf(FRES, "%s%s%c%s%c",
 		g_linebreak_val,
-		ainds[i]->name, g_delimiter_val,
-		apops[ainds[i]->popid]->name, g_delimiter_val);
+		ainds<REAL>[i]->name, g_delimiter_val,
+		apops<REAL>[ainds<REAL>[i]->popid]->name, g_delimiter_val);
 
-	POP<REAL>* tr = lreg >= 0 ? aregs[0][apops[ainds[i]->popid]->rid] : NULL;
+	POP<REAL>* tr = lreg >= 0 ? aregs<REAL>[0][apops<REAL>[ainds<REAL>[i]->popid]->rid] : NULL;
 	for (int rl = 0; rl < lreg; ++rl)
 	{
 		fprintf(FRES, "%s%c", tr->name, g_delimiter_val);
-		tr = aregs[rl + 1][tr->rid];
+		tr = aregs<REAL>[rl + 1][tr->rid];
 	}
 
 	fprintf(FRES, "%s%c%s%c",
-		ainds[j]->name, g_delimiter_val,
-		apops[ainds[j]->popid]->name, g_delimiter_val);
+		ainds<REAL>[j]->name, g_delimiter_val,
+		apops<REAL>[ainds<REAL>[j]->popid]->name, g_delimiter_val);
 
-	tr = lreg >= 0 ? aregs[0][apops[ainds[j]->popid]->rid] : NULL;
+	tr = lreg >= 0 ? aregs<REAL>[0][apops<REAL>[ainds<REAL>[j]->popid]->rid] : NULL;
 	for (int rl = 0; rl < lreg; ++rl)
 	{
 		fprintf(FRES, "%s%c", tr->name, g_delimiter_val);
-		tr = aregs[rl + 1][tr->rid];
+		tr = aregs<REAL>[rl + 1][tr->rid];
 	}
 
 	fprintf(FRES, "%d%c%d%c%d",
@@ -72,26 +118,26 @@ TARGET void RELATEDNESS<REAL>::ColumnPrintLine(int i, int j)
 
 /* Write matrix format header for relatedness estimation */
 template<typename REAL>
-TARGET void RELATEDNESS<REAL>::MatrixPrintMatrixHeader(int k, int n)
+TARGET void RELATEDNESS<REAL>::MatrixFormatHeader(int k, int n)
 {
 	if (relatedness_estimator_val[k] == 0) return;
-	fprintf(TEMP_FILES[k], "%s%s%s%s%s", g_linebreak_val, g_linebreak_val, cpop->name, g_linebreak_val, RELATEDNESS_ESTIMATOR[k]);
+	fprintf(TEMP_FILES[k], "%s%s%s%s%s", g_linebreak_val, g_linebreak_val, cpop<REAL>->name, g_linebreak_val, RELATEDNESS_ESTIMATOR[k]);
 
 	for (int i = 0; i < n; ++i)
-		fprintf(TEMP_FILES[k], "%c%s", g_delimiter_val, cpop->inds[i]->name);
+		fprintf(TEMP_FILES[k], "%c%s", g_delimiter_val, cpop<REAL>->inds[i]->name);
 }
 
 /* Write matrix format row header for relatedness estimation */
 template<typename REAL>
-TARGET void RELATEDNESS<REAL>::MatrixPrintRowHeader(int k, int i)
+TARGET void RELATEDNESS<REAL>::MatrixFormatRowHeader(int k, int i)
 {
 	if (relatedness_estimator_val[k] == 0) return;
-	fprintf(TEMP_FILES[k], "%s%s", g_linebreak_val, cpop->inds[i]->name);
+	fprintf(TEMP_FILES[k], "%s%s", g_linebreak_val, cpop<REAL>->inds[i]->name);
 }
 
 /* Write matrix format grid for relatedness estimation */
 template<typename REAL>
-TARGET void RELATEDNESS<REAL>::MatrixPrintCell(int k)
+TARGET void RELATEDNESS<REAL>::MatrixFormatCell(int k)
 {
 	if (relatedness_estimator_val[k] == 0) return;
 	fprintf(TEMP_FILES[k], "%c", g_delimiter_val);
@@ -148,6 +194,7 @@ TARGET double RELATEDNESS<REAL>::RelatednessEstimator(int k, IND<REAL>* x, IND<R
 	case 14: return R_Ritland1996(x, y, false, true);
 	case 15: return R_Loiselle1995(x, y, false, true);
 	case 16: return R_Weir1996(x, y, true);
+	case 17: return R_VanRaden2008(x, y, true);
 	}
 	return NAN;
 }
@@ -167,9 +214,9 @@ TARGET double RELATEDNESS<REAL>::R_Lynch1999(IND<REAL>* x, IND<REAL>* y)
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 1) continue;
+		if (cpop<REAL>->loc_stat1[l].k <= 1) continue;
 
-		REAL* p = cpop->GetFreq(l);
+		REAL* p = cpop<REAL>->GetFreq(l);
 		int a = gx.GetAlleleCopy(0), b = gx.GetAlleleCopy(1), c = gy.GetAlleleCopy(0), d = gy.GetAlleleCopy(1);
 		int dab = a == b, dcd = c == d, dbc = b == c, dbd = b == d, dac = a == c, dad = a == d;
 		double wx = ((1 + dab) * (p[a] + p[b]) - 4 * p[a] * p[b]) / (2 * p[a] * p[b]);
@@ -207,8 +254,8 @@ TARGET double RELATEDNESS<REAL>::R_Wang2002(IND<REAL>* x, IND<REAL>* y)
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 1) continue;
-		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat[l];
+		if (cpop<REAL>->loc_stat1[l].k <= 1) continue;
+		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat<REAL>[l];
 
 		double w = 1.0 / (2 * stat2.s2 - stat2.s3);
 		sw += w;
@@ -263,8 +310,8 @@ TARGET double RELATEDNESS<REAL>::R_Thomas2010(IND<REAL>* x, IND<REAL>* y)
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 1) continue;
-		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat[l];
+		if (cpop<REAL>->loc_stat1[l].k <= 1) continue;
+		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat<REAL>[l];
 
 		int va = gx.GetAlleleCopy(0), vb = gx.GetAlleleCopy(1), vc = gy.GetAlleleCopy(0), vd = gy.GetAlleleCopy(1);
 		t1 = (va == vc) + (vb == vd);
@@ -308,8 +355,8 @@ TARGET double RELATEDNESS<REAL>::R_Li1993(IND<REAL>* x, IND<REAL>* y)
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 1) continue;
-		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat[l];
+		if (cpop<REAL>->loc_stat1[l].k <= 1) continue;
+		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat<REAL>[l];
 
 		int va = gx.GetAlleleCopy(0), vb = gx.GetAlleleCopy(1), vc = gy.GetAlleleCopy(0), vd = gy.GetAlleleCopy(1);
 
@@ -343,11 +390,11 @@ TARGET double RELATEDNESS<REAL>::R_Queller1989(IND<REAL>* x, IND<REAL>* y)
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 2) continue;//cannot be used for diallelic loci
+		if (cpop<REAL>->loc_stat1[l].k <= 2) continue;//cannot be used for diallelic loci
 
 		int va = gx.GetAlleleCopy(0), vb = gx.GetAlleleCopy(1), vc = gy.GetAlleleCopy(0), vd = gy.GetAlleleCopy(1);
 		int Sac = va == vc, Sad = va == vd, Sbc = vb == vc, Sbd = vb == vd, Sab = va == vb, Scd = vc == vd;
-		REAL* p = cpop->GetFreq(l);
+		REAL* p = cpop<REAL>->GetFreq(l);
 
 		double rx = (0.5 * (Sac + Sad + Sbc + Sbd) - p[va] - p[vb]) / (1 + Sab - p[va] - p[vb]);
 		if (IsNormal(rx)) { srx += rx; swx++; }
@@ -373,8 +420,8 @@ TARGET double RELATEDNESS<REAL>::R_Huang2016A(IND<REAL>* x, IND<REAL>* y)
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 1) continue;
-		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat[l];
+		if (cpop<REAL>->loc_stat1[l].k <= 1) continue;
+		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat<REAL>[l];
 
 		int va = gx.GetAlleleCopy(0), vb = gx.GetAlleleCopy(1), vc = gy.GetAlleleCopy(0), vd = gy.GetAlleleCopy(1);
 		double w = 1.0 / (2 * stat2.s2 - stat2.s3);
@@ -422,10 +469,10 @@ TARGET double RELATEDNESS<REAL>::R_Huang2016B(IND<REAL>* x, IND<REAL>* y)
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 1) continue;
+		if (cpop<REAL>->loc_stat1[l].k <= 1) continue;
 
 		int va = gx.GetAlleleCopy(0), vb = gx.GetAlleleCopy(1), vc = gy.GetAlleleCopy(0), vd = gy.GetAlleleCopy(1);
-		REAL* p = cpop->GetFreq(l);
+		REAL* p = cpop<REAL>->GetFreq(l);
 		double S = 0;
 		if ((va == vc && vb == vd) || (va == vd && vb == vc)) S = 1;
 		else if ((va == vb || vc == vd) && (va == vc || vb == vd || va == vd || vb == vc)) S = 0.75;
@@ -519,9 +566,9 @@ TARGET void RELATEDNESS<REAL>::R_AndersonInitialize(IND<REAL>* x, IND<REAL>* y)
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 1) continue;
+		if (cpop<REAL>->loc_stat1[l].k <= 1) continue;
 
-		REAL* p = cpop->GetFreq(l);
+		REAL* p = cpop<REAL>->GetFreq(l);
 		int va = gx.GetAlleleCopy(0), vb = gx.GetAlleleCopy(1), vc = gy.GetAlleleCopy(0), vd = gy.GetAlleleCopy(1);
 		int ibs = 0;
 		double pi = 0, pj = 0, pk = 0, pl = 0;
@@ -577,23 +624,28 @@ TARGET double RELATEDNESS<REAL>::R_Milligan2003(IND<REAL>* x, IND<REAL>* y)
 	return R_Anderson2007(x, y, false);
 }
 
+
 /* Anderson 2007 relatedness estimator */
 template<typename REAL>
 TARGET double RELATEDNESS<REAL>::R_Anderson2007(IND<REAL>* x, IND<REAL>* y, bool confine)
 {
 	R_AndersonInitialize(x, y);
 	int dim = 2;
-	CPOINT xx0 = CPOINT::DownHillSimplex(dim, 0, confine, 0.0001, 15, L_Anderson, NULL);
-	xx0.Image2Real();
-	return xx0.real[0] + xx0.real[1] / 2;
+	RELATEDNESS_PARAM Param{ dim, 0, confine };
+	CPOINT xx0 = CPOINT::DownHillSimplex<REAL>((void*)&Param, L_Anderson, dim);
+	Param.Unc2Real_Relatedness(xx0);
+
+	return xx0.real_space[0] + xx0.real_space[1] / 2;
 }
 
 /* Calculate Anderson 2007 likelihood */
 template<typename REAL>
-TARGET double RELATEDNESS<REAL>::L_Anderson(CPOINT& x, void** unusued)
+TARGET double RELATEDNESS<REAL>::L_Anderson(void* Param, CPOINT& xx, rmat& G, rmat& H)
 {
-	x.Image2Real();
-	double* S = &x.real[0];
+	RELATEDNESS_PARAM& param = *(RELATEDNESS_PARAM*)Param;
+	param.Unc2Real_Relatedness(xx);
+
+	double* S = xx.real_space;
 	int64 slog = 0; double prod = 1;
 
 	OpenLog(slog, prod);//slog,prod
@@ -604,8 +656,8 @@ TARGET double RELATEDNESS<REAL>::L_Anderson(CPOINT& x, void** unusued)
 	}
 	CloseLog(slog, prod);
 
-	x.li = prod < -1e100 ? -1e100 : prod;
-	return x.li;
+	xx.lnL = prod < -1e100 ? -1e100 : prod;
+	return xx.lnL;
 }
 
 /* Ritland 1996 kinship estimator, convert into relatedness */
@@ -618,13 +670,13 @@ TARGET double RELATEDNESS<REAL>::R_Ritland1996(IND<REAL>* x, IND<REAL>* y, bool 
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		LOCSTAT1& stat1 = cpop->loc_stat1[l];
+		LOCSTAT1& stat1 = cpop<REAL>->loc_stat1[l];
 		if (stat1.k <= 1) continue;
-		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat[l];
+		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat<REAL>[l];
 
 		int vx = gx.Ploidy(), vy = gy.Ploidy();
 		int k = GetLoc(l).k;
-		REAL* p = cpop->GetFreq(l);
+		REAL* p = cpop<REAL>->GetFreq(l);
 		double tx = -1, ty = -1, txy = -1;
 
 		for (int i = 0; i < k; ++i)
@@ -638,7 +690,7 @@ TARGET double RELATEDNESS<REAL>::R_Ritland1996(IND<REAL>* x, IND<REAL>* y, bool 
 			txy += ax * ay * invpi;
 		}
 
-		int minv = Min(vx, vy), maxv = Min(vx, vy);
+		int minv = std::min(vx, vy), maxv = std::min(vx, vy);
 		double r = 0, w = 0;
 
 		if (isrelatedness)
@@ -681,12 +733,12 @@ TARGET double RELATEDNESS<REAL>::R_Loiselle1995(IND<REAL>* x, IND<REAL>* y, bool
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		LOCSTAT1& stat1 = cpop->loc_stat1[l];
+		LOCSTAT1& stat1 = cpop<REAL>->loc_stat1[l];
 		if (stat1.k <= 1) continue;
-		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat[l];
+		LOCSTAT2<REAL>& stat2 = relatedness_loc_stat<REAL>[l];
 
 		int k = GetLoc(l).k;
-		REAL* p = cpop->GetFreq(l);
+		REAL* p = cpop<REAL>->GetFreq(l);
 		double txy = 0, tb = 0, tx = 0, ty = 0;
 		int vx = gx.Ploidy(), vy = gy.Ploidy();
 
@@ -701,7 +753,7 @@ TARGET double RELATEDNESS<REAL>::R_Loiselle1995(IND<REAL>* x, IND<REAL>* y, bool
 			tb += p[i] * (1 - p[i]);
 		}
 
-		int minv = Min(vx, vy), maxv = Min(vx, vy);
+		int minv = std::min(vx, vy), maxv = std::min(vx, vy);
 		double r = 0, w = 0;
 
 		if (isrelatedness)
@@ -745,13 +797,13 @@ TARGET double RELATEDNESS<REAL>::R_Weir1996(IND<REAL>* x, IND<REAL>* y, bool isr
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		LOCSTAT1& stat1 = cpop->loc_stat1[l];
+		LOCSTAT1& stat1 = cpop<REAL>->loc_stat1[l];
 		if (stat1.k <= 1) continue;
 
 		int vx = gx.Ploidy(), vy = gy.Ploidy();
 		int k = GetLoc(l).k;
-		int minv = Min(vx, vy);
-		REAL* p = cpop->GetFreq(l);
+		int minv = std::min(vx, vy);
+		REAL* p = cpop<REAL>->GetFreq(l);
 
 		double r = 0, w = 0;
 		for (int i = 0; i < k; ++i)
@@ -770,6 +822,38 @@ TARGET double RELATEDNESS<REAL>::R_Weir1996(IND<REAL>* x, IND<REAL>* y, bool isr
 	return sr / sw;
 }
 
+/* Weir 1996 kinship estimator, convert into relatedness */
+template<typename REAL>
+TARGET double RELATEDNESS<REAL>::R_VanRaden2008(IND<REAL>* x, IND<REAL>* y, bool isrelatedness)
+{
+	double sr = 0, sw = 0;
+
+	for (int64 l = 0; l < nloc; ++l)
+	{
+		GENOTYPE& gx = x->GetGenotype(l), &gy = y->GetGenotype(l);
+		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
+		LOCSTAT1& stat1 = cpop<REAL>->loc_stat1[l];
+		if (stat1.k < 2) continue;
+
+		int vx = gx.Ploidy(), vy = gy.Ploidy(), k = GetLoc(l).k;
+		REAL* p = cpop<REAL>->GetFreq(l);
+
+		int i = std::max_element(p, p + k) - p;
+		double r = 0, w = 0, pp = p[i];
+		if (pp * stat1.nhaplo <= 1e-5) continue;
+		r += (isrelatedness ? sqrt((double)(vx * vy)) : 1.0) *
+			 (gx.GetFreq<REAL>(i) - pp) * (gy.GetFreq<REAL>(i) - pp);
+		w += pp - pp * pp;
+
+		if (IsNormal(r) && IsNormal(w))
+		{
+			sr += r;
+			sw += w;
+		}
+	}
+	return sr / sw;
+}
+
 /* Huang 2014 relatedness estimator */
 template<typename REAL>
 TARGET double RELATEDNESS<REAL>::R_Huang2014(IND<REAL>* x, IND<REAL>* y)
@@ -782,7 +866,7 @@ TARGET double RELATEDNESS<REAL>::R_Huang2014(IND<REAL>* x, IND<REAL>* y)
 	{
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 1) continue;
+		if (cpop<REAL>->loc_stat1[l].k <= 1) continue;
 
 		double r = 0, w = 0;
 		r = HuangMoment(gx, gy, l, w);
@@ -826,7 +910,7 @@ TARGET double RELATEDNESS<REAL>::S_Index(int* c, int* d, int ploidyx, int ploidy
 			}
 		}
 	}
-	return S * 1.0 / Max(ploidyx, ploidyy);
+	return S * 1.0 / std::max(ploidyx, ploidyy);
 }
 
 /* Huang 2014 relatedness estimator : get genotype pattern for reference individual */
@@ -974,7 +1058,7 @@ TARGET double RELATEDNESS<REAL>::HuangMoment(GENOTYPE& gx, GENOTYPE& gy, int64 l
 {
 	weight = 0;
 	int vx = gx.Ploidy(), vy = gy.Ploidy();
-	int minv = Min(vx, vy), maxv = Max(vx, vy);
+	int minv = std::min(vx, vy), maxv = std::max(vx, vy);
 	int cp = maxv, cpp = maxv + 1;
 	int start = cp - minv;
 
@@ -1008,7 +1092,7 @@ TARGET double RELATEDNESS<REAL>::HuangMoment(GENOTYPE& gx, GENOTYPE& gy, int64 l
 	for (int j = 1; j < cp; ++j)
 		E[j] = E[j - 1] * E[0];
 
-	MOMRelatednessAssign(cp, refmode, e, cpop->GetFreq(l), (int*)xx);
+	MOMRelatednessAssign(cp, refmode, e, cpop<REAL>->GetFreq(l), (int*)xx);
 
 	for (int j1 = 0; j1 < cpp; ++j1)
 		for (int j2 = 0; j2 < cp; ++j2)
@@ -1047,7 +1131,7 @@ TARGET double RELATEDNESS<REAL>::HuangMoment(GENOTYPE& gx, GENOTYPE& gy, int64 l
 	for (int j1 = minv; j1 < cp; ++j1)
 		M[j1 * cp + cp - 1 - j1] = 1;
 
-	if (!SolveEquation((double*)M, Diff, Delta, cp))
+	if (!SolveRelatedness((double*)M, Diff, Delta, cp))
 		return 0;
 
 	for (int j = 0; j < cp; ++j)
@@ -1063,7 +1147,10 @@ TARGET double RELATEDNESS<REAL>::HuangMoment(GENOTYPE& gx, GENOTYPE& gy, int64 l
 		for (int j2 = minv; j2 < cp; ++j2)
 			Diff[j2] = 0;
 
-		MatrixMul((double*)M, cp, cp, (double*)Diff, cp, 1, (double*)Sol);
+		mat mMt((double*)M, cp, cp, false, true);
+		mat mDt((double*)Diff, 1 , cp, false, true);
+		mat mSt((double*)Sol, 1 , cp, false, true);
+		mSt = mDt * mMt;
 
 		Sol[cp] = 0;
 		for (int j = 0; j < cp; ++j)
@@ -1109,7 +1196,7 @@ TARGET void RELATEDNESS<REAL>::Huang2015_Initialize()
 template<typename REAL>
 TARGET void RELATEDNESS<REAL>::Huang2015_Uninitialize()
 {
-	delete[] Huang2015_maps;
+	DEL(Huang2015_maps);
 }
 
 /* Huang 2015 relatedness estimator */
@@ -1133,7 +1220,7 @@ TARGET double RELATEDNESS<REAL>::R_Huang2015(IND<REAL>* x, IND<REAL>* y)
 
 		GENOTYPE& gx = x->GetGenotype(l), & gy = y->GetGenotype(l);//fine
 		if (gx.Nalleles() == 0 || gy.Nalleles() == 0) continue;
-		if (cpop->loc_stat1[l].k <= 1) continue; //monomorphic in current population
+		if (cpop<REAL>->loc_stat1[l].k <= 1) continue; //monomorphic in current population
 
 		int xx[8] = { 0 }, yy[8] = { 0 }, alleles[16] = { 0 };
 		ushort* xals = gx.GetAlleleArray(), * yals = gy.GetAlleleArray();
@@ -1144,27 +1231,30 @@ TARGET double RELATEDNESS<REAL>::R_Huang2015(IND<REAL>* x, IND<REAL>* y)
 		if (entry.ibs == 0) continue;
 
 		Huang2015_MatchAllele(entry.pattern, xx, yy, alleles, maxv);
-		MLRelatednessAssign(maxv, cpop->GetFreq(l), alleles, Huang2015_Coef + l * 9, entry.ibs);
+		MLRelatednessAssign(maxv, cpop<REAL>->GetFreq(l), alleles, Huang2015_Coef + l * 9, entry.ibs);
 	}
 
 	int dim = minv, diff = abs(vx - vy);
 	bool confine = vx == vy && vx % 2 == 0;
-	CPOINT xx0 = CPOINT::DownHillSimplex(dim, diff, confine, 0.0001, 15, RELATEDNESS<REAL>::L_Huang2015, NULL);
-	xx0.Image2Real();
+	RELATEDNESS_PARAM Param{ dim, diff, confine };
+	CPOINT xx0 = CPOINT::DownHillSimplex<REAL>((void*)&Param, RELATEDNESS<REAL>::L_Huang2015, dim);
+	Param.Unc2Real_Relatedness(xx0);
 
 	double re = 0;
 	for (int i = 0; i < minv; ++i)
-		re += xx0.real[i] * (minv - i) / maxv;
+		re += xx0.real_space[i] * (minv - i) / maxv;
 
 	return re;
 }
 
 /* Calculate Huang 2015 likelihood */
 template<typename REAL>
-TARGET double RELATEDNESS<REAL>::L_Huang2015(CPOINT& xx, void** unusued)
+TARGET double RELATEDNESS<REAL>::L_Huang2015(void* Param, CPOINT& xx, rmat& G, rmat& H)
 {
-	xx.Image2Real();
-
+	RELATEDNESS_PARAM& param = *(RELATEDNESS_PARAM*)Param;
+	param.Unc2Real_Relatedness(xx);
+	
+	int diff = param.diff;
 	int64 slog = 0; double prod = 1;
 	OpenLog(slog, prod);//slog,prod
 	for (int64 l = 0; l < nloc; ++l)
@@ -1172,13 +1262,13 @@ TARGET double RELATEDNESS<REAL>::L_Huang2015(CPOINT& xx, void** unusued)
 		if (Huang2015_Coef[l * 9] == -999) continue;
 		double lt = 0;
 		for (int k = 0; k <= xx.dim; ++k)
-			lt += Huang2015_Coef[l * 9 + xx.diff + k] * xx.real[k] / BINOMIAL[xx.diff + k][xx.diff];
+			lt += Huang2015_Coef[l * 9 + diff + k] * xx.real_space[k] / BINOMIAL[diff + k][diff];
 		ChargeLog(slog, prod, lt);
 	}
 	CloseLog(slog, prod);
 
-	xx.li = prod < -1e100 ? -1e100 : prod;
-	return xx.li;
+	xx.lnL = prod < -1e100 ? -1e100 : prod;
+	return xx.lnL;
 }
 
 /* Huang 2015 likelihood estimator: Match genotype-pair pattern and assign alleles */
@@ -1188,7 +1278,7 @@ TARGET void RELATEDNESS<REAL>::Huang2015_MatchAllele(int64 pattern, int* gx, int
 	for (int i = 0; i < 16; ++i)
 		alleles[i] = 0;
 
-	int n = Max((int)pattern & 0xF, (int)(pattern >> (p * 4)) & 0xF) + 1;
+	int n = std::max((int)pattern & 0xF, (int)(pattern >> (p * 4)) & 0xF) + 1;
 	int a1[16], a2[16], a22[16], a22n = 0;
 	int cx[8] = { 0 }, cy[8] = { 0 };
 	for (int i = p - 1; i >= 0; --i)
@@ -1242,14 +1332,105 @@ TARGET void RELATEDNESS<REAL>::Huang2015_MatchAllele(int64 pattern, int* gx, int
 }
 #endif
 
+#ifndef _RELATEDNESS_PARAM
+/* Calculate real points */
+TARGET void RELATEDNESS_PARAM::Unc2Real_Relatedness(CPOINT& xx)
+{
+	double* real_space = xx.real_space;
+	double* unc_space = xx.unc_space;
+
+	if (confine && !diff && dim % 2 == 0)
+	{
+		if (dim == 1)
+		{
+			real_space[0] = 1 / (1 + exp(-unc_space[0]));
+			real_space[1] = 1 - real_space[0];
+		}
+		else if (dim == 2)
+		{
+			double p1 = 1 / (1 + exp(-unc_space[0]));
+			double q1 = 1 / (1 + exp(-unc_space[1]));
+			double p0 = 1 - p1;
+			double q0 = 1 - q1;
+			real_space[0] = p1 * q1;
+			real_space[1] = p0 * q1 + p1 * q0;
+			real_space[2] = p0 * q0;
+		}
+		else if (dim == 4)
+		{
+			double p2 = 1 / (1 + exp(-unc_space[0]));
+			double p1 = (1 - p2) / (1 + exp(-unc_space[1]));
+			double q2 = 1 / (1 + exp(-unc_space[2]));
+			double q1 = (1 - q2) / (1 + exp(-unc_space[3]));
+			double p0 = 1 - p2 - p1;
+			double q0 = 1 - q2 - q1;
+			real_space[0] = p2 * q2;
+			real_space[1] = p2 * q1 + p1 * q2;
+			real_space[2] = p2 * q0 + p0 * q2 + p1 * q1;
+			real_space[3] = p0 * q1 + p1 * q0;
+			real_space[4] = p0 * q0;
+		}
+		else if (dim == 6)
+		{
+			double p3 = 1 / (1 + exp(-unc_space[0]));
+			double p2 = (1 - p3) / (1 + exp(-unc_space[1]));
+			double p1 = (1 - p3 - p2) / (1 + exp(-unc_space[2]));
+			double q3 = 1 / (1 + exp(-unc_space[3]));
+			double q2 = (1 - q3) / (1 + exp(-unc_space[4]));
+			double q1 = (1 - q3 - q2) / (1 + exp(-unc_space[5]));
+			double p0 = 1 - p3 - p2 - p1;
+			double q0 = 1 - q3 - q2 - q1;
+			real_space[0] = p3 * q3;
+			real_space[1] = p3 * q2 + p2 * q3;
+			real_space[2] = p3 * q1 + p2 * q2 * p1 * q3;
+			real_space[3] = p3 * q0 + p2 * q1 + p1 * q2 + p0 * q3;
+			real_space[4] = p2 * q0 + p1 * q1 + p0 * q2;
+			real_space[5] = p1 * q0 + p0 * q1;
+			real_space[6] = p0 * q0;
+		}
+		else if (dim == 8)
+		{
+			double p4 = 1 / (1 + exp(-unc_space[0]));
+			double p3 = (1 - p4) / (1 + exp(-unc_space[1]));
+			double p2 = (1 - p4 - p3) / (1 + exp(-unc_space[2]));
+			double p1 = (1 - p4 - p3 - p2) / (1 + exp(-unc_space[3]));
+			double q4 = 1 / (1 + exp(-unc_space[4]));
+			double q3 = (1 - q4) / (1 + exp(-unc_space[5]));
+			double q2 = (1 - q4 - q3) / (1 + exp(-unc_space[6]));
+			double q1 = (1 - q4 - q3 - q2) / (1 + exp(-unc_space[7]));
+			double p0 = 1 - p4 - p3 - p2 - p1;
+			double q0 = 1 - q4 - q3 - q2 - q1;
+			real_space[0] = p4 * q4;
+			real_space[1] = p4 * q3 + p3 * q4;
+			real_space[2] = p4 * q2 + p3 * q3 * p2 * q4;
+			real_space[3] = p4 * q1 + p3 * q2 + p2 * q3 + p1 * q4;
+			real_space[4] = p4 * q0 + p3 * q1 + p2 * q2 + p1 * q3 + p0 * q4;
+			real_space[5] = p3 * q0 + p2 * q1 + p1 * q2 + p0 * q3;
+			real_space[6] = p2 * q0 + p1 * q1 + p0 * q2;
+			real_space[7] = p1 * q0 + p0 * q1;
+			real_space[8] = p0 * q0;
+		}
+	}
+	else
+	{
+		real_space[dim] = 1;
+		for (int i = 0; i < dim; ++i)
+		{
+			real_space[i] = real_space[dim] / (1 + exp(-unc_space[i]));
+			real_space[dim] -= real_space[i];
+		}
+	}
+}
+#endif
+
 #define extern 
 extern TABLE<int, Huang2015ENTRY>* Huang2015_maps;				//Huang2015_maps[ploidylevel][hash] is a entry saves the ibs modex index and genotype pair pattern
-extern _thread double* Anderson2007_Coef;						//Anderson 2007 relatedness estimator coefficients
-extern _thread double* Huang2015_Coef;							//Huang 2015 relatedness estimator coefficients
-extern void* relatedness_buf_;									//Circle buffer for relatedness estimation, NBUF
-#define relatedness_buf (*(RELATEDNESS<REAL>**)&relatedness_buf_)
-extern void* relatedness_loc_stat_;							//Locus information temporatorily used for cpop
-#define relatedness_loc_stat (*(LOCSTAT2<REAL>**)&relatedness_loc_stat_)
+extern thread_local double* Anderson2007_Coef;						//Anderson 2007 relatedness estimator coefficients
+extern thread_local double* Huang2015_Coef;							//Huang 2015 relatedness estimator coefficients
+template<typename REAL>
+extern RELATEDNESS<REAL>* relatedness_buf;						//Circle buffer for relatedness estimation, NBUF
+template<typename REAL>
+extern LOCSTAT2<REAL>* relatedness_loc_stat;					//Locus information temporatorily used for cpop<REAL>
 #undef extern 
 
 /* Calculate relatedness coefficient */
@@ -1264,18 +1445,18 @@ TARGET void CalcRelatedness()
 	OpenResFile("-relatedness", "Relatedness coefficient");
 
 	bool isfirst = true;
-	relatedness_buf = new RELATEDNESS<REAL>[NBUF];
-	relatedness_loc_stat = new LOCSTAT2<REAL>[nloc];
+	relatedness_buf<REAL> = new RELATEDNESS<REAL>[NBUF];
+	relatedness_loc_stat<REAL> = new LOCSTAT2<REAL>[nloc];
 
 	int64 ntot = 0;
 	if (relatedness_range_val[1]) for (int i = 0; i < npop; ++i)
-		ntot += apops[i]->nind * apops[i]->nind;
+		ntot += apops<REAL>[i]->nind * apops<REAL>[i]->nind;
 	if (relatedness_range_val[2])
 		for (int rl = 0; rl < lreg; ++rl)
 			for (int i = 0; i < nreg[rl]; ++i)
-				ntot += aregs[rl][i]->nind * aregs[rl][i]->nind;
+				ntot += aregs<REAL>[rl][i]->nind * aregs<REAL>[rl][i]->nind;
 	if (relatedness_range_val[3])
-		ntot += total_pop->nind * total_pop->nind;
+		ntot += total_pop<REAL>->nind * total_pop<REAL>->nind;
 	ntot <<= 1;
 
 	for (int k = 1; k <= 3; ++k)
@@ -1287,11 +1468,11 @@ TARGET void CalcRelatedness()
 			for (int i = 0; i < n; ++i)
 			{
 				OpenTempFiles(N_RELATEDNESS_ESTIMATOR + 1, ".relatedness");
-				cpop = (k == 1 ? apops[i] : (k == 2 ? aregs[rl][i] : total_pop));
-				SetZero(relatedness_buf, NBUF);
-				cpop->GetLocStat2(relatedness_loc_stat);
+				cpop<REAL> = (k == 1 ? apops<REAL>[i] : (k == 2 ? aregs<REAL>[rl][i] : total_pop<REAL>));
+				SetZero(relatedness_buf<REAL>, NBUF);
+				cpop<REAL>->GetLocStat2(relatedness_loc_stat<REAL>);
 
-				RunThreads(&RelatednessThread<REAL>, &RelatednessGuard1<REAL>, &RelatednessGuard2<REAL>, ntot, cpop->nind * cpop->nind * 2,
+				RunThreads(&RelatednessThread<REAL>, &RelatednessGuard1<REAL>, &RelatednessGuard2<REAL>, ntot, cpop<REAL>->nind * cpop<REAL>->nind * 2,
 					"\nEstimating relatedness coefficient between individuals:\n", g_nthread_val, isfirst);
 				isfirst = false;
 				JoinTempFiles(N_RELATEDNESS_ESTIMATOR + 1);
@@ -1299,8 +1480,9 @@ TARGET void CalcRelatedness()
 		}
 	}
 
-	delete[] relatedness_buf;
-	delete[] relatedness_loc_stat;
+	DEL(relatedness_buf<REAL>);
+	DEL(relatedness_loc_stat<REAL>);
+
 	CloseResFile();
 	if (relatedness_estimator_val[11]) RELATEDNESS<REAL>::Huang2015_Uninitialize();
 
@@ -1314,9 +1496,9 @@ TARGET void CalcRelatedness()
 THREAD2(RelatednessGuard1)
 {
 	int64& ii = progress1 = 0;
-	int n = cpop->nind;
+	int n = cpop<REAL>->nind;
 	if (relatedness_fmt_val[2])
-		RELATEDNESS<REAL>::ColumnPrintHeader();
+		RELATEDNESS<REAL>::ColumnFormatHeader();
 
 	for (int i = 0; i < n; ++i)
 	{
@@ -1324,9 +1506,9 @@ THREAD2(RelatednessGuard1)
 		{
 			GUARD_BEGIN2
 
-			RELATEDNESS<REAL>& re = relatedness_buf[ii % NBUF];
+			RELATEDNESS<REAL>& re = relatedness_buf<REAL>[ii % NBUF];
 			if (j >= i && relatedness_fmt_val[2])
-				re.ColumnPrintLine(i, j);
+				re.ColumnFormatLine(i, j);
 
 			PROGRESS_VALUE++;
 
@@ -1339,27 +1521,27 @@ THREAD2(RelatednessGuard1)
 THREAD2(RelatednessGuard2)
 {
 	int64& ii = progress2 = 0;
-	int n = cpop->nind;
+	int n = cpop<REAL>->nind;
 
 	if (relatedness_fmt_val[1])
 		for (int k = 1; k <= N_RELATEDNESS_ESTIMATOR; ++k)
-			RELATEDNESS<REAL>::MatrixPrintMatrixHeader(k, n);
+			RELATEDNESS<REAL>::MatrixFormatHeader(k, n);
 
 	for (int i = 0; i < n; ++i)
 	{
 		if (relatedness_fmt_val[1])
 			for (int k = 1; k <= N_RELATEDNESS_ESTIMATOR; ++k)
-				RELATEDNESS<REAL>::MatrixPrintRowHeader(k, i);
+				RELATEDNESS<REAL>::MatrixFormatRowHeader(k, i);
 
 		for (int j = 0; j < n; ++j, ++ii)
 		{
 			GUARD_BEGIN2
 
-			RELATEDNESS<REAL>& re = relatedness_buf[ii % NBUF];
+			RELATEDNESS<REAL>& re = relatedness_buf<REAL>[ii % NBUF];
 
 			if (relatedness_fmt_val[1])
 				for (int k = 1; k <= N_RELATEDNESS_ESTIMATOR; ++k)
-					re.MatrixPrintCell(k);
+					re.MatrixFormatCell(k);
 
 			PROGRESS_VALUE++;
 
@@ -1373,7 +1555,7 @@ THREAD2(RelatednessThread)
 {
 	//load ind
 	int64 ii = 0;
-	int ni = cpop->nind;
+	int ni = cpop<REAL>->nind;
 
 	if (relatedness_estimator_val[8] || relatedness_estimator_val[9])  Anderson2007_Coef = new double[nloc * 3];
 	if (relatedness_estimator_val[11]) Huang2015_Coef = new double[nloc * 9];
@@ -1384,12 +1566,12 @@ THREAD2(RelatednessThread)
 		{
 			THREAD_BEGIN2
 
-			relatedness_buf[ii % NBUF].CalcRelatedness(ainds[i], ainds[j]);
+			relatedness_buf<REAL>[ii % NBUF].CalcRelatedness(ainds<REAL>[i], ainds<REAL>[j]);
 
 			THREAD_END2
 		}
 	}
 
-	if (relatedness_estimator_val[8] || relatedness_estimator_val[9])  delete[] Anderson2007_Coef;
-	if (relatedness_estimator_val[11]) delete[] Huang2015_Coef;
+	if (relatedness_estimator_val[8] || relatedness_estimator_val[9])  DEL(Anderson2007_Coef);
+	if (relatedness_estimator_val[11]) DEL(Huang2015_Coef);
 }

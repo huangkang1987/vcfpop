@@ -9,13 +9,14 @@ extern vector<string> argv;
 extern bool p_b;								extern string p_val;
 
 /* Global settings */
-extern bool g_decimal_b;						extern int g_decimal_val;							extern char g_decimal_str[16];
+extern bool g_decimal_b;						extern int g_decimal_val;							
+extern char g_decimal_str[16];					extern char g_decimal_scientific_str[16];
 extern bool g_scientific_b;						extern int g_scientific_val;
 extern bool g_nthread_b;						extern int g_nthread_val;
 extern bool g_simd_b;							extern int g_simd_val;
 extern bool g_gpu_b;							extern int g_gpu_val;
 extern bool g_float_b;							extern int g_float_val;
-extern bool g_fastsinglet_b;					extern int g_fastsingle_val;
+extern bool g_fastsingle_b;						extern int g_fastsingle_val;
 extern bool g_seed_b;							extern int g_seed_val;
 extern bool g_tmpdir_b;							extern string g_tmpdir_val;
 extern bool g_progress_b;						extern int g_progress_val;
@@ -66,6 +67,53 @@ extern bool f_iploidy_b;						extern int f_iploidy_min, f_iploidy_max;
 extern bool f_windowsize_b;						extern int f_windowsize_val;
 extern bool f_windowstat_b;						extern int f_windowstat_val;
 
+/* Sliding window */
+extern bool slide;
+extern bool slide_plot_b;						extern int slide_plot_val;
+extern bool slide_plot_columns_b;				extern int slide_plot_columns_val[N_MAX_SLIDEPLOT]; //values begins from 1
+extern bool slide_plot_styles_b;				extern int slide_plot_styles_val[N_MAX_SLIDEPLOT];
+extern bool slide_windowsize_b;					extern int slide_windowsize_val;
+extern bool slide_windowstep_b;					extern int slide_windowstep_val;
+extern bool slide_minvariants_b;				extern int slide_minvariants_val;
+extern bool slide_estimator_b;					extern byte slide_estimator_val[N_MAX_OPTION];
+extern bool slide_pop_b;						extern string slide_pop_val;
+
+/* LD decay */
+extern bool decay;
+extern bool decay_plot_b;						extern int decay_plot_val;
+extern bool decay_chromosome_b;					extern int decay_chromosome_val;
+extern bool decay_pair_b;						extern int decay_pair_val;
+extern bool decay_maxdist_b;					extern int64 decay_maxdist_val;
+extern bool decay_nintervals_b;					extern int decay_nintervals_val;
+extern bool decay_ratio_b;						extern double decay_ratio_val;
+extern bool decay_estimator_b;					extern byte decay_estimator_val[N_MAX_OPTION];
+extern bool decay_pop_b;						extern string decay_pop_val;
+
+/* LD block */
+extern bool block;
+extern bool block_plot_b;						extern int block_plot_val;
+extern bool block_size_b;						extern int64 block_size_val;
+extern bool block_maxd_b;						extern int64 block_maxd_val;
+extern bool block_ratio_b;						extern double block_ratio_val;
+extern bool block_estimator_b;					extern byte block_estimator_val[N_MAX_OPTION];
+extern bool block_pop_b;						extern string block_pop_val;
+
+/* Genome-wide association studies */
+extern bool gwas;
+extern bool gwas_plot_b;						extern int gwas_plot_val;
+extern bool gwas_input_b;						extern string gwas_input_val;
+extern bool gwas_pop_b;							extern string gwas_pop_val;
+extern bool gwas_restimator_b;					extern int gwas_restimator_val;
+extern bool gwas_imputeG_b;						extern int gwas_imputeG_val;
+extern bool gwas_imputeXY_b;					extern int gwas_imputeXY_val;
+extern bool gwas_nneighbor_b;					extern int gwas_nneighbor_val;
+extern bool gwas_nsvd_b;						extern int gwas_nsvd_val;
+extern bool gwas_batch_b;					extern int gwas_batch_val;
+extern bool gwas_intercept_b;					extern int gwas_intercept_val;
+extern bool gwas_slope_b;						extern int gwas_slope_val;
+extern bool gwas_dosage_b;						extern int gwas_dosage_val;
+extern bool gwas_test_b;						extern byte gwas_test_val[N_MAX_OPTION];
+
 /* Haplotype extraction */
 extern bool haplotype;
 extern bool haplotype_ptype_b;					extern double haplotype_ptype_min, haplotype_ptype_max;
@@ -80,6 +128,11 @@ extern bool convert;
 extern bool convert_format_b;					extern byte convert_format_val[N_MAX_OPTION];
 extern bool convert_mode_b;						extern int convert_mode_val;
 
+/* Genetic Diversity */
+extern bool diversity;
+extern bool diversity_level_b;					extern byte diversity_level_val[N_MAX_OPTION];
+extern bool diversity_model_b;					extern byte diversity_model_val[N_MAX_OPTION];
+
 /* Individual statistics */
 extern bool indstat;
 extern bool indstat_type_b;						extern byte indstat_type_val[N_MAX_OPTION];
@@ -87,11 +140,6 @@ extern bool indstat_model_b;					extern byte indstat_model_val[N_MAX_OPTION];
 extern bool indstat_estimator_b;				extern byte indstat_estimator_val[N_MAX_OPTION];
 extern bool indstat_ref_b;						extern byte indstat_ref_val[N_MAX_OPTION];
 extern bool indstat_locus_b;					extern byte indstat_locus_val[N_MAX_OPTION];
-
-/* Genetic Diversity */
-extern bool diversity;
-extern bool diversity_level_b;					extern byte diversity_level_val[N_MAX_OPTION];
-extern bool diversity_model_b;					extern byte diversity_model_val[N_MAX_OPTION];
 
 /* Genetic differentiation */
 extern bool fst;
@@ -120,17 +168,6 @@ extern bool amova_test_b;						extern int amova_test_val;
 extern bool amova_nperm_b;						extern int amova_nperm_val;
 extern bool amova_pseudo_b;						extern int amova_pseudo_val;
 extern bool amova_printss_b;					extern int amova_printss_val;
-
-/* Sliding window */
-extern bool slide;
-extern bool slide_plot_b;						extern int slide_plot_val;
-extern bool slide_plot_columns_b;				extern int slide_plot_columns_val[N_MAX_SLIDEPLOT]; //values begins from 1
-extern bool slide_plot_styles_b;				extern int slide_plot_styles_val[N_MAX_SLIDEPLOT];
-extern bool slide_windowsize_b;					extern int slide_windowsize_val;
-extern bool slide_windowstep_b;					extern int slide_windowstep_val;
-extern bool slide_minvariants_b;				extern int slide_minvariants_val;
-extern bool slide_estimator_b;					extern byte slide_estimator_val[N_MAX_OPTION];
-extern bool slide_pop_b;						extern string slide_pop_val;
 
 /* Population assignment */
 extern bool popas;
@@ -237,7 +274,6 @@ extern bool spa_ofreq_b;						extern int spa_ofreq_val;
 extern bool spa_coord_b;						extern string spa_coord_val;
 extern bool spa_truncate_b;						extern double spa_truncate_val, spa_truncate_val2;//n
 																								  
-
 /* Initialize parameters */
 TARGET void SetDefaultParameters();
 

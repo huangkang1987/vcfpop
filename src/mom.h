@@ -4,7 +4,13 @@
 #include "vcfpop.h"
 
 /* Power of a real number */
-TARGET double mp(double base, int index);
+static forceinline TARGET double mp(double base, int index)
+{
+	double re = base;
+	for(int i = 1; i < index; ++i)
+		re *= base;
+	return re;
+}
 
 /* Assign allele and frequency of polyploid method-of-moment estimator */
 template<typename REAL>

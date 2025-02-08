@@ -33,24 +33,25 @@ struct RELATEDNESS
 	REAL Ritland1996;
 	REAL Loiselle1995;
 	REAL Weir1996;
+	REAL VanRaden2008;
 	int ABtype;								//Number of loci genotyped in both individuals
 	int Atype;								//Number of loci genotyped in individual A
 	int Btype;								//Number of loci genotyped in individual B
 
 	/* Write header row for relatedness estimation */
-	TARGET static void ColumnPrintHeader();
+	TARGET static void ColumnFormatHeader();
 
 	/* Write result row for relatedness estimation */
-	TARGET void ColumnPrintLine(int i, int j);
+	TARGET void ColumnFormatLine(int i, int j);
 
 	/* Write matrix format header for relatedness estimation */
-	TARGET static void MatrixPrintMatrixHeader(int k, int n);
+	TARGET static void MatrixFormatHeader(int k, int n);
 
 	/* Write matrix format row header for relatedness estimation */
-	TARGET static void MatrixPrintRowHeader(int k, int i);
+	TARGET static void MatrixFormatRowHeader(int k, int i);
 
 	/* Write matrix format grid for relatedness estimation */
-	TARGET void MatrixPrintCell(int k);
+	TARGET void MatrixFormatCell(int k);
 
 	/* Calculate relatedness coefficient */
 	TARGET void CalcRelatedness(IND<REAL>* x, IND<REAL>* y);
@@ -89,7 +90,7 @@ struct RELATEDNESS
 	TARGET static double R_Anderson2007(IND<REAL>* x, IND<REAL>* y, bool confine);
 
 	/* Calculate Anderson 2007 likelihood */
-	TARGET static double L_Anderson(CPOINT& x, void** unusued);
+	TARGET static double L_Anderson(void* Param, CPOINT& xx, rmat& G, rmat& H);
 
 	/* Ritland 1996 kinship estimator, convert into relatedness */
 	TARGET static double R_Ritland1996(IND<REAL>* x, IND<REAL>* y, bool iscorrect, bool mulv);
@@ -99,6 +100,9 @@ struct RELATEDNESS
 
 	/* Weir 1996 kinship estimator, convert into relatedness */
 	TARGET static double R_Weir1996(IND<REAL>* x, IND<REAL>* y, bool mulv);
+
+	/* VanRaden 2008 kinship estimator, convert into relatedness */
+	TARGET static double R_VanRaden2008(IND<REAL>* x, IND<REAL>* y, bool mulv);
 
 	/* Huang 2014 relatedness estimator */
 	TARGET static double R_Huang2014(IND<REAL>* x, IND<REAL>* y);
@@ -122,21 +126,33 @@ struct RELATEDNESS
 	TARGET static double R_Huang2015(IND<REAL>* x, IND<REAL>* y);
 
 	/* Calculate Huang 2015 likelihood */
-	TARGET static double L_Huang2015(CPOINT& xx, void** unusued);
+	TARGET static double L_Huang2015(void* Param, CPOINT& xx, rmat& G, rmat& H);
 
 	/* Huang 2015 likelihood estimator: Match genotype-pair pattern and assign alleles */
 	TARGET static void Huang2015_MatchAllele(int64 pattern, int* gx, int* gy, int* alleles, int p);
 };
 
+/* Optimizer paramers */
+struct RELATEDNESS_PARAM
+{
+	int dim;
+	int diff;
+	bool confine;
+	double sep;
+	int nrep;
+
+	TARGET void Unc2Real_Relatedness(CPOINT& xx);
+};
+
 #pragma pack(pop)
 
 extern TABLE<int, Huang2015ENTRY>* Huang2015_maps;				//Huang2015_maps[ploidylevel][hash] is a entry saves the ibs modex index and genotype pair pattern
-extern _thread double* Anderson2007_Coef;						//Anderson 2007 relatedness estimator coefficients
-extern _thread double* Huang2015_Coef;							//Huang 2015 relatedness estimator coefficients
-extern void* relatedness_buf_;									//Circle buffer for relatedness estimation, NBUF
-#define relatedness_buf (*(RELATEDNESS<REAL>**)&relatedness_buf_)
-extern void* relatedness_loc_stat_;							//Locus information temporatorily used for cpop
-#define relatedness_loc_stat (*(LOCSTAT2<REAL>**)&relatedness_loc_stat_)
+extern thread_local double* Anderson2007_Coef;						//Anderson 2007 relatedness estimator coefficients
+extern thread_local double* Huang2015_Coef;							//Huang 2015 relatedness estimator coefficients
+template<typename REAL>
+extern RELATEDNESS<REAL>* relatedness_buf;						//Circle buffer for relatedness estimation, NBUF
+template<typename REAL>
+extern LOCSTAT2<REAL>* relatedness_loc_stat;					//Locus information temporatorily used for cpop<REAL>
 
 /* Calculate relatedness coefficient */
 template<typename REAL>

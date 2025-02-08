@@ -1,24 +1,25 @@
 /* Analysis of Spatial Structure, TEST, DO NOT USE */
 
-#pragma once
 #include "vcfpop.h"
 
 template TARGET void CalcSPA<double>();
 template TARGET void CalcSPA<float >();
 template TARGET double SPA_Fij<double>(double* a, int i);
 template TARGET double SPA_Fij<float >(double* a, int i);
-template TARGET double SPA_Likelihood<double>(CPOINT& xx, void** Param);
-template TARGET double SPA_Likelihood<float >(CPOINT& xx, void** Param);
+template TARGET double SPA_Likelihood<double>(void* Param, CPOINT& xx, Mat<double>& G, Mat<double>& H);
+template TARGET double SPA_Likelihood<float >(void* Param, CPOINT& xx, Mat<float >& G, Mat<float >& H);
 template TARGET double SPA_Likelihood<double>(uint64 l, double* a);
 template TARGET double SPA_Likelihood<float >(uint64 l, double* a);
 template TARGET double SPA_Hessian<double>(uint64 l, double* G, double* H, double* a, double* a2);
 template TARGET double SPA_Hessian<float >(uint64 l, double* G, double* H, double* a, double* a2);
 template TARGET void SPA_Locus<double>(uint64 l, double* x, double* f, double* a, double* a2, double* am, double* g, double* h);
 template TARGET void SPA_Locus<float >(uint64 l, double* x, double* f, double* a, double* a2, double* am, double* g, double* h);
+template TARGET void MatrixSPA<double>(double* f, double* x, int spa_tn, int spa_np, double* a, int64 l, double* am, double* h, double* g, double* a2);
+template TARGET void MatrixSPA<float >(double* f, double* x, int spa_tn, int spa_np, double* a, int64 l, double* am, double* h, double* g, double* a2);
 
 #define extern 
-extern _thread bool* spa_valid;
-extern _thread int spa_tn;
+extern thread_local bool* spa_valid;
+extern thread_local int spa_tn;
 extern double* spa_x;								//Spatial pattern, TEST, don't use, n * (dim + 1)
 extern int spa_n;									//Spatial pattern, TEST, don't use, n
 extern int spa_np;									//Spatial pattern, TEST, don't use, n
@@ -59,16 +60,16 @@ TARGET void CalcSPA()
 			bool flag = false;
 			for (int i = 0; i < nind; ++i)
 			{
-				if (memcmp(ainds[i]->name, t1, t2 - t1) == 0 && (int)strlen(ainds[i]->name) == (int)(t2 - t1))
+				if (memcmp(ainds<REAL>[i]->name, t1, t2 - t1) == 0 && (int)strlen(ainds<REAL>[i]->name) == (int)(t2 - t1))
 				{
-					if (spa_x[ainds[i]->indid * spa_np] != -123456789.0)
+					if (spa_x[ainds<REAL>[i]->indid * spa_np] != -123456789.0)
 						Exit("\nError: the coordinate of individual %s appear twice.\n", t1);
 					flag = true;
 					t1 = t2 + 1;
 					for (int j = 0; j < spa_dim_val; ++j)
 					{
 						while (*t1 != '-' && *t1 != '.' && !(*t1 >= '0' && *t1 <= '9')) t1++;
-						spa_x[ainds[i]->indid * spa_np + j] = ReadDouble(t1);
+						spa_x[ainds<REAL>[i]->indid * spa_np + j] = ReadDouble(t1);
 					}
 					break;
 				}
@@ -85,16 +86,16 @@ TARGET void CalcSPA()
 			bool flag = false;
 			for (int p = 0; p < npop; ++p)
 			{
-				if (memcmp(apops[p]->name, t1, t2 - t1) == 0 && (int)strlen(apops[p]->name) == (int)(t2 - t1))
+				if (memcmp(apops<REAL>[p]->name, t1, t2 - t1) == 0 && (int)strlen(apops<REAL>[p]->name) == (int)(t2 - t1))
 				{
-					if (spa_x[apops[p]->id * spa_np] != -123456789.0)
+					if (spa_x[apops<REAL>[p]->id * spa_np] != -123456789.0)
 						Exit("\nError: the coordinate of population %s appear twice.\n", t1);
 					flag = true;
 					t1 = t2 + 1;
 					for (int j = 0; j < spa_dim_val; ++j)
 					{
 						while (*t1 != '-' && *t1 != '.' && !(*t1 >= '0' && *t1 <= '9')) t1++;
-						spa_x[apops[p]->id * spa_np + j] = ReadDouble(t1);
+						spa_x[apops<REAL>[p]->id * spa_np + j] = ReadDouble(t1);
 					}
 					break;
 				}
@@ -111,14 +112,14 @@ TARGET void CalcSPA()
 	for (int i = 0; i < spa_n; ++i)
 	{
 		if (spa_x[i * spa_np] == -123456789.0)
-			Exit("\nError: the coordinate of %s %s is abscent.\n", spa_level_val == 1 ? "individual" : "population", ainds[i]->name);
+			Exit("\nError: the coordinate of %s %s is abscent.\n", spa_level_val == 1 ? "individual" : "population", ainds<REAL>[i]->name);
 		spa_x[i * spa_np + spa_dim_val] = 1.0;
 	}
 
 	RunThreads(&SPAThread<REAL>, NULL, NULL, nloc, nloc, "\nCalculating SPA:\n", g_nthread_val, true);
 	JoinTempFiles(g_nthread_val);
 	CloseResFile();
-	delete[] spa_x;
+	DEL(spa_x);
 
 	EvaluationEnd("SPA");
 }
@@ -134,11 +135,11 @@ TARGET double SPA_Fij(double* a, int i)
 }
 
 template<typename REAL>
-TARGET double SPA_Likelihood(CPOINT& xx, void** Param)
+TARGET double SPA_Likelihood(void* Param, CPOINT& xx, rmat& G, rmat& H)
 {
-	double* a = xx.image;
-	uint64 l = *(uint64*)Param[0];
-	return SPA_Likelihood<REAL>(l, a);
+	uint64 l = *(uint64*)Param;
+	SetVal(xx.real_space, xx.unc_space, 8);
+	return SPA_Likelihood<REAL>(l, xx.unc_space);
 }
 
 template<typename REAL>
@@ -172,8 +173,8 @@ TARGET double SPA_Likelihood(uint64 l, double* a)
 		f2 = log(1.0 - f1);
 		f1 = log(f1);
 
-		int nh = apops[p]->loc_stat1[l].nhaplo;
-		int n1 = (int)(apops[p]->GetFreq(l, 0) * nh + 0.5);
+		int nh = apops<REAL>[p]->loc_stat1[l].nhaplo;
+		int n1 = (int)(apops<REAL>[p]->GetFreq(l, 0) * nh + 0.5);
 		re += f1 * n1 + f2 * (nh - n1);
 	}
 	return re;
@@ -247,13 +248,13 @@ TARGET void SPA_Locus(uint64 l, double* x, double* f, double* a, double* a2, dou
 	}
 	else for (int p = 0; p < npop; ++p)
 	{
-		if (apops[p]->loc_stat1[l].nhaplo == 0)
+		if (apops<REAL>[p]->loc_stat1[l].nhaplo == 0)
 		{
 			spa_valid[p] = false;
 			continue;
 		}
 		spa_valid[p] = true;
-		f[spa_tn++] = apops[p]->GetFreq(l, 0);
+		f[spa_tn++] = apops<REAL>[p]->GetFreq(l, 0);
 	}
 	if (spa_tn < spa_np) return;
 
@@ -322,8 +323,8 @@ TARGET void SPA_Locus(uint64 l, double* x, double* f, double* a, double* a2, dou
 				fprintf(fout, "%c", g_delimiter_val);
 				continue;
 			}
-			int nh = apops[p]->loc_stat1[l].nhaplo;
-			int n1 = (int)(apops[p]->GetFreq(l, 0) * nh + 0.5);
+			int nh = apops<REAL>[p]->loc_stat1[l].nhaplo;
+			int n1 = (int)(apops<REAL>[p]->GetFreq(l, 0) * nh + 0.5);
 			fprintf(fout, "%c", g_delimiter_val);
 			fprintf(fout, "%d/%d", n1, nh - n1);
 		}
@@ -349,6 +350,51 @@ TARGET void SPA_Locus(uint64 l, double* x, double* f, double* a, double* a2, dou
 	fprintf(fout, "%s", g_linebreak_val);
 }
 
+/* SPA function */
+template<typename REAL>
+TARGET void MatrixSPA(double* f, double* x, int spa_tn, int spa_np, double* a,
+	int64 l, double * am, double* h, double* g, double* a2)
+{
+	Mat<double> B(f, spa_tn, 1, false, true);
+	//may be wrong, matrix saved in column format
+	Mat<double> X(x, spa_tn, spa_np, false, true);
+
+	Mat<double> A = solve(X, B);
+	SetVal(a, A.memptr(), spa_np);
+
+	//Downhill simplex
+	int dim = spa_np;
+	CPOINT xx0 = CPOINT::DownHillSimplex((void*)l, SPA_Likelihood<REAL>, dim);
+	SetVal(am, xx0.unc_space, spa_np);
+	am[spa_np + 2] = xx0.lnL;
+
+	//Newton's method
+	Mat<double> H(h, spa_np, spa_np, false, true);// symmetric
+	Mat<double> G(g, spa_np, 1, false, true);// column vector
+	SetVal(a2, a, spa_np);
+	a2[0] += 1.0;
+	double eps = 1e-6, likelihood = 0;
+	for (int m = 0; m < 100; ++m)
+	{
+		likelihood = SPA_Hessian<REAL>(l, g, h, a, a2);
+		if (likelihood > am[spa_np + 2])
+		{
+			SetVal(am, a, spa_np);
+			am[spa_np + 2] = likelihood;
+		}
+
+		bool flag = true;
+		for (int j = 0; j < spa_np; ++j)
+			if (abs(a[j] - a2[j]) > eps)
+				flag = false;
+		SetVal(a2, a, spa_np);
+		Mat<double> D = solve(H, G);
+		for (int j = 0; j < spa_np; ++j)
+			a[j] -= D(j, 0);
+		if (flag) break;
+	}
+}
+
 /* Calculate spatial pattern using multiple threads */
 THREAD2(SPAThread)
 {
@@ -361,12 +407,12 @@ THREAD2(SPAThread)
 			if (spa_level_val == 1) for (int i = 0; i < nind; ++i)
 			{
 				fprintf(fout, "%c", g_delimiter_val);
-				fprintf(fout, "%s_depth", ainds[i]->name);
+				fprintf(fout, "%s_depth", ainds<REAL>[i]->name);
 			}
 			else for (int p = 0; p < npop; ++p)
 			{
 				fprintf(fout, "%c", g_delimiter_val);
-				fprintf(fout, "%s_depth", apops[p]->name);
+				fprintf(fout, "%s_depth", apops<REAL>[p]->name);
 			}
 		}
 		if (spa_ofreq_val == 1)
@@ -374,12 +420,12 @@ THREAD2(SPAThread)
 			if (spa_level_val == 1) for (int i = 0; i < nind; ++i)
 			{
 				fprintf(fout, "%c", g_delimiter_val);
-				fprintf(fout, "%s_freq", ainds[i]->name);
+				fprintf(fout, "%s_freq", ainds<REAL>[i]->name);
 			}
 			else for (int p = 0; p < npop; ++p)
 			{
 				fprintf(fout, "%c", g_delimiter_val);
-				fprintf(fout, "%s_freq", apops[p]->name);
+				fprintf(fout, "%s_freq", apops<REAL>[p]->name);
 			}
 		}
 		for (int i = 0; i < spa_dim_val; ++i)
@@ -414,5 +460,5 @@ THREAD2(SPAThread)
 	VLA_DELETE(a);
 	VLA_DELETE(a2);
 	VLA_DELETE(am);
-	delete[] spa_valid;
+	DEL(spa_valid);
 }

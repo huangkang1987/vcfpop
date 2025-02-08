@@ -4,12 +4,16 @@
 
 #ifdef __aarch64__
 
-template TARGETNEO void RNGNEO<double>::Poly<32>(float64x2_t* arr, int n, void* re);
-template TARGETNEO void RNGNEO<double>::Poly<64>(float64x2_t* arr, int n, void* re);
-template TARGETNEO void RNGNEO<float >::Poly<32>(float32x4_t* arr, int n, void* re);
-template TARGETNEO void RNGNEO<float >::Poly<64>(float32x4_t* arr, int n, void* re);
+template struct RNGNEO<double>;
+template struct RNGNEO<float >;
+template TARGETNEO void RNGNEO<double>::Integer<uint  >(uint  * re, int64 n, uint   minv, uint   maxv);
+template TARGETNEO void RNGNEO<double>::Integer<uint64>(uint64* re, int64 n, uint64 minv, uint64 maxv);
+template TARGETNEO void RNGNEO<float >::Integer<uint  >(uint  * re, int64 n, uint   minv, uint   maxv);
+template TARGETNEO void RNGNEO<float >::Integer<uint64>(uint64* re, int64 n, uint64 minv, uint64 maxv);
 
 #ifndef _RNGNEO_FP64
+#define XS 32
+
 /* Initialize rng */
 TARGETNEO RNGNEO<double>::RNGNEO()
 {
@@ -19,135 +23,265 @@ TARGETNEO RNGNEO<double>::RNGNEO()
 /* Initialize rng */
 TARGETNEO RNGNEO<double>::RNGNEO(uint64 seed, uint64 salt)
 {
-	uint64x2_t a[32], s, m;
+	uint64x2_t a[XS], s, m;
 
-	REP(32) { a[kk] = vld1q_u64(((uint64[]) { seed, seed + 1 })); seed += 2; }
+	UNROLL(XS) { a[kk] = vld1q_u64(((uint64[]) { seed, seed + 1 })); seed += 2; }
 
 	s = vdupq_n_u64(salt);
 	m = vdupq_n_u32(0x5bd1e995);
 
-	REP(32) a[kk] = veorq_u64(a[kk], vshlq_n_u64(vmvnq_u32(a[kk]), 32));
+	UNROLL(XS) a[kk] = veorq_u64(a[kk], vshlq_n_u64(vmvnq_u32(a[kk]), 32));
 
 	s             = veorq_u64(s    , vshlq_n_u64(vmvnq_u32(s    ), 32));
 
-	// uint s = s ^ sizeof(uint);
-	s = veorq_u32(s, vdupq_n_u32(sizeof(uint)));
+	// uint s = s ^ 4;
+	s = veorq_u32(s, vdupq_n_u32(4));
 
 	// a *= m;
-	REP(32) a[kk] = vmulq_u32(a[kk], m);
+	UNROLL(XS) a[kk] = vmulq_u32(a[kk], m);
 
 	// a ^= a >> 24;
-	REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u32(a[kk], 24));
+	UNROLL(XS) a[kk] = veorq_u64(a[kk], vshrq_n_u32(a[kk], 24));
 
 	// a *= m;
-	REP(32) a[kk] = vmulq_u32(a[kk], m);
+	UNROLL(XS) a[kk] = vmulq_u32(a[kk], m);
 
 	// s *= m;
 	s = vmulq_u32(s, m);
 
 	// a ^= s;
-	REP(32) a[kk] = veorq_u64(a[kk], s);
+	UNROLL(XS) a[kk] = veorq_u64(a[kk], s);
 
 	// a ^= a >> 13;
-	REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u32(a[kk], 13));
+	UNROLL(XS) a[kk] = veorq_u64(a[kk], vshrq_n_u32(a[kk], 13));
 
 	// a *= m;
-	REP(32) a[kk] = vmulq_u32(a[kk], m);
+	UNROLL(XS) a[kk] = vmulq_u32(a[kk], m);
 
 	// a ^= a >> 15;
-	REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u32(a[kk], 15));
+	UNROLL(XS) a[kk] = veorq_u64(a[kk], vshrq_n_u32(a[kk], 15));
 
 	// original
-	REP(32) x[kk] = veorq_u64(vdupq_n_u64(0x159A55E5075BCD15), a[kk]);
+	UNROLL(XS) x[kk] = veorq_u64(vdupq_n_u64(0x159A55E5075BCD15), a[kk]);
 
-	REP(32) a[kk] = vshlq_n_u64(a[kk], 6);
+	UNROLL(XS) a[kk] = vshlq_n_u64(a[kk], 6);
 
-	REP(32) y[kk] = veorq_u64(vdupq_n_u64(0x054913331F123BB5), a[kk]);
+	UNROLL(XS) y[kk] = veorq_u64(vdupq_n_u64(0x054913331F123BB5), a[kk]);
 }
 
-/* Draw a uniform distriubted real number */
-template<int nbits>
+/* Draw 64 64-bit integers in [0,n), 64*n frequencies are in arr */
 TARGETNEO void RNGNEO<double>::Poly(float64x2_t* arr, int n, void* re)
 {
-	float64x2_t t[32], s[32];
+	float64x2_t t[XS], s[XS];
 	float64x2_t one = vdupq_n_f64(1.0);
 	uint64x2_t mask1 = vdupq_n_u64(0x000FFFFFFFFFFFFF);
 	uint64x2_t mask2 = vdupq_n_u64(0x3FF0000000000000);
 	uint64x2_t* r = (uint64x2_t*)t; uint64x2_t* re64 = (uint64x2_t*)re; uint32x4_t* re32 = (uint32x4_t*)re;
 
-	REP(32) s[kk] = vdupq_n_f64(0);
+	UNROLL(XS) s[kk] = vdupq_n_f64(0);
 
-	for (int i32 = 0; i32 < n * 32; i32 += 32)
-		REP(32) s[kk] = vaddq_f64(s[kk], arr[kk + i32]);
+	for (int i = 0; i < n * XS; i += XS)
+		UNROLL(XS) s[kk] = vaddq_f64(s[kk], arr[kk + i]);
 
-	{
-		uint64x2_t a[32], b[32];
+	XorShift();
 
-		REP(32) a[kk] = x[kk];
+	UNROLL(XS) r[kk] = vaddq_s64(x[kk], y[kk]);
 
-		REP(32) b[kk] = y[kk];
-
-		REP(32) x[kk] = b[kk];
-
-		REP(32) a[kk] = veorq_u64(a[kk], vshlq_n_u64(a[kk], 23));
-
-		REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u64(a[kk], 18));
-
-		REP(32) a[kk] = veorq_u64(a[kk], b[kk]);
-
-		REP(32) a[kk] = veorq_u64(a[kk], vshrq_n_u64(b[kk], 5));
-
-		REP(32) y[kk] = a[kk];
-
-		REP(32) r[kk] = vaddq_s64(a[kk], b[kk]);
-	}
-
-	REP(32) r[kk] = vandq_u64(r[kk], mask1);
+	UNROLL(XS) r[kk] = vandq_u64(r[kk], mask1);
 	
-	REP(32) r[kk] = vorrq_u64(r[kk], mask2);
+	UNROLL(XS) r[kk] = vorrq_u64(r[kk], mask2);
 
-	REP(32) t[kk] = vsubq_f64(t[kk], one);
+	UNROLL(XS) t[kk] = vsubq_f64(t[kk], one);
 
-	REP(32) t[kk] = vmulq_f64(t[kk], s[kk]);
+	UNROLL(XS) t[kk] = vmulq_f64(t[kk], s[kk]);
 
-	uint64x2_t midx[32], nidx = vdupq_n_u64(0), ninc = vdupq_n_u64(1);
-	uint64x2_t f[32], b[32];
-	REP(32) midx[kk] = vdupq_n_u64(n - 1);
-	REP(32) f[kk] = vdupq_n_f64(0);
+	uint64x2_t midx[XS], nidx = vdupq_n_u64(0), ninc = vdupq_n_u64(1);
+	uint64x2_t f[XS], b[XS];
+	UNROLL(XS) midx[kk] = vdupq_n_u64(n - 1);
+	UNROLL(XS) f[kk] = vdupq_n_f64(0);
 
-	for (int i32 = 0; i32 < n * 32; i32 += 32)
+	for (int i = 0; i < n * XS; i += XS)
 	{
-		REP(32) b[kk] = vcltq_f64(t[kk], arr[kk + i32]);
+		UNROLL(XS) b[kk] = vcltq_f64(t[kk], arr[kk + i]);
 
-		REP(8) t[ 0 + kk] = vsubq_f64(t[ 0 + kk], arr[ 0 + kk + i32]);
+		UNROLL(XS) t[kk] = vsubq_f64(t[kk], arr[kk + i]);
 
-		REP(32) b[kk] = vbicq_u64(b[kk], f[kk]);
+		UNROLL(XS) b[kk] = vbicq_u64(b[kk], f[kk]);
 
-		REP(8) t[ 8 + kk] = vsubq_f64(t[ 8 + kk], arr[ 8 + kk + i32]);
+		UNROLL(XS) f[kk] = vorrq_u64(f[kk], b[kk]);
 
-		REP(32) f[kk] = vorrq_u64(f[kk], b[kk]);
-
-		REP(8) t[16 + kk] = vsubq_f64(t[16 + kk], arr[16 + kk + i32]);
-
-		REP(32) midx[kk] = vbslq_s64(b[kk], nidx, midx[kk]);
-
-		REP(8) t[24 + kk] = vsubq_f64(t[24 + kk], arr[24 + kk + i32]);
+		UNROLL(XS) midx[kk] = vbslq_s64(b[kk], nidx, midx[kk]);
 
 		nidx = vaddq_s64(nidx, ninc);
 	}
 
-	if constexpr (nbits == 32)
+	UNROLL(XS) re64[kk] = midx[kk];
+}
+
+/* Draw uniform distriubted intergers */
+TARGETNEO void RNGNEO<double>::XorShift()
+{
+	uint64x2_t a[XS], b[XS];
+
+	UNROLL(XS) a[kk] = x[kk];
+
+	UNROLL(XS) b[kk] = y[kk];
+
+	UNROLL(XS) x[kk] = b[kk];
+
+	UNROLL(XS) a[kk] = veorq_u64(a[kk], vshlq_n_u64(a[kk], 23));
+
+	UNROLL(XS) a[kk] = veorq_u64(a[kk], vshlq_n_u64(a[kk], 18));
+
+	UNROLL(XS) a[kk] = veorq_u64(a[kk], b[kk]);
+
+	UNROLL(XS) a[kk] = veorq_u64(a[kk], vshlq_n_u64(b[kk], 5));
+
+	UNROLL(XS) y[kk] = a[kk];
+}
+
+/* Draw uniform distriubted integers */
+template<typename INT>
+TARGETNEO void RNGNEO<double>::Integer(INT* re, int64 n, INT minv, INT maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(INT);
+	int64 i = 0;
+	INT modv = maxv - minv;
+	INT* rei = re;
+
+	for (; i <= n - xesize; i += xesize)
 	{
-		REP(16) re32[kk] = vld1q_u32(((uint[]) { (uint)vgetq_lane_u64(midx[0 + (kk << 1)], 0), (uint)vgetq_lane_u64(midx[0 + (kk << 1)], 1), (uint)vgetq_lane_u64(midx[1 + (kk << 1)], 0), (uint)vgetq_lane_u64(midx[1 + (kk << 1)], 1) }));
+		XorShift();
+		UNROLL(XS) { vst1q_u64((uint64*)rei, vaddq_u64(x[kk], y[kk])); rei += E128B / sizeof(INT); };
+	}
+
+	if (i != n)
+	{
+		uint64x2_t re2[XS];
+		XorShift();
+		UNROLL(XS) re2[kk] = vaddq_u64(x[kk], y[kk]);
+		SetVal((INT*)rei, (INT*)re2, n - i);
+	}
+
+	if (maxv != (INT)-1 || minv != 0)
+	{
+		for (i = 0; i < n; ++i)
+			re[i] = re[i] % modv + minv;
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGETNEO void RNGNEO<double>::Uniform(double* re, int n, double minv, double maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(double);
+	int i = 0;
+	double range = maxv - minv;
+
+	uint64x2_t mask1 = vdupq_n_u64(0x000FFFFFFFFFFFFF);
+	uint64x2_t mask2 = vdupq_n_u64(0x3FF0000000000000);
+	float64x2_t v1 = vdupq_n_f64(minv - range);
+	float64x2_t v2 = vdupq_n_f64(range);
+
+	if (range == 1.0)
+	{
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { vst1q_f64(re, vaddq_f64(vreinterpretq_f64_u64(vorrq_u64(vandq_u64(vaddq_u64(x[kk], y[kk]), mask1), mask2)), v1)); re += E128D; }
+		}
 	}
 	else
 	{
-		REP(32) re64[kk] = midx[kk];
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { vst1q_f64(re, _neo_fmaddx_pd(vreinterpretq_f64_u64(vorrq_u64(vandq_u64(vaddq_u64(x[kk], y[kk]), mask1), mask2)), v2, v1)); re += E128D; }
+		}
+	}
+
+	if (i != n)
+	{
+		float64x2_t ref[XS];
+		XorShift();
+		UNROLL(XS) ref[kk] = _neo_fmaddx_pd(vreinterpretq_f64_u64(vorrq_u64(vandq_u64(vaddq_u64(x[kk], y[kk]), mask1), mask2)), v2, v1);
+		SetVal((double*)re, (double*)ref, n - i);
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGETNEO void RNGNEO<double>::Normal(double* re, int n, double mean, double sd)
+{
+	constexpr int xhsize = XS / 2;
+	constexpr int xesize = XS * E128D;
+
+	int i = 0;
+
+	uint64x2_t mask1 = vdupq_n_u64(0x000FFFFFFFFFFFFF);
+	uint64x2_t mask2 = vdupq_n_u64(0x3FF0000000000000);
+	float64x2_t v1 = vdupq_n_f64(-1);
+	float64x2_t min_freq = vdupq_n_f64(MIN_FREQ);
+	float64x2_t pi2 = vdupq_n_f64(2.0 * M_PI);
+	float64x2_t mu = vdupq_n_f64(mean);
+	float64x2_t s = vdupq_n_f64(sd);
+
+	for (; i <= n - xesize; i += xesize)
+	{
+		XorShift();
+		UNROLL(XS) vst1q_f64(re + E128D * kk, vaddq_f64(vreinterpretq_f64_u64(vorrq_u64(vandq_u64(vaddq_u64(x[kk], y[kk]), mask1), mask2)), v1));
+
+		float64x2_t u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = vmaxq_f64(vld1q_f64(re + j * E128D), min_freq);
+			u2 = vmulq_f64(vld1q_f64(re + j * E128D + xhsize * E128D), pi2);
+
+			UNROLL(E128D) simd_f64(u1, kk) = sqrt(-2.0 * log(simd_f64(u1, kk)));
+			UNROLL(E128D) simd_f64(u3, kk) = cos(simd_f64(u2, kk));
+			UNROLL(E128D) simd_f64(u4, kk) = sin(simd_f64(u2, kk));
+				
+			vst1q_f64(re + j * E128D, vmulq_f64(u1, u3));
+			vst1q_f64(re + j * E128D + xhsize * E128D, vmulq_f64(u1, u4));
+		}
+	}
+	
+	if (sd != 1 || mean != 0)
+		UNROLL(XS) { vst1q_f64(re, _neo_fmaddx_pd(vld1q_f64(re), s, mu)); re += E128D; }
+	else
+		re += XS * E128D;
+
+	if (i != n)
+	{
+		double ref[XS * E128D];
+
+		XorShift();
+		UNROLL(XS) vst1q_f64(ref + E128D * kk, vaddq_f64(vreinterpretq_f64_u64(vorrq_u64(vandq_u64(vaddq_u64(x[kk], y[kk]), mask1), mask2)), v1));
+
+		float64x2_t u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = vmaxq_f64(vld1q_f64(ref + j * E128D), min_freq);
+			u2 = vmulq_f64(vld1q_f64(ref + j * E128D + xhsize * E128D), pi2);
+
+			UNROLL(E128D) simd_f64(u1, kk) = sqrt(-2.0 * log(simd_f64(u1, kk)));
+			UNROLL(E128D) simd_f64(u3, kk) = cos(simd_f64(u2, kk));
+			UNROLL(E128D) simd_f64(u4, kk) = sin(simd_f64(u2, kk));
+
+			vst1q_f64(ref + j * E128D, vmulq_f64(u1, u3));
+			vst1q_f64(ref + j * E128D + xhsize * E128D, vmulq_f64(u1, u4));
+		}
+		
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) vst1q_f64(ref + kk * E128D, _neo_fmaddx_pd(vld1q_f64(ref), s, mu)); 
+
+		SetVal((double*)re, (double*)ref, n - i);
 	}
 }
 #endif
 
 #ifndef _RNGNEO_FP32
+#define XS 16
+#define XS2 32
+
 /* Initialize rng */
 TARGETNEO RNGNEO<float>::RNGNEO()
 {
@@ -157,216 +291,302 @@ TARGETNEO RNGNEO<float>::RNGNEO()
 /* Initialize rng */
 TARGETNEO RNGNEO<float>::RNGNEO(uint64 seed, uint64 salt)
 {
-	uint32x4_t a[16], s, m;
-	REP(16) { a[kk] = vld1q_u32(((uint[]) { Mix(seed + 0), Mix(seed + 1), Mix(seed + 2), Mix(seed + 3) })); seed += 4; }
+	uint32x4_t a[XS], s, m;
+	UNROLL(XS) { a[kk] = vld1q_u32(((uint[]) { Mix(seed + 0), Mix(seed + 1), Mix(seed + 2), Mix(seed + 3) })); seed += 4; }
 
 	s = vdupq_n_u32(Mix(salt));
 	m = vdupq_n_u32(0x5bd1e995);
 
-	// uint s = s ^ sizeof(uint);
-	s = veorq_u32(s, vdupq_n_u32(sizeof(uint)));
+	// uint s = s ^ 4;
+	s = veorq_u32(s, vdupq_n_u32(4));
 
 	// a *= m;
-	REP(16) a[kk] = vmulq_u32(a[kk], m);
+	UNROLL(XS) a[kk] = vmulq_u32(a[kk], m);
 
 	// a ^= a >> 24;
-	REP(16) a[kk] = veorq_u32(a[kk], vshrq_n_u32(a[kk], 24));
+	UNROLL(XS) a[kk] = veorq_u32(a[kk], vshrq_n_u32(a[kk], 24));
 
 	// a *= m;
-	REP(16) a[kk] = vmulq_u32(a[kk], m);
+	UNROLL(XS) a[kk] = vmulq_u32(a[kk], m);
 
 	// s *= m;
 	s = vmulq_u32(s, m);
 
 	// a ^= s;
-	REP(16) a[kk] = veorq_u32(a[kk], s);
+	UNROLL(XS) a[kk] = veorq_u32(a[kk], s);
 
 	// a ^= a >> 13;
-	REP(16) a[kk] = veorq_u32(a[kk], vshrq_n_u32(a[kk], 13));
+	UNROLL(XS) a[kk] = veorq_u32(a[kk], vshrq_n_u32(a[kk], 13));
 
 	// a *= m;
-	REP(16) a[kk] = vmulq_u32(a[kk], m);
+	UNROLL(XS) a[kk] = vmulq_u32(a[kk], m);
 
 	// a ^= a >> 15;
-	REP(16) a[kk] = veorq_u32(a[kk], vshrq_n_u32(a[kk], 15));
+	UNROLL(XS) a[kk] = veorq_u32(a[kk], vshrq_n_u32(a[kk], 15));
 
 	// original
-	REP(16) x[kk] = veorq_u32(vdupq_n_u32(0x075BCD15), a[kk]);
+	UNROLL(XS) x[kk] = veorq_u32(vdupq_n_u32(0x075BCD15), a[kk]);
 
-	REP(16) a[kk] = vshlq_n_u32(a[kk], 3);
+	UNROLL(XS) a[kk] = vshlq_n_u32(a[kk], 3);
 
-	REP(16) y[kk] = veorq_u32(vdupq_n_u32(0x159A55E5), a[kk]);
+	UNROLL(XS) y[kk] = veorq_u32(vdupq_n_u32(0x159A55E5), a[kk]);
 
-	REP(16) a[kk] = vshlq_n_u32(a[kk], 3);
+	UNROLL(XS) a[kk] = vshlq_n_u32(a[kk], 3);
 
-	REP(16) z[kk] = veorq_u32(vdupq_n_u32(0x1F123BB5), a[kk]);
+	UNROLL(XS) z[kk] = veorq_u32(vdupq_n_u32(0x1F123BB5), a[kk]);
 }
 
-/* Draw a uniform distriubted real number */
-template<int nbits>
+/* Draw 64 64-bit integers in [0,n), 64*n frequencies are in arr */
 TARGETNEO void RNGNEO<float>::Poly(float32x4_t* arr, int n, void* re)
 {
-	float32x4_t t[16], s[16]; uint32x4_t u[16];
+	float32x4_t t[XS], s[XS]; 
 	float32x4_t one = vdupq_n_f32(1.0f);
 	uint32x4_t mask1 = vdupq_n_u32(0x007FFFFF);
 	uint32x4_t mask2 = vdupq_n_u32(0x3F800000);
 	uint32x4_t* r = (uint32x4_t*)t; uint64x2_t* re64 = (uint64x2_t*)re; uint32x4_t* re32 = (uint32x4_t*)re;
 
-	REP(16) s[kk] = vdupq_n_f32(0);
+	UNROLL(XS) s[kk] = vdupq_n_f32(0);
 
-	for (int i16 = 0; i16 < n * 16; i16 += 16)
-		REP(16) s[kk] = vaddq_f32(s[kk], arr[kk + i16]);
+	for (int i = 0; i < n * XS; i += XS)
+		UNROLL(XS) s[kk] = vaddq_f32(s[kk], arr[kk + i]);
 
+	XorShift();
+
+	UNROLL(XS) r[kk] = vandq_u32(z[kk], mask1);
+
+	UNROLL(XS) r[kk] = vorrq_u32(r[kk], mask2);
+
+	UNROLL(XS) t[kk] = vsubq_f32(t[kk], one);
+
+	UNROLL(XS) t[kk] = vmulq_f32(t[kk], s[kk]);
+
+	uint32x4_t midx[XS], nidx = vdupq_n_u32(0), ninc = vdupq_n_u32(1);
+	uint32x4_t f[XS], b[XS];
+	UNROLL(XS) midx[kk] = vdupq_n_u32(n - 1);
+	UNROLL(XS) f[kk] = vdupq_n_u32(0);
+
+	for (int i = 0; i < n * XS; i += XS)
 	{
-		//xorshit 
-		REP(16) u[kk] = vshlq_n_u32(x[kk], 16);
-		REP(16) x[kk] = veorq_u32(x[kk], u[kk]);
+		UNROLL(XS) b[kk] = vcltq_f32(t[kk], arr[kk + i]);
 
-		REP(16) u[kk] = vshrq_n_u32(x[kk], 5);
-		REP(16) x[kk] = veorq_u32(x[kk], u[kk]);
+		UNROLL(XS) t[kk] = vsubq_f32(t[kk], arr[kk + i]);
 
-		REP(16) u[kk] = vshlq_n_u32(x[kk], 1);
-		REP(16) x[kk] = veorq_u32(x[kk], u[kk]);
+		UNROLL(XS) b[kk] = vbicq_u32(b[kk], f[kk]);
 
-		REP(16) u[kk] = x[kk];
-
-		REP(16) x[kk] = y[kk];
-
-		REP(16) y[kk] = z[kk];
-
-		REP(16) z[kk] = veorq_u32(u[kk], x[kk]);
-
-		REP(16) z[kk] = veorq_u32(z[kk], y[kk]);
-	}
-
-	REP(16) r[kk] = vandq_u32(z[kk], mask1);
-
-	REP(16) r[kk] = vorrq_u32(r[kk], mask2);
-
-	REP(16) t[kk] = vsubq_f32(t[kk], one);
-
-	REP(16) t[kk] = vmulq_f32(t[kk], s[kk]);
-
-	uint32x4_t midx[16], nidx = vdupq_n_u32(0), ninc = vdupq_n_u32(1);
-	uint32x4_t f[16], b[16];
-	REP(16) midx[kk] = vdupq_n_u32(n - 1);
-	REP(16) f[kk] = vdupq_n_u32(0);
-
-	for (int i16 = 0; i16 < n * 16; i16 += 16)
-	{
-		REP(16) b[kk] = vcltq_f32(t[kk], arr[kk + i16]);
-
-		REP(8) t[0 + kk] = vsubq_f32(t[0 + kk], arr[0 + kk + i16]);
-
-		REP(16) b[kk] = vbicq_u32(b[kk], f[kk]);
-
-		REP(8) t[8 + kk] = vsubq_f32(t[8 + kk], arr[8 + kk + i16]);
-
-		REP(16)
-		{
-			f[kk] = vorrq_u32(f[kk], b[kk]);
-			midx[kk] = vbslq_s32(b[kk], nidx, midx[kk]);
-		}
+		UNROLL(XS) f[kk] = vorrq_u32(f[kk], b[kk]);
+		
+		UNROLL(XS) midx[kk] = vbslq_s32(b[kk], nidx, midx[kk]);
 
 		nidx = vaddq_s32(nidx, ninc);
 	}
 
-	if constexpr (nbits == 32)
+	UNROLL(XS) 
 	{
-		REP(16) re32[kk] = midx[kk];
+		re64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { vgetq_lane_u32(midx[kk], 0), vgetq_lane_u32(midx[kk], 1) }));
+		re64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { vgetq_lane_u32(midx[kk], 2), vgetq_lane_u32(midx[kk], 3) }));
+	}
+}
+
+/* Draw uniform distriubted intergers */
+TARGETNEO void RNGNEO<float>::XorShift()
+{
+	uint32x4_t u[XS];
+
+	UNROLL(XS) u[kk] = vshlq_n_u32(x[kk], 16);
+	UNROLL(XS) x[kk] = veorq_u32(x[kk], u[kk]);
+
+	UNROLL(XS) u[kk] = vshrq_n_u32(x[kk], 5);
+	UNROLL(XS) x[kk] = veorq_u32(x[kk], u[kk]);
+
+	UNROLL(XS) u[kk] = vshlq_n_u32(x[kk], 1);
+	UNROLL(XS) x[kk] = veorq_u32(x[kk], u[kk]);
+
+	UNROLL(XS) u[kk] = x[kk];
+
+	UNROLL(XS) x[kk] = y[kk];
+
+	UNROLL(XS) y[kk] = z[kk];
+
+	UNROLL(XS) z[kk] = veorq_u32(u[kk], x[kk]);
+
+	UNROLL(XS) z[kk] = veorq_u32(z[kk], y[kk]);
+}
+
+/* Draw uniform distriubted integers */
+template<typename INT>
+TARGETNEO void RNGNEO<float>::Integer(INT* re, int64 n, INT minv, INT maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(INT);
+	int64 i = 0;
+	INT modv = maxv - minv;
+	INT* rei = re;
+
+	for (; i <= n - xesize; i += xesize)
+	{
+		XorShift();
+		UNROLL(XS) { vst1q_u32((uint*)rei, z[kk]); rei += E128B / sizeof(INT); }
+	}
+
+	if (i != n)
+	{
+		XorShift();
+		SetVal((INT*)rei, (INT*)z, n - i);
+	}
+
+	if (maxv != (INT)-1 || minv != 0)
+	{
+		for (i = 0; i < n; ++i)
+			re[i] = re[i] % modv + minv;
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGETNEO void RNGNEO<float>::Uniform(float* re, int n, float minv, float maxv)
+{
+	constexpr int xesize = sizeof(x) / sizeof(float);
+	int i = 0;
+	float range = maxv - minv;
+
+	uint32x4_t mask1 = vdupq_n_u32(0x007FFFFF);
+	uint32x4_t mask2 = vdupq_n_u32(0x3F800000);
+	float32x4_t v1 = vdupq_n_f32(minv - range);
+	float32x4_t v2 = vdupq_n_f32(range);
+
+	if (range == 1.0)
+	{
+		for (; i <= n - xesize; i += xesize)
+		{
+			XorShift();
+			UNROLL(XS) { vst1q_f32(re, vaddq_f32(vreinterpretq_f32_u32(vorrq_u32(vandq_u32(z[kk], mask1), mask2)), v1)); re += E128F; }
+		}
 	}
 	else
 	{
-		REP(16) 
+		for (; i <= n - xesize; i += xesize)
 		{
-			re64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { vgetq_lane_u32(midx[kk], 0), vgetq_lane_u32(midx[kk], 1) }));
-			re64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { vgetq_lane_u32(midx[kk], 2), vgetq_lane_u32(midx[kk], 3) }));
+			XorShift();
+			UNROLL(XS) { vst1q_f32(re, _neo_fmaddx_ps(vreinterpretq_f32_u32(vorrq_u32(vandq_u32(z[kk], mask1), mask2)), v2, v1)); re += E128F; }
 		}
+	}
+
+	if (i != n)
+	{
+		float32x4_t ref[XS];
+		XorShift();
+		UNROLL(XS) ref[kk] = _neo_fmaddx_ps(vreinterpretq_f32_u32(vorrq_u32(vandq_u32(z[kk], mask1), mask2)), v2, v1);
+		SetVal((float*)re, (float*)ref, n - i);
+	}
+}
+
+/* Draw uniform distriubted real numbers */
+TARGETNEO void RNGNEO<float>::Normal(float* re, int n, float mean, float sd)
+{
+	constexpr int xhsize = XS / 2;
+	constexpr int xesize = XS * E128F;
+
+	int i = 0;
+
+	uint32x4_t mask1 = vdupq_n_u32(0x007FFFFF);
+	uint32x4_t mask2 = vdupq_n_u32(0x3F800000);
+	float32x4_t v1 = vdupq_n_f32(-1);
+	float32x4_t min_freq = vdupq_n_f32((float)MIN_FREQ);
+	float32x4_t pi2 = vdupq_n_f32((float)(2.0 * M_PI));
+	float32x4_t mu = vdupq_n_f32(mean);
+	float32x4_t s = vdupq_n_f32(sd);
+
+	for (; i <= n - xesize; i += xesize)
+	{
+		XorShift();
+		UNROLL(XS) vst1q_f32(re + kk * E128F, vaddq_f32(vreinterpretq_f32_u32(vorrq_u32(vandq_u32(z[kk], mask1), mask2)), v1));
+
+		float32x4_t u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = vmaxq_f32(vld1q_f32(re + j * E128F), min_freq);
+			u2 = vmulq_f32(vld1q_f32(re + j * E128F + xhsize * E128F), pi2);
+
+			UNROLL(E128F) simd_f32(u1, kk) = sqrt(-2.0 * log(simd_f32(u1, kk)));
+			UNROLL(E128F) simd_f32(u3, kk) = cos(simd_f32(u2, kk));
+			UNROLL(E128F) simd_f32(u4, kk) = sin(simd_f32(u2, kk));
+			
+			vst1q_f32(re + j * E128F, vmulq_f32(u1, u3));
+			vst1q_f32(re + j * E128F + xhsize * E128F, vmulq_f32(u1, u4));
+		}
+			
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) { vst1q_f32(re, _neo_fmaddx_ps(vld1q_f32(re), s, mu)); re += E128F; }
+		else
+			re += XS * E128F;
+	}
+
+	if (i != n)
+	{
+		float ref[XS * E128F];
+
+		XorShift();
+		UNROLL(XS) vst1q_f32(ref + kk * E128F, vaddq_f32(vreinterpretq_f32_u32(vorrq_u32(vandq_u32(z[kk], mask1), mask2)), v1));
+
+		float32x4_t u1, u2, u3, u4;
+		for (int j = 0; j < xhsize; ++j)
+		{
+			u1 = vmaxq_f32(vld1q_f32(ref + j * E128F), min_freq);
+			u2 = vmulq_f32(vld1q_f32(ref + j * E128F + xhsize * E128F), pi2);
+
+			UNROLL(E128F) simd_f32(u1, kk) = sqrt(-2.0 * log(simd_f32(u1, kk)));
+			UNROLL(E128F) simd_f32(u3, kk) = cos(simd_f32(u2, kk));
+			UNROLL(E128F) simd_f32(u4, kk) = sin(simd_f32(u2, kk));
+			
+			vst1q_f32(ref + j * E128F, vmulq_f32(u1, u3));
+			vst1q_f32(ref + j * E128F + xhsize * E128F, vmulq_f32(u1, u4));
+		}
+			
+		if (sd != 1 || mean != 0)
+			UNROLL(XS) vst1q_f32(ref + kk * E128F, _neo_fmaddx_ps(vld1q_f32(re), s, mu)); 
+
+		SetVal((float*)re, (float*)ref, n - i);
 	}
 }
 #endif
 
-__forceinline TARGETNEO double _neo_reduce_add_pd(float64x2_t v2)
-{
-	return vgetq_lane_f64(v2, 0) + vgetq_lane_f64(v2, 1);
-}
-
-__forceinline TARGETNEO double _neo_reduce_mul_pd(float64x2_t v2)
-{
-	return vgetq_lane_f64(v2, 0) * vgetq_lane_f64(v2, 1);
-}
-
-__forceinline TARGETNEO float _neo_reduce_add_ps(float32x4_t v2)
-{
-	volatile float a1 = vgetq_lane_f32(v2, 0) + vgetq_lane_f32(v2, 2), a2 = vgetq_lane_f32(v2, 1) + vgetq_lane_f32(v2, 3);
-	return a1 + a2;
-}
-
-__forceinline TARGETNEO float _neo_reduce_mul_ps(float32x4_t v2)
-{
-	volatile float a1 = vgetq_lane_f32(v2, 0) * vgetq_lane_f32(v2, 2), a2 = vgetq_lane_f32(v2, 1) * vgetq_lane_f32(v2, 3);
-	return a1 * a2;
-}
-
-__forceinline TARGETNEO double _neo_reduce_add_psd(float32x4_t v2)
-{
-	volatile double a1 = (double)vgetq_lane_f32(v2, 0) + (double)vgetq_lane_f32(v2, 2);
-	volatile double a2 = (double)vgetq_lane_f32(v2, 1) + (double)vgetq_lane_f32(v2, 3);
-	return a1 + a2;
-}
-
-__forceinline TARGETNEO double _neo_reduce_mul_psd(float32x4_t v2)
-{
-	volatile double a1 = (double)vgetq_lane_f32(v2, 0) * (double)vgetq_lane_f32(v2, 2);
-	volatile double a2 = (double)vgetq_lane_f32(v2, 1) * (double)vgetq_lane_f32(v2, 3);
-	return a1 * a2;
-}
-
 TARGETNEO int64 GetMinIdxNEO(double* A, int64 n, double& val)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	val = DBL_MAX;
 	uint64 idx = (uint64)-1;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		float64x2_t min1[N], f[N], a[N];
-		uint64x2_t midx[N], nidx[N], msep = vdupq_n_u64(8);
-		REP(N) min1[kk] = vdupq_n_f64(val);
-		REP(N) midx[kk] = vdupq_n_u64(0xFFFFFFFFFFFFFFFF);
-		REP(N) nidx[kk] = vld1q_u64(((uint64[]) { 0ull + (kk << 1), 1ull + (kk << 1) }));
+		float64x2_t min1[N];
+		uint64x2_t f, midx[N], nidx[N], msep = vdupq_n_u64(8);
+		UNROLL(N) min1[kk] = vdupq_n_f64(val);
+		UNROLL(N) midx[kk] = vdupq_n_u64(0xFFFFFFFFFFFFFFFF);
+		UNROLL(N) nidx[kk] = vld1q_u64(((uint64[]) { 0ull + (kk << 1), 1ull + (kk << 1) }));
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) f[kk] = vcgtq_f64(min1[kk], a[kk]);
-
-			REP(N) min1[kk] = vbslq_s64(f[kk], a[kk], min1[kk]);
-
-			REP(N) midx[kk] = vbslq_s64(f[kk], nidx[kk], midx[kk]);
-
-			REP(N) nidx[kk] = vaddq_s64(nidx[kk], msep);
+			UNROLL(N) 
+			{
+				f = vcgtq_f64(min1[kk], vld1q_f64(A));
+				min1[kk] = vbslq_f64(f, vld1q_f64(A), min1[kk]);
+                midx[kk] = vbslq_u64(f, nidx[kk], midx[kk]);
+                nidx[kk] = vaddq_u64(nidx[kk], msep);
+				A += E128D;
+			}
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) f[kk] = vcgtq_f64(min1[kk], min1[kk + KK]);
-			REP(KK) min1[kk] = vbslq_s64(f[kk], min1[kk + KK], min1[kk]);
-			REP(KK) midx[kk] = vbslq_s64(f[kk], midx[kk + KK], midx[kk]);
+			f = vcgtq_f64(min1[kk], min1[kk + KK]);
+			min1[kk] = vbslq_f64(f, min1[kk + KK], min1[kk]);
+			midx[kk] = vbslq_u64(f, midx[kk + KK], midx[kk]);
 		}
 
-		if (vgetq_lane_f64(min1[0], 0) < val)
+		for (int64 j = 0; j < E128D; ++j)
 		{
-			val = vgetq_lane_f64(min1[0], 0);
-			idx = vgetq_lane_u64(midx[0], 0);
-		}
-
-		if (vgetq_lane_f64(min1[0], 1) < val)
-		{
-			val = vgetq_lane_f64(min1[0], 1);
-			idx = vgetq_lane_u64(midx[0], 1);
+			if (simp_f64(min1, j) > val) continue;
+			val = simp_f64(min1, j);
+			idx = simp_u64(midx, j);
 		}
 	}
 
@@ -382,61 +602,45 @@ TARGETNEO int64 GetMinIdxNEO(double* A, int64 n, double& val)
 
 TARGETNEO int64 GetMinIdxNEO(float* A, int64 n, float& val)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	val = FLT_MAX;
 	uint idx = (uint)-1;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		float32x4_t min1[N], f[N], a[N];
-		uint32x4_t midx[N], nidx[N], msep = vdupq_n_u32(N * sizeof(float32x4_t) / sizeof(float));
-		REP(N) min1[kk] = vdupq_n_f32(val);
-		REP(N) midx[kk] = vdupq_n_u32(0xFFFFFFFF);
-		REP(N) nidx[kk] = vld1q_u32(((uint[]) { 0u + (kk << 2), 1u + (kk << 2), 2u + (kk << 2), 3u + (kk << 2) }));
+		float32x4_t min1[N];
+		uint32x4_t f[N], midx[N], nidx[N], msep = vdupq_n_u32(N * E128F);
+		UNROLL(N) min1[kk] = vdupq_n_f32(val);
+		UNROLL(N) midx[kk] = vdupq_n_u32(0xFFFFFFFF);
+		UNROLL(N) nidx[kk] = vld1q_u32(((uint[]) { 0u + (kk << 2), 1u + (kk << 2), 2u + (kk << 2), 3u + (kk << 2) }));
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
+			UNROLL(N) 
+			{
+				f[kk] = vcgtq_f32(min1[kk], vld1q_f32(A));
+				min1[kk] = vbslq_f32(f[kk], vld1q_f32(A), min1[kk]);
+				A += E128F; 
+			}
 
-			REP(N) f[kk] = vcgtq_f32(min1[kk], a[kk]);
+			UNROLL(N) midx[kk] = vbslq_s32(f[kk], nidx[kk], midx[kk]);
 
-			REP(N) min1[kk] = vbslq_s32(f[kk], a[kk], min1[kk]);
-
-			REP(N) midx[kk] = vbslq_s32(f[kk], nidx[kk], midx[kk]);
-
-			REP(N) nidx[kk] = vaddq_s32(nidx[kk], msep);
+			UNROLL(N) nidx[kk] = vaddq_s32(nidx[kk], msep);
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) f[kk] = vcgtq_f32(min1[kk], min1[kk + KK]);
-			REP(KK) min1[kk] = vbslq_s32(f[kk], min1[kk + KK], min1[kk]);
-			REP(KK) midx[kk] = vbslq_s32(f[kk], midx[kk + KK], midx[kk]);
+			f[kk] = vcgtq_f32(min1[kk], min1[kk + KK]);
+			min1[kk] = vbslq_s32(f[kk], min1[kk + KK], min1[kk]);
+			midx[kk] = vbslq_s32(f[kk], midx[kk + KK], midx[kk]);
 		}
-
-		if (vgetq_lane_f32(min1[0], 0) < val)
+		
+		for (int64 j = 0; j < E128F; ++j)
 		{
-			val = vgetq_lane_f32(min1[0], 0);
-			idx = vgetq_lane_u32(midx[0], 0);
-		}
-
-		if (vgetq_lane_f32(min1[0], 1) < val)
-		{
-			val = vgetq_lane_f32(min1[0], 1);
-			idx = vgetq_lane_u32(midx[0], 1);
-		}
-
-		if (vgetq_lane_f32(min1[0], 2) < val)
-		{
-			val = vgetq_lane_f32(min1[0], 2);
-			idx = vgetq_lane_u32(midx[0], 2);
-		}
-
-		if (vgetq_lane_f32(min1[0], 3) < val)
-		{
-			val = vgetq_lane_f32(min1[0], 3);
-			idx = vgetq_lane_u32(midx[0], 3);
+			if (simp_f32(min1, j) > val) continue;
+			val = simp_f32(min1, j);
+			idx = simp_u32(midx, j);
 		}
 	}
 
@@ -452,118 +656,108 @@ TARGETNEO int64 GetMinIdxNEO(float* A, int64 n, float& val)
 
 TARGETNEO void GetMinMaxValNEO(double* A, int64 n, double& minv, double& maxv)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	minv = DBL_MAX;
 	maxv = -DBL_MAX;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		float64x2_t min1[N], max1[N], a[N];
-		REP(N) min1[kk] = vdupq_n_f64(minv);
-		REP(N) max1[kk] = vdupq_n_f64(maxv);
+		float64x2_t min1[N], max1[N];
+		UNROLL(N) min1[kk] = vdupq_n_f64(minv);
+		UNROLL(N) max1[kk] = vdupq_n_f64(maxv);
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N)
+			UNROLL(N)
 			{
-				min1[kk] = vminq_f64(min1[kk], a[kk]);
-				max1[kk] = vmaxq_f64(max1[kk], a[kk]);
+				min1[kk] = vminq_f64(min1[kk], vld1q_f64(A));
+				max1[kk] = vmaxq_f64(max1[kk], vld1q_f64(A));
+				A += E128D;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) min1[kk] = vminq_f64(min1[kk], min1[kk + KK]);
-			REP(KK) max1[kk] = vmaxq_f64(max1[kk], max1[kk + KK]);
+			min1[kk] = vminq_f64(min1[kk], min1[kk + KK]);
+			max1[kk] = vmaxq_f64(max1[kk], max1[kk + KK]);
 		}
-
-		minv = Min(vgetq_lane_f64(min1[0], 0), vgetq_lane_f64(min1[0], 1));
-		maxv = Max(vgetq_lane_f64(max1[0], 0), vgetq_lane_f64(max1[0], 1));
+		
+		minv = _neo_reduce_min_pd(min1[0]);
+		maxv = _neo_reduce_max_pd(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < minv) minv = *A;
-		if (*A > maxv) maxv = *A;
+		minv = std::min(minv, *A);
+		maxv = std::max(maxv, *A);
 	}
 }
 
 TARGETNEO void GetMinMaxValNEO(float* A, int64 n, float& minv, float& maxv)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	minv = FLT_MAX;
 	maxv = -FLT_MAX;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		float32x4_t min1[N], max1[N], a[N];
-		REP(N) min1[kk] = vdupq_n_f32(minv);
-		REP(N) max1[kk] = vdupq_n_f32(maxv);
+		float32x4_t min1[N], max1[N];
+		UNROLL(N) min1[kk] = vdupq_n_f32(minv);
+		UNROLL(N) max1[kk] = vdupq_n_f32(maxv);
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N)
+			UNROLL(N)
 			{
-				min1[kk] = vminq_f32(min1[kk], a[kk]);
-				max1[kk] = vmaxq_f32(max1[kk], a[kk]);
+				min1[kk] = vminq_f32(min1[kk], vld1q_f32(A));
+				max1[kk] = vmaxq_f32(max1[kk], vld1q_f32(A));
+				A += E128F;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(min1)
 		{
-			REP(KK) min1[kk] = vminq_f32(min1[kk], min1[kk + KK]);
-			REP(KK) max1[kk] = vmaxq_f32(max1[kk], max1[kk + KK]);
+			min1[kk] = vminq_f32(min1[kk], min1[kk + KK]);
+			max1[kk] = vmaxq_f32(max1[kk], max1[kk + KK]);
 		}
-
-		minv = Min(Min(vgetq_lane_f32(min1[0], 0), vgetq_lane_f32(min1[0], 1)),
-				   Min(vgetq_lane_f32(min1[0], 2), vgetq_lane_f32(min1[0], 3)));
-		maxv = Max(Max(vgetq_lane_f32(max1[0], 0), vgetq_lane_f32(max1[0], 1)),
-				   Max(vgetq_lane_f32(max1[0], 2), vgetq_lane_f32(max1[0], 3)));
+		
+		minv = _neo_reduce_min_ps(min1[0]);
+		maxv = _neo_reduce_max_ps(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < minv) minv = *A;
-		if (*A > maxv) maxv = *A;
+		minv = std::min(minv, *A);
+		maxv = std::max(maxv, *A);
 	}
 }
 
 TARGETNEO double GetMaxValNEO(double* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	double val = -DBL_MAX;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
 		float64x2_t max1[N];
-		REP(N) max1[kk] = vdupq_n_f64(val);
+		UNROLL(N) max1[kk] = vdupq_n_f64(val);
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N)
-			{
-				max1[kk] = vmaxq_f64(max1[kk], vld1q_f64(A));
-				A += sizeof(float64x2_t) / sizeof(double);
-			}
+			UNROLL(N) { max1[kk] = vmaxq_f64(max1[kk], vld1q_f64(A)); A += E128D; }
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = vmaxq_f64(max1[kk], max1[kk + KK]);
-
-		val = Max(vgetq_lane_f64(max1[0], 0), vgetq_lane_f64(max1[0], 1));
+		REDUCE(max1) max1[kk] = vmaxq_f64(max1[kk], max1[kk + KK]);
+		
+		val = _neo_reduce_max_pd(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 
 	return val;
@@ -571,33 +765,28 @@ TARGETNEO double GetMaxValNEO(double* A, int64 n)
 
 TARGETNEO float GetMaxValNEO(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 8
 	int64 i = 0;
 	float val = -FLT_MAX;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		float32x4_t max1[N], a[N];
-		REP(N) max1[kk] = vdupq_n_f32(val);
+		float32x4_t max1[N];
+		UNROLL(N) max1[kk] = vdupq_n_f32(val);
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) { max1[kk] = vmaxq_f32(max1[kk], a[kk]); }
+			UNROLL(N) { max1[kk] = vmaxq_f32(max1[kk], vld1q_f32(A)); A += E128F; }
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = vmaxq_f32(max1[kk], max1[kk + KK]);
-
-		val = Max(Max(vgetq_lane_f32(max1[0], 0), vgetq_lane_f32(max1[0], 1)),
-				  Max(vgetq_lane_f32(max1[0], 2), vgetq_lane_f32(max1[0], 3)));
+		REDUCE(max1) max1[kk] = vmaxq_f32(max1[kk], max1[kk + KK]);
+		
+		val = _neo_reduce_max_ps(max1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 
 	return val;
@@ -605,37 +794,41 @@ TARGETNEO float GetMaxValNEO(float* A, int64 n)
 
 TARGETNEO double GetMaxValNEO(double* A, int64 n, int64 sep)
 {
+	//suboptimal to compile
+	{
+		double val = -DBL_MAX;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			val = std::max(val, *A);
+		return val;
+	}
+
+#define N 4
 	int64 i = 0;
 	double val = -DBL_MAX;
 
-	if (n >= 8)
+	if (n >= N * E128D)
 	{
-		float64x2_t max1[2];
-		REP(2) max1[kk] = vdupq_n_f64(val);
-        REP(4) { __builtin_prefetch(A, 0); A += sep; }
+		float64x2_t max1[N];
+		UNROLL(N) max1[kk] = vdupq_n_f64(val);
 
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-            REP(4) { __builtin_prefetch(A, 0); A += sep; }
-            max1[0] = vmaxq_f64(max1[0], vld1q_f64(((double[]) { A[-8 * sep], A[-7 * sep] } )));
-            max1[1] = vmaxq_f64(max1[1], vld1q_f64(((double[]) { A[-6 * sep], A[-5 * sep] } )));
-            
-            REP(4) { __builtin_prefetch(A, 0); A += sep; }
-            max1[0] = vmaxq_f64(max1[0], vld1q_f64(((double[]) { A[-8 * sep], A[-7 * sep] } )));
-            max1[1] = vmaxq_f64(max1[1], vld1q_f64(((double[]) { A[-6 * sep], A[-5 * sep] } )));
+			UNROLL(N)
+			{
+				max1[kk] = vmaxq_f64(max1[kk], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] })));
+				A += E128D * sep;
+			}
 		}
 
-		max1[0] = vmaxq_f64(max1[0], max1[1]);
-
-		val = Max(vgetq_lane_f64(max1[0], 0), vgetq_lane_f64(max1[0], 1));
-        
-        A -= 4 * sep;
+		REDUCE(max1) max1[kk] = vmaxq_f64(max1[kk], max1[kk + KK]);
+		
+		val = _neo_reduce_max_epi64(max1[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::max(val, *A);
 	}
 
 	return val;
@@ -643,35 +836,41 @@ TARGETNEO double GetMaxValNEO(double* A, int64 n, int64 sep)
 
 TARGETNEO float GetMaxValNEO(float* A, int64 n, int64 sep)
 {
-	constexpr int N = 4;
+	//suboptimal to compile
+	{
+		float val = -FLT_MAX;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			val = std::max(val, *A);
+		return val;
+	}
+
+#define N 4
 	int64 i = 0;
 	float val = -FLT_MAX;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
 		float32x4_t max1[N];
-		REP(N) max1[kk] = vdupq_n_f32(val);
+		UNROLL(N) max1[kk] = vdupq_n_f32(val);
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N)
+			UNROLL(N)
 			{
 				max1[kk] = vmaxq_f32(max1[kk], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] })));
-				A += sizeof(float32x4_t) / sizeof(float) * sep;
+				A += E128F * sep;
 			}
 		}
 
-		for (int KK = sizeof(max1) / sizeof(max1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) max1[kk] = vmaxq_f32(max1[kk], max1[kk + KK]);
-
-		val = Max(Max(vgetq_lane_f32(max1[0], 0), vgetq_lane_f32(max1[0], 1)),
-				  Max(vgetq_lane_f32(max1[0], 2), vgetq_lane_f32(max1[0], 3)));
+		REDUCE(max1) max1[kk] = vmaxq_f32(max1[kk], max1[kk + KK]);
+		
+		val = _neo_reduce_max_ps(max1[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
 	{
-		if (*A < val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
 
 	return val;
@@ -679,34 +878,28 @@ TARGETNEO float GetMaxValNEO(float* A, int64 n, int64 sep)
 
 TARGETNEO double GetMinValNEO(double* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	double val = DBL_MAX;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
 		float64x2_t min1[N], a[N];
-		REP(N) min1[kk] = vdupq_n_f64(val);
+		UNROLL(N) min1[kk] = vdupq_n_f64(val);
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N)
-			{
-				min1[kk] = vminq_f64(min1[kk], vld1q_f64(A));
-				A += sizeof(float64x2_t) / sizeof(double);
-			}
+			UNROLL(N) { min1[kk] = vminq_f64(min1[kk], vld1q_f64(A)); A += E128D; }
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) min1[kk] = vminq_f64(min1[kk], min1[kk + KK]);
-
-		val = Min(vgetq_lane_f64(min1[0], 0), vgetq_lane_f64(min1[0], 1));
+		REDUCE(min1) min1[kk] = vminq_f64(min1[kk], min1[kk + KK]);
+		
+		val = _neo_reduce_min_pd(min1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A > val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
 
 	return val;
@@ -714,33 +907,28 @@ TARGETNEO double GetMinValNEO(double* A, int64 n)
 
 TARGETNEO float GetMinValNEO(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 8
 	int64 i = 0;
 	float val = FLT_MAX;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
 		float32x4_t min1[N], a[N];
-		REP(N) min1[kk] = vdupq_n_f32(val);
+		UNROLL(N) min1[kk] = vdupq_n_f32(val);
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) { min1[kk] = vminq_f32(min1[kk], a[kk]); }
+			UNROLL(N) { min1[kk] = vminq_f32(min1[kk], vld1q_f32(A)); A += E128F; }
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) min1[kk] = vminq_f32(min1[kk], min1[kk + KK]);
-
-		val = Min(Min(vgetq_lane_f32(min1[0], 0), vgetq_lane_f32(min1[0], 1)),
-				  Min(vgetq_lane_f32(min1[0], 2), vgetq_lane_f32(min1[0], 3)));
+		REDUCE(min1) min1[kk] = vminq_f32(min1[kk], min1[kk + KK]);
+		
+		val = _neo_reduce_min_ps(min1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A > val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
 
 	return val;
@@ -748,34 +936,33 @@ TARGETNEO float GetMinValNEO(float* A, int64 n)
 
 TARGETNEO int64 GetMinValNEO(int64* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	int64 val = 0x7FFFFFFFFFFFFFFF;
 
-	if (n >= N * sizeof(uint64x2_t) / sizeof(int64))
+	if (n >= N * E128D)
 	{
-		uint64x2_t min1[N], a[N], f[N];
-		REP(N) min1[kk] = vdupq_n_u64(0x7FFFFFFFFFFFFFFF);
+		int64x2_t min1[N];
+		UNROLL(N) min1[kk] = vdupq_n_u64(0x7FFFFFFFFFFFFFFF);
 
-		for (int64 l1 = n - N * sizeof(uint64x2_t) / sizeof(int64); i <= l1; i += N * sizeof(uint64x2_t) / sizeof(int64))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_s64(A); A += sizeof(uint64x2_t) / sizeof(int64); }
-			
-			REP(N) f[kk] = vcgtq_s64(min1[kk], a[kk]);
+			UNROLL(N) 
+			{
+				min1[kk] = vbslq_s64(vcgtq_s64(min1[kk], vld1q_s64(A)), vld1q_s64(A), min1[kk]); 
 
-			REP(N) min1[kk] = vbslq_s64(f[kk], a[kk], min1[kk]);
+				A += E128D; 
+			}
 		}
 
-		for (int KK = sizeof(min1) / sizeof(min1[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) min1[kk] = vbslq_s64(vcgtq_s64(min1[kk], min1[kk + KK]), min1[kk + KK], min1[kk]);
+		REDUCE(min1) min1[kk] = vbslq_s64(vcgtq_s64(min1[kk], min1[kk + KK]), min1[kk + KK], min1[kk]);
 
-		val = Min(vgetq_lane_s64(min1[0], 0), vgetq_lane_s64(min1[0], 1));
+		val = _neo_reduce_min_epi64(min1[0]);
 	}
 
 	for (; i < n; ++i, ++A)
 	{
-		if (*A > val) continue;
-		val = *A;
+		val = std::min(val, *A);
 	}
 
 	return val;
@@ -783,19 +970,14 @@ TARGETNEO int64 GetMinValNEO(int64* A, int64 n)
 
 TARGETNEO void SetValNEO(uint* A, ushort* B, int64 n)
 {
+#define N 4
 	int64 i = 0;
 
-	if (n >= 8)
+	if (n >= N * E128F)
 	{
-		uint16x8_t b;
-
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			b = vld1q_u16(B);  B += 8;
-
-			vst1q_u32(A, vmovl_u16(vget_low_u16 (b))); A += 4;
-
-			vst1q_u32(A, vmovl_u16(vget_high_u16(b))); A += 4;
+			UNROLL(N) { vst1q_u32(A, vmovl_u16(vld1_u16(B))); A += E128F; B += E128F;}
 		}
 	}
 
@@ -855,30 +1037,25 @@ TARGETNEO void ChargeLogNEO(int64& slog, double& prod, float32x4_t& val)
 
 TARGETNEO double LogProdNEO(double* A, int64 n)
 {
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 32)
+	if (n >= N * E512D)
 	{
-		float64x2_t pd[4], dunder = vdupq_n_f64(DOUBLE_UNDERFLOW), dover = vdupq_n_f64(DOUBLE_OVERFLOW);
-		REP(4) pd[kk] = vdupq_n_f64(1.0);
+		float64x2_t pd[E512_128];
+		UNROLL(E512_128) pd[kk] = vdupq_n_f64(1.0);
 
-		for (int64 l1 = n - 32; i <= l1; i += 32)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(2)
-			{
-				pd[0] = vmulq_f64(pd[0], vmulq_f64(vld1q_f64(A + 0), vld1q_f64(A + 8)));
-				pd[1] = vmulq_f64(pd[1], vmulq_f64(vld1q_f64(A + 2), vld1q_f64(A + 10)));
-				pd[2] = vmulq_f64(pd[2], vmulq_f64(vld1q_f64(A + 4), vld1q_f64(A + 12)));
-				pd[3] = vmulq_f64(pd[3], vmulq_f64(vld1q_f64(A + 6), vld1q_f64(A + 14)));
+			UNROLL(N) UNROLL(E512_128)
+			{ pd[kk] = vmulq_f64(pd[kk], vld1q_f64(A));  A += E128D; }
 
-				A += 16;
-			}
-
-			REP(4) AddExponentNEO(slog, pd[kk]);
+			UNROLL(E512_128) AddExponentNEO(slog, pd[kk]);
 		}
-
-		REP(4) ChargeLogNEO(slog, prod, pd[kk]);
+		
+		float64x2_t* pd1 = (float64x2_t*)pd;
+		UNROLL(E512_128) ChargeLogNEO(slog, prod, pd1[kk]);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -890,69 +1067,25 @@ TARGETNEO double LogProdNEO(double* A, int64 n)
 
 TARGETNEO double LogProdNEO(float* A, int64 n)
 {
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 64)
+	if (n >= N * E512D)
 	{
-		float32x4_t a[4];
-        float64x2_t pd[4];
-		REP(4) pd[kk] = vdupq_n_f64(1.0);
+        float64x2_t pd[E512_128];
+		UNROLL(E512_128) pd[kk] = vdupq_n_f64(1.0);
 
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(4)
-			{
-				a[0] = vld1q_f32(A); A += 4;
-				a[1] = vld1q_f32(A); A += 4;
-				a[2] = vld1q_f32(A); A += 4;
-				a[3] = vld1q_f32(A); A += 4;
+			UNROLL(N) UNROLL(E512_128)
+			{ pd[kk] = vmulq_f64(pd[kk], vcvt_f64_f32(vld1_f32(A))); A += E128D; }
 
-				pd[0] = vmulq_f64(pd[0], vmulq_f64(vcvt_f64_f32(vget_low_f32 (a[0])), vcvt_f64_f32(vget_low_f32 (a[2]))));
-				pd[1] = vmulq_f64(pd[1], vmulq_f64(vcvt_f64_f32(vget_high_f32(a[0])), vcvt_f64_f32(vget_high_f32(a[2]))));
-				pd[2] = vmulq_f64(pd[2], vmulq_f64(vcvt_f64_f32(vget_low_f32 (a[1])), vcvt_f64_f32(vget_low_f32 (a[3]))));
-				pd[3] = vmulq_f64(pd[3], vmulq_f64(vcvt_f64_f32(vget_high_f32(a[1])), vcvt_f64_f32(vget_high_f32(a[3]))));
-			}
-
-			REP(4) AddExponentNEO(slog, pd[kk]);
+			UNROLL(E512_128) AddExponentNEO(slog, pd[kk]);
 		}
-
-		REP(4) ChargeLogNEO(slog, prod, pd[kk]);
-	}
-
-	for (; i < n; ++i, ++A)
-		ChargeLog(slog, prod, *A);
-
-	CloseLog(slog, prod);
-	return prod;
-}
-
-TARGETNEO float LogProdNEOx(float* A, int64 n)
-{
-	int64 i = 0;
-	int64 slog = 0; double prod = 1;
-
-	if (n >= 32)
-	{
-		float32x4_t pd[4];
-		REP(4) pd[kk] = vdupq_n_f32(1.0f);
-
-		for (int64 l1 = n - 32; i <= l1; i += 32)
-		{
-			pd[0] = vmulq_f32(pd[0], vld1q_f32(A +  0));
-			pd[1] = vmulq_f32(pd[1], vld1q_f32(A +  4));
-			pd[2] = vmulq_f32(pd[2], vld1q_f32(A +  8));
-			pd[3] = vmulq_f32(pd[3], vld1q_f32(A + 12));
-			pd[0] = vmulq_f32(pd[0], vld1q_f32(A + 16));
-			pd[1] = vmulq_f32(pd[1], vld1q_f32(A + 20));
-			pd[2] = vmulq_f32(pd[2], vld1q_f32(A + 24));
-			pd[3] = vmulq_f32(pd[3], vld1q_f32(A + 28));
-
-			A += 32;
-			REP(4) AddExponentNEO(slog, pd[kk]);
-		}
-
-		REP(4) ChargeLogNEO(slog, prod, pd[kk]);
+		
+		float64x2_t* pd1 = (float64x2_t*)pd;
+		UNROLL(E512_128) ChargeLogNEO(slog, prod, pd1[kk]);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -964,121 +1097,83 @@ TARGETNEO float LogProdNEOx(float* A, int64 n)
 
 TARGETNEO double LogProdNEO(double* A, int64 n, int64 sep)
 {
+	//suboptimal to compile
+	{
+		int64 slog = 0; double prod = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			ChargeLog(slog, prod, *A);
+
+		CloseLog(slog, prod);
+		return prod;
+	}
+
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 8)
+	if (n >= N * E512D)
 	{
-		REP(4) { __builtin_prefetch(A, 0); A += sep; }
-		float64x2_t pd[4], v1[4], dunder = vdupq_n_f64(DOUBLE_UNDERFLOW), dover = vdupq_n_f64(DOUBLE_OVERFLOW);
-		uint64x2_t f1, f2;
-		REP(4) pd[kk] = vdupq_n_f64(1.0);
+		float64x2_t pd[E512_128];
+		UNROLL(E512_128) pd[kk] = vdupq_n_f64(1.0);
 
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(4)
-			{
-				__builtin_prefetch(A, 0); A += sep;
-				__builtin_prefetch(A, 0); A += sep;
-				v1[kk] = vld1q_f64(((double[]) { A[-6 * sep], A[-5 * sep] }));
-			}
-
-			f1 = vdupq_n_f64(0);
-			f2 = vdupq_n_f64(0);
-
-			REP(4)
-			{
-				pd[kk] = vmulq_f64(pd[kk], v1[kk]);
-
-				f1 = vorrq_u64(f1, vcltq_f64(pd[kk], dunder));
-				f2 = vorrq_u64(f2, vcltq_f64(dover, pd[kk]));
-			}
-
-			f1 = vorrq_u64(f1, f2);
-
-			if (vgetq_lane_u64(f1, 0) | vgetq_lane_u64(f1, 1)) [[unlikely]]
-				REP(4) AddExponentNEO(slog, pd[kk]);
+			UNROLL(N) UNROLL(E512_128) 
+			{ pd[kk] = vmulq_f64(pd[kk], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] }))); A += E128D * sep; }
+			
+			UNROLL(E512_128) AddExponentNEO(slog, pd[kk]);
 		}
-
-		REP(4) ChargeLogNEO(slog, prod, pd[kk]);
-		A -= 4 * sep;
+		
+		UNROLL(E512_128) ChargeLogNEO(slog, prod, pd[kk]);
 	}
 
 	for (; i < n; ++i, A += sep)
 		ChargeLog(slog, prod, *A);
 
 	CloseLog(slog, prod);
+
 	return prod;
 }
 
 TARGETNEO double LogProdNEO(float* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	int64 slog = 0; double prod = 1;
-
-	if (n >= 32)
+	//suboptimal to compile
 	{
-		REP(4) { __builtin_prefetch(A, 0); A += sep; }
+		int64 slog = 0; double prod = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			ChargeLog(slog, prod, *A);
 
-		float64x2_t pd[2];
-		float32x4_t a1;
-		REP(2) pd[kk] = vdupq_n_f64(1.0f);
-
-		for (int64 l1 = n - 32; i <= l1; i += 32)
-		{
-			REP(8)
-			{
-				__builtin_prefetch(A, 0); A += sep;
-				__builtin_prefetch(A, 0); A += sep;
-				__builtin_prefetch(A, 0); A += sep;
-				__builtin_prefetch(A, 0); A += sep;
-
-				a1 = vld1q_f32(((float[]) { A[-8 * sep], A[-7 * sep], A[-6 * sep], A[-5 * sep] }));
-
-				pd[0] = vmulq_f64(pd[0], vcvt_f64_f32(vget_low_f32 (a1)));
-				pd[1] = vmulq_f64(pd[1], vcvt_f64_f32(vget_high_f32(a1)));
-			}
-
-			REP(2) AddExponentNEO(slog, pd[kk]);
-		}
-
-		REP(2) ChargeLogNEO(slog, prod, pd[kk]);
-		A -= 4 * sep;
+		CloseLog(slog, prod);
+		return prod;
 	}
 
-	for (; i < n; ++i, A += sep)
-		ChargeLog(slog, prod, *A);
-
-	CloseLog(slog, prod);
-	return prod;
-}
-
-TARGETNEO float LogProdNEOx(float* A, int64 n, int64 sep)
-{
+#define N 4
 	int64 i = 0;
 	int64 slog = 0; double prod = 1;
 
-	if (n >= 32)
+	if (n >= N * E128F)
 	{
-		float32x4_t pd[4];
-		REP(4) pd[kk] = vdupq_n_f32(1.0f);
+		float64x2_t pd1 = vdupq_n_f64(1.0f), pd2 = vdupq_n_f64(1.0f);
+		float32x4_t a1;
 
-		for (int64 l1 = n - 32; i <= l1; i += 32)
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			pd[0] = vmulq_f32(pd[0], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-			pd[1] = vmulq_f32(pd[1], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-			pd[2] = vmulq_f32(pd[2], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-			pd[3] = vmulq_f32(pd[3], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
+			UNROLL(N)
+			{
+				a1 = vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] })); A += E128F * sep;
 
-			pd[0] = vmulq_f32(pd[0], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-			pd[1] = vmulq_f32(pd[1], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-			pd[2] = vmulq_f32(pd[2], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-			pd[3] = vmulq_f32(pd[3], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
+				pd1 = vmulq_f64(pd1, vcvt_f64_f32(vget_low_f32 (a1)));
+				pd2 = vmulq_f64(pd2, vcvt_f64_f32(vget_high_f32(a1)));
+			}
 
-			REP(4) AddExponentNEO(slog, pd[kk]);
+			AddExponentNEO(slog, pd1);
+			AddExponentNEO(slog, pd2);
 		}
 
-		REP(4) ChargeLogNEO(slog, prod, pd[kk]);
+		ChargeLogNEO(slog, prod, pd1);
+		ChargeLogNEO(slog, prod, pd2);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1090,155 +1185,65 @@ TARGETNEO float LogProdNEOx(float* A, int64 n, int64 sep)
 
 TARGETNEO double LogProdDivNEO(double* A, double* B, int64 n, int64 sep)
 {
-	int64 slog1 = 0; double prod1 = 1;
-	int64 slog2 = 0; double prod2 = 1;
-	for (int64 i = 0; i < n; ++i, A += sep, B += sep)
+	//suboptimal to compile
 	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-	return prod1 - prod2;
-
-	/*
-	int64 i = 0;
-	int64 slog = 0; double prod = 1;
-
-	if (n >= 4)
-	{
-		__builtin_prefetch(A, 0); A += sep;
-		__builtin_prefetch(A, 0); A += sep;
-		__builtin_prefetch(A, 0); A += sep;
-		__builtin_prefetch(A, 0); A += sep;
-		__builtin_prefetch(B, 0); B += sep;
-		__builtin_prefetch(B, 0); B += sep;
-		__builtin_prefetch(B, 0); B += sep;
-		__builtin_prefetch(B, 0); B += sep;
-
-		float64x2_t pd = vdupq_n_f64(1.0), dunder = vdupq_n_f64(DOUBLE_UNDERFLOW), dover = vdupq_n_f64(DOUBLE_OVERFLOW);
-		uint64x2_t flag;
-
-		for (int64 l1 = n - 4; i <= l1; i += 4)
+		int64 slog1 = 0; double prod1 = 1;
+		int64 slog2 = 0; double prod2 = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep, B += sep)
 		{
-			__builtin_prefetch(A, 0); A += sep;
-			__builtin_prefetch(A, 0); A += sep;
-			__builtin_prefetch(A, 0); A += sep;
-			__builtin_prefetch(A, 0); A += sep;
-			__builtin_prefetch(B, 0); B += sep;
-			__builtin_prefetch(B, 0); B += sep;
-			__builtin_prefetch(B, 0); B += sep;
-			__builtin_prefetch(B, 0); B += sep;
-			
-			double a[4] = { A[-8 * sep], A[-7 * sep], A[-6 * sep], A[-5 * sep] };
-			double b[4] = { B[-4 * sep], B[-3 * sep], B[-6 * sep], B[-5 * sep] };
-
-			pd = vmulq_f64(pd, vdivq_f64(
-				vmulq_f64(vld1q_f64(a), vld1q_f64(a + 2)), 
-				vmulq_f64(vld1q_f64(b), vld1q_f64(b + 2))));
-
-			flag = vorrq_u64(vcltq_f64(pd, dunder), vcltq_f64(dover, pd));
-
-			if (vgetq_lane_u64(flag, 0) | vgetq_lane_u64(flag, 1)) [[unlikely]]
-				AddExponentNEO(slog, pd);
+			ChargeLog(slog1, prod1, *A);
+			ChargeLog(slog2, prod2, *B);
 		}
 
-		ChargeLogNEO(slog, prod, pd);
-		A -= 4 * sep; 
-		B -= 4 * sep;
+		CloseLog(slog1, prod1);
+		CloseLog(slog2, prod2);
+		return prod1 - prod2;
 	}
-
-	for (; i < n; ++i, A += sep, B += sep)
-		ChargeLog(slog, prod, *A / *B);
-
-	CloseLog(slog, prod);
-	return prod;
-	*/
 }
 
 TARGETNEO double LogProdDivNEO(float* A, float* B, int64 n, int64 sep)
 {
+	//suboptimal to compile
+	{
+		int64 slog1 = 0; double prod1 = 1;
+		int64 slog2 = 0; double prod2 = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep, B += sep)
+		{
+			ChargeLog(slog1, prod1, *A);
+			ChargeLog(slog2, prod2, *B);
+		}
+
+		CloseLog(slog1, prod1);
+		CloseLog(slog2, prod2);
+		return prod1 - prod2;
+	}
+
+#define N 8
 	int64 i = 0;
 	int64 slog1 = 0; double prod1 = 1;
 	int64 slog2 = 0; double prod2 = 1;
 
-	if (n >= 64)
+	if (n >= N * E512D)
 	{
-		float64x2_t pd1[4], pd2[4];
-		REP(4) pd1[kk] = pd2[kk] = vdupq_n_f64(1.0);
+		float64x2_t pd1[E512_128], pd2[E512_128];
+		UNROLL(E512_128) pd1[kk] = pd2[kk] = vdupq_n_f64(1.0);
 
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(8)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				pd1[0] = vmulq_f64(pd1[0], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] }))); A += sep * 2;
-				pd2[0] = vmulq_f64(pd2[0], vld1q_f64(((double[]) { B[0 * sep], B[1 * sep] }))); B += sep * 2;
-
-				pd1[1] = vmulq_f64(pd1[1], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] }))); A += sep * 2;
-				pd2[1] = vmulq_f64(pd2[1], vld1q_f64(((double[]) { B[0 * sep], B[1 * sep] }))); B += sep * 2;
-
-				pd1[2] = vmulq_f64(pd1[2], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] }))); A += sep * 2;
-				pd2[2] = vmulq_f64(pd2[2], vld1q_f64(((double[]) { B[0 * sep], B[1 * sep] }))); B += sep * 2;
-
-				pd1[3] = vmulq_f64(pd1[3], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] }))); A += sep * 2;
-				pd2[3] = vmulq_f64(pd2[3], vld1q_f64(((double[]) { B[0 * sep], B[1 * sep] }))); B += sep * 2;
+				pd1[kk] = vmulq_f64(pd1[kk], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] }))); A += sep * 2;
+				pd2[kk] = vmulq_f64(pd2[kk], vld1q_f64(((double[]) { B[0 * sep], B[1 * sep] }))); B += sep * 2;
 			}
 
-			REP(4) AddExponentNEO(slog1, pd1[kk]);
-			REP(4) AddExponentNEO(slog2, pd2[kk]);
+			UNROLL(E512_128) AddExponentNEO(slog1, pd1[kk]);
+			UNROLL(E512_128) AddExponentNEO(slog2, pd2[kk]);
 		}
 
-		REP(4) ChargeLogNEO(slog1, prod1, pd1[kk]);
-		REP(4) ChargeLogNEO(slog2, prod2, pd2[kk]);
-	}
-
-	for (; i < n; ++i, A += sep, B += sep)
-	{
-		ChargeLog(slog1, prod1, *A);
-		ChargeLog(slog2, prod2, *B);
-	}
-
-	CloseLog(slog1, prod1);
-	CloseLog(slog2, prod2);
-
-	return prod1 - prod2;
-}
-
-TARGETNEO float LogProdDivNEOx(float* A, float* B, int64 n, int64 sep)
-{
-	int64 i = 0;
-	int64 slog1 = 0; double prod1 = 1;
-	int64 slog2 = 0; double prod2 = 1;
-
-	if (n >= 64)
-	{
-		float32x4_t pd1[4], pd2[4];
-		REP(4) pd1[kk] = pd2[kk] = vdupq_n_f32(1.0f);
-
-		for (int64 l1 = n - 64; i <= l1; i += 64)
-		{
-			REP(4)
-			{
-				pd1[0] = vmulq_f32(pd1[0], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-				pd2[0] = vmulq_f32(pd2[0], vld1q_f32(((float[]) { B[0 * sep], B[1 * sep], B[2 * sep], B[3 * sep] }))); B += 4 * sep;
-
-				pd1[1] = vmulq_f32(pd1[1], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-				pd2[1] = vmulq_f32(pd2[1], vld1q_f32(((float[]) { B[0 * sep], B[1 * sep], B[2 * sep], B[3 * sep] }))); B += 4 * sep;
-
-				pd1[2] = vmulq_f32(pd1[2], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-				pd2[2] = vmulq_f32(pd2[2], vld1q_f32(((float[]) { B[0 * sep], B[1 * sep], B[2 * sep], B[3 * sep] }))); B += 4 * sep;
-
-				pd1[3] = vmulq_f32(pd1[3], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] }))); A += 4 * sep;
-				pd2[3] = vmulq_f32(pd2[3], vld1q_f32(((float[]) { B[0 * sep], B[1 * sep], B[2 * sep], B[3 * sep] }))); B += 4 * sep;
-			}
-
-			REP(4) AddExponentNEO(slog1, pd1[kk]);
-			REP(4) AddExponentNEO(slog2, pd2[kk]);
-		}
-
-		REP(4) ChargeLogNEO(slog1, prod1, pd1[kk]);
-		REP(4) ChargeLogNEO(slog2, prod2, pd2[kk]);
+		UNROLL(E512_128) ChargeLogNEO(slog1, prod1, pd1[kk]);
+		UNROLL(E512_128) ChargeLogNEO(slog2, prod2, pd2[kk]);
 	}
 
 	for (; i < n; ++i, A += sep, B += sep)
@@ -1258,19 +1263,17 @@ TARGETNEO int64 CountNonZeroNEO(byte* A, int64 n)
 	uint64 re = 0;
 	int64 i = 0;
 
-	if (n >= 16)
+	if (n >= E128B)
 	{
 		uint8x16_t z = vdupq_n_u8(0), v;
 		uint64 s1 = 0, s2 = 0;
 		byte* Ab = A;
 
-		for (int64 l1 = n - 16; i <= l1; i += 16)
+		for (int64 l1 = n - E128B; i <= l1; i += E128B)
 		{
-			v = vld1q_u8(A);
-			v = vceqq_u8(v, z);
+			v = vceqq_u8(vld1q_u8(A), z); A += E128B;
 			s1 += __builtin_popcountll(vgetq_lane_u64((uint64x2_t)v, 0));
 			s2 += __builtin_popcountll(vgetq_lane_u64((uint64x2_t)v, 1));
-			A += 16;
 		}
 
 		re = (A - Ab) - ((s1 + s2) >> 3);
@@ -1284,24 +1287,21 @@ TARGETNEO int64 CountNonZeroNEO(byte* A, int64 n)
 
 TARGETNEO double SumNEO(double* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		float64x2_t s[N], a[N];
-		REP(N) s[kk] = vdupq_n_f64(0);
+		float64x2_t s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) s[kk] = vaddq_f64(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = vaddq_f64(s[kk], vld1q_f64(A)); A += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_add_pd(s[0]);
 	}
@@ -1317,27 +1317,21 @@ TARGETNEO double SumNEO(double* A, int64 n)
 
 TARGETNEO double SumNEO(float* A, int64 n)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N / 2 * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		float64x2_t s[N];
-		REP(N) s[kk] = vdupq_n_f64(0);
+		float64x2_t s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N / 2 * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N / 2 * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
-			{
-				float32x4_t a = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float);
-				s[0 + (kk << 1)] = vaddq_f64(s[0 + (kk << 1)], vcvt_f64_f32(vget_low_f32 (a)));
-				s[1 + (kk << 1)] = vaddq_f64(s[1 + (kk << 1)], vcvt_f64_f32(vget_high_f32(a)));
-			}
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = vaddq_f64(s[kk], vld1q_f64(((double[]) { A[0], A[1] }))); A += 2; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_add_pd(s[0]);
 	}
@@ -1353,24 +1347,21 @@ TARGETNEO double SumNEO(float* A, int64 n)
 
 TARGETNEO float SumNEOx(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	float re = 0;
+	volatile float re = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		float32x4_t s[N], a[N];
-		REP(N) s[kk] = vdupq_n_f32(0);
+		float32x4_t s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) s[kk] = vaddq_f32(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = vaddq_f32(s[kk], vld1q_f32(A)); A += E128F; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_add_ps(s[0]);
 	}
@@ -1386,26 +1377,21 @@ TARGETNEO float SumNEOx(float* A, int64 n)
 
 TARGETNEO int64 SumNEO(byte* A, int64 n)
 {
-	constexpr int N = 4;
-	uint64 re = 0;
+#define N 4
+	int64 re = 0;
 	int64 i = 0;
 
-	if (n >= N * sizeof(uint64x2_t) / sizeof(byte))
+	if (n >= N * E128B)
 	{
-		uint64x2_t s[N], a[N], z = vdupq_n_u64(0);
-		REP(N) s[kk] = vdupq_n_u64(0);
+		uint64x2_t s = vdupq_n_u64(0);
 
-		for (int64 l1 = n - N * sizeof(uint64x2_t) / sizeof(byte); i <= l1; i += N * sizeof(uint64x2_t) / sizeof(byte))
+		for (int64 l1 = n - N * E128B; i <= l1; i += N * E128B)
 		{
-			REP(N) { a[kk] = vld1q_u8(A); A += sizeof(uint64x2_t) / sizeof(byte); }
-
-			REP(N) s[kk] = vaddq_u64(s[kk], vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(a[kk]))));
+			UNROLL(N) 
+			{ s = vaddq_u64(s, vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(vld1q_u8(A))))); A += E128B; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_u64(s[kk], s[kk + KK]);
-
-		re += vgetq_lane_u64(s[0], 0) + vgetq_lane_u64(s[0], 1);
+		re += _neo_reduce_add_epi64(s);
 	}
 
 	for (; i < n; ++i)
@@ -1416,28 +1402,35 @@ TARGETNEO int64 SumNEO(byte* A, int64 n)
 
 TARGETNEO double SumNEO(double* A, int64 n, int64 sep)
 {
-	constexpr int N = 8;
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	//suboptimal to compile
 	{
-		REP(4) __builtin_prefetch(A + sep * kk, 0);
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re += *A;
+		return re;
+	}
 
-		float64x2_t s[N], a[N];
-		REP(N) s[kk] = vdupq_n_f64(0);
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E512D)
+	{
+		float64x2_t s[E512_128] = { 0 };
+		UNROLL(E128D) __builtin_prefetch(&A[kk * sep], 0);
+					   
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N * 2) __builtin_prefetch(A + sep * kk, 0);
-
-			REP(N) { a[kk] = vld1q_f64(((double[]) { A[0], A[sep] })); A += sep * sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) s[kk] = vaddq_f64(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) __builtin_prefetch(&A[E128D * sep + kk * sep], 0);
+				s[kk] = vaddq_f64(s[kk], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] })));
+				A += E128D * sep;
+			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_add_pd(s[0]);
 	}
@@ -1453,26 +1446,37 @@ TARGETNEO double SumNEO(double* A, int64 n, int64 sep)
 
 TARGETNEO double SumNEO(float* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= 4)
+	//suboptimal to compile
 	{
-		REP(4) { __builtin_prefetch(A, 0); A += sep; }
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re += *A;
+		return re;
+	}
 
-		float64x2_t s1 = vdupq_n_f64(0), s2 = vdupq_n_f64(0);
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - 4; i <= l1; i += 4)
+	if (n >= N * E512D)
+	{
+		float64x2_t s[E512_128] = { 0 };
+		UNROLL(E128D) __builtin_prefetch(&A[kk * sep], 0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(4) { __builtin_prefetch(A, 0); A += sep; }
-
-			s1 = vaddq_f64(s1, vld1q_f64(((double[]) { A[-8 * sep], A[-7 * sep] })));
-			s2 = vaddq_f64(s2, vld1q_f64(((double[]) { A[-6 * sep], A[-5 * sep] })));
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) __builtin_prefetch(&A[E128D * sep + kk * sep], 0);
+				s[kk] = vaddq_f64(s[kk], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] })));
+				A += E128D * sep;
+			}
 		}
 
-		s1 = vaddq_f64(s1, s2);
-		re = _neo_reduce_add_pd(s1);
-		A -= 4 * sep;
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+
+		re = _neo_reduce_add_pd(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1486,22 +1490,37 @@ TARGETNEO double SumNEO(float* A, int64 n, int64 sep)
 
 TARGETNEO float SumNEOx(float* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	float re = 0;
-
-	if (n >= 8)
+	//suboptimal to compile
 	{
-		float32x4_t s1 = vdupq_n_f64(0), s2 = vdupq_n_f64(0);
+		float re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re += *A;
+		return re;
+	}
 
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		float32x4_t s[E512_128] = { 0 };
+		UNROLL(E128F) __builtin_prefetch(&A[kk * sep], 0);
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			s1 = vaddq_f32(s1, vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] })));
-			s2 = vaddq_f32(s2, vld1q_f32(((float[]) { A[4 * sep], A[5 * sep], A[6 * sep], A[7 * sep] })));
-			A += 8 * sep;
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128F) __builtin_prefetch(&A[E128F * sep + kk * sep], 0);
+				s[kk] = vaddq_f32(s[kk], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] })));
+				A += E128F * sep;
+			}
 		}
 
-		s1 = vaddq_f32(s1, s2);
-		re = _neo_reduce_add_ps(s1);
+		REDUCE(s) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
+
+		re = _neo_reduce_add_ps(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1513,96 +1532,24 @@ TARGETNEO float SumNEOx(float* A, int64 n, int64 sep)
 	return re;
 }
 
-TARGETNEO void SumNEO(double* A, double** B, int64 k, int64 n)
-{
-	constexpr int N = 16;
-	int64 i = 0;
-
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
-	{
-		float64x2_t a[N];
-
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
-		{
-			REP(N) a[kk] = vdupq_n_f64(0);
-
-			for (int64 j = 0; j < k; ++j)
-				REP(N) a[kk] = vaddq_f64(a[kk], vld1q_f64(&B[j][i + kk * sizeof(float64x2_t) / sizeof(double)]));
-
-			REP(N) { vst1q_f64(A, a[kk]); A += sizeof(float64x2_t) / sizeof(double); }
-		}
-	}
-
-	for (; i < n; ++i)
-	{
-		double Ai = 0;
-		for (int64 j = 0; j < k; ++j)
-			Ai += B[j][i];
-		*A++ = Ai;
-	}
-}
-
-TARGETNEO void SumNEO(float* A, float** B, int64 k, int64 n)
-{
-	constexpr int N = 16;
-	int64 i = 0;
-
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
-	{
-		float64x2_t a[N * 2];
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
-		{
-			REP(N * 2) a[kk] = vdupq_n_f64(0);
-
-			for (int64 j = 0; j < k; ++j)
-				REP(N)
-				{
-					float64x2_t b = vld1q_f32(&B[j][i + kk * sizeof(float32x4_t) / sizeof(float)]);
-					a[0 + (kk << 1)] = vaddq_f64(a[0 + (kk << 1)], vcvt_f64_f32(vget_low_f32(b)));
-					a[1 + (kk << 1)] = vaddq_f64(a[1 + (kk << 1)], vcvt_f64_f32(vget_high_f32(b)));
-				}
-
-			REP(N)
-			{
-				vst1q_f32(A, vcombine_f32(
-					vcvt_f32_f64(a[0 + (kk << 1)]),
-					vcvt_f32_f64(a[1 + (kk << 1)])));
-
-				A += sizeof(float32x4_t) / sizeof(float);
-			}
-		}
-	}
-
-	for (; i < n; ++i)
-	{
-		double Ai = 0;
-		for (int64 j = 0; j < k; ++j)
-			Ai += B[j][i];
-		*A++ = Ai;
-	}
-}
-
 TARGETNEO double ProdNEO(double* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 1;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		float64x2_t s[N], a[N];
-		REP(N) s[kk] = vdupq_n_f64(1);
+		float64x2_t s[E512_128];
+		UNROLL(E512_128) s[kk] = vdupq_n_f64(1);
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) s[kk] = vmulq_f64(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = vmulq_f64(s[kk], vld1q_f64(A)); A += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vmulq_f64(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vmulq_f64(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_mul_pd(s[0]);
 	}
@@ -1618,30 +1565,22 @@ TARGETNEO double ProdNEO(double* A, int64 n)
 
 TARGETNEO double ProdNEO(float* A, int64 n)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
-	double re = 1;
+	volatile double re = 0;
 
-	if (n >= N / 2 * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		float64x2_t s[N];
-		REP(N) s[kk] = vdupq_n_f64(1);
+		float64x2_t s[E512_128];
+		UNROLL(E512_128) s[kk] = vdupq_n_f64(1);
 
-		for (int64 l1 = n - N / 2 * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N / 2 * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
-			{
-				float32x4_t v1 = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float);
-				float64x2_t a1 = vcvt_f64_f32(vget_low_f32 (v1));
-				float64x2_t a2 = vcvt_f64_f32(vget_high_f32(v1));
-
-				s[0 + (kk << 1)] = vmulq_f64(s[0 + (kk << 1)], a1);
-				s[1 + (kk << 1)] = vmulq_f64(s[1 + (kk << 1)], a2);
-			}
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = vmulq_f64(s[kk], vld1q_f64(((double[]) { A[0], A[1] }))); A += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vmulq_f64(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vmulq_f64(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_mul_pd(s[0]);
 	}
@@ -1657,64 +1596,69 @@ TARGETNEO double ProdNEO(float* A, int64 n)
 
 TARGETNEO float ProdNEOx(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	float re = 1;
+	volatile float re = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		float32x4_t s[N], a[N];
-		REP(N) s[kk] = vdupq_n_f32(1);
+		float32x4_t s[E512_128];
+		UNROLL(E512_128) s[kk] = vdupq_n_f32(1);
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) s[kk] = vmulq_f32(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = vmulq_f32(s[kk], vld1q_f32(A)); A += E128F; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vmulq_f32(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vmulq_f32(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_mul_ps(s[0]);
 	}
 
 	for (; i < n; ++i)
-		re *= *A++;
+	{
+		volatile float v1 = *A++;
+		re *= v1;
+	}
 
 	return re;
 }
 
 TARGETNEO double ProdNEO(double* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	double re = 1;
-
-	if (n >= 8)
+	//suboptimal to compile
 	{
-		REP(8) { __builtin_prefetch(A, 0); A += sep; }
+		double re = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re *= *A;
+		return re;
+	}
 
-		float64x2_t pd1 = vdupq_n_f64(1.0), pd2 = vdupq_n_f64(1.0);
-		float64x2_t pd3 = vdupq_n_f64(1.0), pd4 = vdupq_n_f64(1.0);
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+	if (n >= N * E512D)
+	{
+		float64x2_t s[E512_128];
+		UNROLL(E512_128) s[kk] = vdupq_n_f64(1);
+		UNROLL(E128D) __builtin_prefetch(&A[kk * sep], 0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(2) { __builtin_prefetch(A, 0); A += sep; }
-			pd1 = vmulq_f64(pd1, vld1q_f64(((double[]) { A[-10 * sep], A[-9 * sep] })));
-
-			REP(2) { __builtin_prefetch(A, 0); A += sep; }
-			pd2 = vmulq_f64(pd2, vld1q_f64(((double[]) { A[-10 * sep], A[-9 * sep] })));
-
-			REP(2) { __builtin_prefetch(A, 0); A += sep; }
-			pd3 = vmulq_f64(pd3, vld1q_f64(((double[]) { A[-10 * sep], A[-9 * sep] })));
-
-			REP(2) { __builtin_prefetch(A, 0); A += sep; }
-			pd4 = vmulq_f64(pd4, vld1q_f64(((double[]) { A[-10 * sep], A[-9 * sep] })));
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) __builtin_prefetch(&A[E128D * sep + kk * sep], 0);
+				s[kk] = vmulq_f64(s[kk], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] })));
+				A += E128D * sep;
+			}
 		}
 
-		pd1 = vmulq_f64(vmulq_f64(pd1, pd2), vmulq_f64(pd3, pd4));
-		re = _neo_reduce_mul_pd(pd1);
-		A -= 8 * sep;
+		REDUCE(s) s[kk] = vmulq_f64(s[kk], s[kk + KK]);
+
+		re = _neo_reduce_mul_pd(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1728,34 +1672,38 @@ TARGETNEO double ProdNEO(double* A, int64 n, int64 sep)
 
 TARGETNEO double ProdNEO(float* A, int64 n, int64 sep)
 {
-	int64 i = 0;
-	double re = 1;
-
-	if (n >= 8)
+	//suboptimal to compile
 	{
-		REP(8) { __builtin_prefetch(A, 0); A += sep; }
+		double re = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re *= *A;
+		return re;
+	}
 
-		float64x2_t pd1 = vdupq_n_f64(1.0), pd2 = vdupq_n_f64(1.0);
-		float64x2_t pd3 = vdupq_n_f64(1.0), pd4 = vdupq_n_f64(1.0);
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - 8; i <= l1; i += 8)
+	if (n >= N * E512D)
+	{
+		float64x2_t s[E512_128];
+		UNROLL(E512_128) s[kk] = vdupq_n_f64(1);
+		UNROLL(E128D) __builtin_prefetch(&A[kk * sep], 0);
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(2) { __builtin_prefetch(A, 0); A += sep; }
-			pd1 = vmulq_f64(pd1, vld1q_f64(((double[]) { A[-10 * sep], A[-9 * sep] })));
-
-			REP(2) { __builtin_prefetch(A, 0); A += sep; }
-			pd2 = vmulq_f64(pd2, vld1q_f64(((double[]) { A[-10 * sep], A[-9 * sep] })));
-
-			REP(2) { __builtin_prefetch(A, 0); A += sep; }
-			pd3 = vmulq_f64(pd3, vld1q_f64(((double[]) { A[-10 * sep], A[-9 * sep] })));
-
-			REP(2) { __builtin_prefetch(A, 0); A += sep; }
-			pd4 = vmulq_f64(pd4, vld1q_f64(((double[]) { A[-10 * sep], A[-9 * sep] })));
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) __builtin_prefetch(&A[E128D * sep + kk * sep], 0);
+				s[kk] = vmulq_f64(s[kk], vld1q_f64(((double[]) { A[0 * sep], A[1 * sep] })));
+				A += E128D * sep;
+			}
 		}
 
-		pd1 = vmulq_f64(vmulq_f64(pd1, pd2), vmulq_f64(pd3, pd4));
-		re = _neo_reduce_mul_pd(pd1);
-		A -= 8 * sep;
+		REDUCE(s) s[kk] = vmulq_f64(s[kk], s[kk + KK]);
+
+		re = _neo_reduce_mul_pd(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1769,28 +1717,38 @@ TARGETNEO double ProdNEO(float* A, int64 n, int64 sep)
 
 TARGETNEO float ProdNEOx(float* A, int64 n, int64 sep)
 {
-	constexpr int N = 4;
-	int64 i = 0;
-	volatile float re = 1;
-
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	//suboptimal to compile
 	{
-		float32x4_t pd[4];
-		REP(N) pd[kk] = vdupq_n_f32(1.0f);
+		float re = 1;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A += sep)
+			re *= *A;
+		return re;
+	}
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+#define N 2
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		float32x4_t s[E512_128];
+		UNROLL(E512_128) s[kk] = vdupq_n_f32(1);
+		UNROLL(E128F) __builtin_prefetch(&A[kk * sep], 0);
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				pd[kk] = vmulq_f32(pd[kk], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] })));
-				A += 4 * sep;
+				UNROLL(E128F) __builtin_prefetch(&A[E128F * sep + kk * sep], 0);
+				s[kk] = vmulq_f32(s[kk], vld1q_f32(((float[]) { A[0 * sep], A[1 * sep], A[2 * sep], A[3 * sep] })));
+				A += E128F * sep;
 			}
 		}
 
-		for (int KK = sizeof(pd) / sizeof(pd[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) pd[kk] = vmulq_f32(pd[kk], pd[kk + KK]);
+		REDUCE(s) s[kk] = vmulq_f32(s[kk], s[kk + KK]);
 
-		re = _neo_reduce_mul_ps(pd[0]);
+		re = _neo_reduce_mul_ps(s[0]);
 	}
 
 	for (; i < n; ++i, A += sep)
@@ -1804,26 +1762,21 @@ TARGETNEO float ProdNEOx(float* A, int64 n, int64 sep)
 
 TARGETNEO double SumSquareNEO(double* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		float64x2_t s[N], a[N];
-		REP(N) s[kk] = vdupq_n_f64(0);
+		float64x2_t s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) a[kk] = vmulq_f64(a[kk], a[kk]);
-
-			REP(N) s[kk] = vaddq_f64(s[kk], a[kk]);
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _neo_fmaddx_pd(vld1q_f64(A), vld1q_f64(A), s[kk]); A += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_add_pd(s[0]);
 	}
@@ -1839,33 +1792,24 @@ TARGETNEO double SumSquareNEO(double* A, int64 n)
 
 TARGETNEO double SumSquareNEO(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N / 2 * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		float64x2_t s[N];
-		REP(N) s[kk] = vdupq_n_f64(0);
+		float64x2_t s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N / 2 * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N / 2 * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				float32x4_t v1 = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float);
-				float64x2_t a1 = vcvt_f64_f32(vget_low_f32 (v1));
-				float64x2_t a2 = vcvt_f64_f32(vget_high_f32(v1));
-
-				a1 = vmulq_f64(a1, a1);
-				a2 = vmulq_f64(a2, a2);
-
-				s[0 + (kk << 1)] = vaddq_f64(s[0 + (kk << 1)], a1);
-				s[1 + (kk << 1)] = vaddq_f64(s[1 + (kk << 1)], a2);
+				float64x2_t v1 = vcvt_f64_f32(vld1_f32(A)); A += E128D;
+				s[kk] = _neo_fmaddx_pd(v1, v1, s[kk]); 
 			}
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_add_pd(s[0]);
 	}
@@ -1879,67 +1823,30 @@ TARGETNEO double SumSquareNEO(float* A, int64 n)
 	return re;
 }
 
-TARGETNEO float SumSquareNEOx(float* A, int64 n)
-{
-	constexpr int N = 8;
-	int64 i = 0;
-	float re = 0;
-
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
-	{
-		float32x4_t s[N], a[N];
-		REP(N) s[kk] = vdupq_n_f32(0);
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
-		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) a[kk] = vmulq_f32(a[kk], a[kk]);
-
-			REP(N) s[kk] = vaddq_f32(s[kk], a[kk]);
-		}
-
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
-
-		re = _neo_reduce_add_ps(s[0]);
-	}
-
-	for (; i < n; ++i, ++A)
-	{
-		volatile float v1 = *A * *A;
-		re += v1;
-	}
-
-	return re;
-}
-
 TARGETNEO int64 SumSquareNEO(byte* A, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 	uint64 re = 0;
 
-	if (n >= 64)
+	if (n >= N * E128B)
 	{
-		uint64x2_t s1 = vdupq_n_u64(0), s2 = vdupq_n_u64(0);
-		uint8x16_t a[4];
+		uint64x2_t t = vdupq_n_u64(0); 
+		uint16x8_t s = vdupq_n_u16(0);
 
-		for (int64 l1 = n - 64; i <= l1; i += 64)
+		for (int64 l1 = n - N * E128B; i <= l1; i += N * E128B)
 		{
-			REP(4) { a[kk] = vld1q_u8(A); A += 16; }
-
-			REP(4) a[kk] = vmulq_u8(a[kk], a[kk]);
-
-			a[0] = vaddq_u8(a[0], a[1]);
-			a[2] = vaddq_u8(a[2], a[3]);
-
-			s1 = vaddq_u64(s1, vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(a[0]))));
-			s2 = vaddq_u64(s2, vpaddlq_u32(vpaddlq_u16(vpaddlq_u8(a[2]))));
+			UNROLL(N) { s = vaddq_u16(s, vpaddlq_u8(vmulq_u8(vld1q_u8(A), vld1q_u8(A)))); A += E128B; }
+			
+			if ((i & (E128B * 128 - 1)) == 0) [[unlikely]]
+			{
+				t = vaddq_u64(t, vpaddlq_u32(vpaddlq_u16(s)));
+				s = vdupq_n_u16(0);
+			}
 		}
 		
-		s1 = vaddq_u64(s1, s2);
-		re += vgetq_lane_u64(s1, 0) + vgetq_lane_u64(s1, 1);
+		t = vaddq_u64(t, vpaddlq_u32(vpaddlq_u16(s)));
+		re = _neo_reduce_add_epi64(t);
 	}
 
 	for (; i < n; ++i, ++A)
@@ -1950,31 +1857,30 @@ TARGETNEO int64 SumSquareNEO(byte* A, int64 n)
 
 TARGETNEO void SumSumSquareNEO(double* A, int64 n, double& sum, double& sumsq)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re1 = 0, re2 = 0;
+	volatile double re1 = 0, re2 = 0;
 
-
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		float64x2_t s1[N], s2[N], a[N];
-		REP(N) s1[kk] = s2[kk] = vdupq_n_f64(0);
+		float64x2_t s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
+			UNROLL(N) UNROLL(E512_128)
+			{
+				float64x2_t v1 = vld1q_f64(A); A += E128D;
 
-			REP(N) s1[kk] = vaddq_f64(s1[kk], a[kk]);
+				s1[kk] = vaddq_f64(v1, s1[kk]);
 
-			REP(N) a[kk] = vmulq_f64(a[kk], a[kk]);
-
-			REP(N) s2[kk] = vaddq_f64(s2[kk], a[kk]);
+				s2[kk] = _neo_fmaddx_pd(v1, v1, s2[kk]);
+			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = vaddq_f64(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = vaddq_f64(s2[kk], s2[kk + KK]);
+			s1[kk] = vaddq_f64(s1[kk], s1[kk + KK]);
+			s2[kk] = vaddq_f64(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _neo_reduce_add_pd(s1[0]);
@@ -1995,38 +1901,30 @@ TARGETNEO void SumSumSquareNEO(double* A, int64 n, double& sum, double& sumsq)
 
 TARGETNEO void SumSumSquareNEO(float* A, int64 n, double& sum, double& sumsq)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
-	double re1 = 0, re2 = 0;
+	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N / 2 * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		float64x2_t s1[N], s2[N];
-		REP(N) s1[kk] = s2[kk] = vdupq_n_f64(0);
+		float64x2_t s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
 
-		for (int64 l1 = n - N / 2 * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N / 2 * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				float32x4_t v1 = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float);
-				float64x2_t a1 = vcvt_f64_f32(vget_low_f32(v1));
-				float64x2_t a2 = vcvt_f64_f32(vget_high_f32(v1));
+				float64x2_t v1 = vcvt_f64_f32(vld1_f32(A)); A += E128D;
 
-				s1[0 + (kk << 1)] = vaddq_f64(s1[0 + (kk << 1)], a1);
-				s1[1 + (kk << 1)] = vaddq_f64(s1[1 + (kk << 1)], a2);
+				s1[kk] = vaddq_f64(v1, s1[kk]);
 
-				a1 = vmulq_f64(a1, a1);
-				a2 = vmulq_f64(a2, a2);
-
-				s2[0 + (kk << 1)] = vaddq_f64(s2[0 + (kk << 1)], a1);
-				s2[1 + (kk << 1)] = vaddq_f64(s2[1 + (kk << 1)], a2);
+				s2[kk] = _neo_fmaddx_pd(v1, v1, s2[kk]);
 			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = vaddq_f64(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = vaddq_f64(s2[kk], s2[kk + KK]);
+			s1[kk] = vaddq_f64(s1[kk], s1[kk + KK]);
+			s2[kk] = vaddq_f64(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _neo_reduce_add_pd(s1[0]);
@@ -2047,48 +1945,60 @@ TARGETNEO void SumSumSquareNEO(float* A, int64 n, double& sum, double& sumsq)
 
 TARGETNEO double SumProdDivNEO(double* A1, double* A2, double* B, int64 sep, int64 n)
 {
-	constexpr int N = 2;
+	//suboptimal to compile
+	{
+		double re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
+		{
+			volatile double v1 = (double)*A1 * (double)*B;
+			volatile double v2 = (double)*A2 * (double)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
+
+#define N 2
 	int64 i = 0;
 	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		REP(8) { __builtin_prefetch(B, 0); B += sep; }
+		UNROLL(E128D) { __builtin_prefetch(B, 0); B += sep; }
 
-		float64x2_t s1[2], s2[2], b;
-		REP(2) s1[kk] = s2[kk] = vdupq_n_f64(0);
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		float64x2_t s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
+		
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				__builtin_prefetch(B, 0); B += sep;
-				__builtin_prefetch(B, 0); B += sep;
-				b = vld1q_f64(((double[]) { B[-10 * sep], B[-9 * sep] }));
-				s1[0] = vaddq_f64(s1[0], vmulq_f64(vld1q_f64(A1), b)); A1 += 2;
-				s2[0] = vaddq_f64(s2[0], vmulq_f64(vld1q_f64(A2), b)); A2 += 2;
+				UNROLL(E128D) { __builtin_prefetch(B, 0); B += sep; }
 
-				__builtin_prefetch(B, 0); B += sep;
-				__builtin_prefetch(B, 0); B += sep;
-				b = vld1q_f64(((double[]) { B[-10 * sep], B[-9 * sep] }));
-				s1[1] = vaddq_f64(s1[1], vmulq_f64(vld1q_f64(A1), b)); A1 += 2;
-				s2[1] = vaddq_f64(s2[1], vmulq_f64(vld1q_f64(A2), b)); A2 += 2;
+				float64x2_t b = vld1q_f64(((double[]) { B[-4 * sep], B[-3 * sep] }));
+				
+				s1[kk] = vaddq_f64(vmulq_f64(b, vld1q_f64(A1)), s1[kk]); A1 += E128D;
+
+				s2[kk] = vaddq_f64(vmulq_f64(b, vld1q_f64(A2)), s2[kk]); A2 += E128D;
 			}
 		}
 
-		s1[0] = vaddq_f64(s1[0], s1[1]);
-		s2[0] = vaddq_f64(s2[0], s2[1]);
+		REDUCE(s1)
+		{
+			s1[kk] = vaddq_f64(s1[kk], s1[kk + KK]);
+			s2[kk] = vaddq_f64(s2[kk], s2[kk + KK]);
+		}
 
 		re1 = _neo_reduce_add_pd(s1[0]);
 		re2 = _neo_reduce_add_pd(s2[0]);
 
-		B -= 8 * sep;
+		B -= E128D * sep;
 	}
 
 	for (; i < n; ++i, A1++, A2++, B += sep)
 	{
-		volatile double v1 = *A1 * *B;
-		volatile double v2 = *A2 * *B;
+		volatile double v1 = (double)*A1 * (double)*B;
+		volatile double v2 = (double)*A2 * (double)*B;
 		re1 += v1;
 		re2 += v2;
 	}
@@ -2098,52 +2008,54 @@ TARGETNEO double SumProdDivNEO(double* A1, double* A2, double* B, int64 sep, int
 
 TARGETNEO double SumProdDivNEO(double* A1, float* A2, float* B, int64 sep, int64 n)
 {
-	constexpr int N = 2;
-	int64 i = 0;
-	double re1 = 0, re2 = 0;
-
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	//suboptimal to compile
 	{
-		REP(6) { __builtin_prefetch(B, 0); B += sep; }
-
-		float32x4_t a2;
-		float64x2_t a1[N * 2], b[N * 2], s1[N * 2], s2[N * 2];
-		REP(N * 2) s1[kk] = s2[kk] = vdupq_n_f64(0);
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		double re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
 		{
-			REP(N)
+			volatile double v1 = (double)*A1 * (double)*B;
+			volatile double v2 = (double)*A2 * (double)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
+
+#define N 2
+	int64 i = 0;
+	volatile double re1 = 0, re2 = 0;
+
+	if (n >= N * E512D)
+	{
+		UNROLL(E128D) { __builtin_prefetch((const char*)B, 0); B += sep; }
+
+		float64x2_t s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_128)
 			{
-				__builtin_prefetch(B, 0); B += sep; 
-				__builtin_prefetch(B, 0); B += sep;
-				a1[0 + (kk << 1)] = vld1q_f64(A1); A1 += 2;
-				a2 = vld1q_f32(A2); A2 += 4;
-				b[0 + (kk << 1)] = vld1q_f64(((double[]) { B[-8 * sep], B[-7 * sep] }));
+				UNROLL(E128D) { __builtin_prefetch((const char*)B, 0); B += sep; }
 
-				__builtin_prefetch(B, 0); B += sep;
-				__builtin_prefetch(B, 0); B += sep;
-				a1[1 + (kk << 1)] = vld1q_f64(A1); A1 += 2;
-				//a2
-				b[1 + (kk << 1)] = vld1q_f64(((double[]) { B[-8 * sep], B[-7 * sep] }));
+				float64x2_t b = vld1q_f64(((double[]) { B[-4 * sep], B[-3 * sep] }));
 
-				s1[0 + (kk << 1)] = vaddq_f64(s1[0 + (kk << 1)], vmulq_f64(a1[0 + (kk << 1)], b[0 + (kk << 1)]));
-				s2[0 + (kk << 1)] = vaddq_f64(s2[0 + (kk << 1)], vmulq_f64(vcvt_f64_f32(vget_low_f32 (a2)), b[0 + (kk << 1)]));
+				s1[kk] = vaddq_f64(vmulq_f64(vld1q_f64(A1), b), s1[kk]); A1 += E128D;
 
-				s1[1 + (kk << 1)] = vaddq_f64(s1[1 + (kk << 1)], vmulq_f64(a1[1 + (kk << 1)], b[1 + (kk << 1)]));
-				s2[1 + (kk << 1)] = vaddq_f64(s2[1 + (kk << 1)], vmulq_f64(vcvt_f64_f32(vget_high_f32(a2)), b[1 + (kk << 1)]));
+				s2[kk] = vaddq_f64(vmulq_f64(vcvt_f64_f32(vld1_f32(A2)), b), s2[kk]); A2 += E128D;
 			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = vaddq_f64(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = vaddq_f64(s2[kk], s2[kk + KK]);
+			s1[kk] = vaddq_f64(s1[kk], s1[kk + KK]);
+			s2[kk] = vaddq_f64(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _neo_reduce_add_pd(s1[0]);
 		re2 = _neo_reduce_add_pd(s2[0]);
 
-		B -= 6 * sep;
+		B -= E128D * sep;
 	}
 
 	for (; i < n; ++i, A1++, A2++, B += sep)
@@ -2159,53 +2071,54 @@ TARGETNEO double SumProdDivNEO(double* A1, float* A2, float* B, int64 sep, int64
 
 TARGETNEO double SumProdDivNEO(float* A1, float* A2, float* B, int64 sep, int64 n)
 {
-	constexpr int N = 2;
+	//suboptimal to compile
+	{
+		double re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
+		{
+			volatile double v1 = (double)*A1 * (double)*B;
+			volatile double v2 = (double)*A2 * (double)*B;
+			re1 += v1;
+			re2 += v2;
+		}
+		return re1 / re2;
+	}
+
+#define N 2
 	int64 i = 0;
 	volatile double re1 = 0, re2 = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		REP(6) { __builtin_prefetch(B, 0); B += sep; }
+		UNROLL(E128D) { __builtin_prefetch(B, 0); B += sep; }
+		
+		float64x2_t s1[E512_128] = { 0 }, s2[E512_128] = { 0 };
 
-		float64x2_t s1[N * 2], s2[N * 2], b[N * 2];
-		REP(N * 2) s1[kk] = s2[kk] = vdupq_n_f64(0);
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
+			UNROLL(N) UNROLL(E512_128)
 			{
-				__builtin_prefetch(B, 0); B += sep;
-				__builtin_prefetch(B, 0); B += sep;
+				UNROLL(E128D) { __builtin_prefetch(B, 0); B += sep; }
 
-				b[0 + (kk << 1)] = vld1q_f64(((double[]) { B[-8 * sep], B[-7 * sep] }));
+				float64x2_t b = vld1q_f64(((double[]) { B[-4 * sep], B[-3 * sep] }));
+				
+				s1[kk] = _neo_fmaddx_pd(vcvt_f64_f32(vld1_f32(A1)), b, s1[kk]); A1 += E128D;
 
-				float32x4_t a1 = vld1q_f32(A1); A1 += sizeof(float32x4_t) / sizeof(float);
-				float32x4_t a2 = vld1q_f32(A2); A2 += sizeof(float32x4_t) / sizeof(float);
-
-				__builtin_prefetch(B, 0); B += sep;
-				__builtin_prefetch(B, 0); B += sep; 
-				b[1 + (kk << 1)] = vld1q_f64(((double[]) { B[-8 * sep], B[-7 * sep] }));
-
-				//a1
-				//a2
-
-				s1[0 + (kk << 1)] = vaddq_f64(s1[0 + (kk << 1)], vmulq_f64(vcvt_f64_f32(vget_low_f32 (a1)), b[0 + (kk << 1)]));
-				s2[0 + (kk << 1)] = vaddq_f64(s2[0 + (kk << 1)], vmulq_f64(vcvt_f64_f32(vget_low_f32 (a2)), b[0 + (kk << 1)]));
-				s1[1 + (kk << 1)] = vaddq_f64(s1[1 + (kk << 1)], vmulq_f64(vcvt_f64_f32(vget_high_f32(a1)), b[1 + (kk << 1)]));
-				s2[1 + (kk << 1)] = vaddq_f64(s2[1 + (kk << 1)], vmulq_f64(vcvt_f64_f32(vget_high_f32(a2)), b[1 + (kk << 1)]));
+				s2[kk] = _neo_fmaddx_pd(vcvt_f64_f32(vld1_f32(A2)), b, s2[kk]); A2 += E128D;
 			}
 		}
 
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
+		REDUCE(s1)
 		{
-			REP(KK) s1[kk] = vaddq_f64(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = vaddq_f64(s2[kk], s2[kk + KK]);
+			s1[kk] = vaddq_f64(s1[kk], s1[kk + KK]);
+			s2[kk] = vaddq_f64(s2[kk], s2[kk + KK]);
 		}
 
 		re1 = _neo_reduce_add_pd(s1[0]);
 		re2 = _neo_reduce_add_pd(s2[0]);
 
-		B -= 6 * sep;
+		B -= E128D * sep;
 	}
 
 	for (; i < n; ++i, A1++, A2++, B += sep)
@@ -2221,68 +2134,60 @@ TARGETNEO double SumProdDivNEO(float* A1, float* A2, float* B, int64 sep, int64 
 
 TARGETNEO float SumProdDivNEOx(float* A1, float* A2, float* B, int64 sep, int64 n)
 {
-	constexpr int N = 4;
-	int64 i = 0;
-	volatile float re1 = 0, re2 = 0;
-
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	//suboptimal to compile
 	{
-		float32x4_t s1[N], s2[N], b;
-		REP(N) s1[kk] = s2[kk] = vdupq_n_f32(0);
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		float re1 = 0, re2 = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A1++, A2++, B += sep)
 		{
-			REP(N)
-			{
-				b = vld1q_f32(((float[]) { B[0 * sep], B[1 * sep], B[2 * sep], B[3 * sep] })); B += sizeof(float32x4_t) / sizeof(float) * sep;
-				s1[kk] = vaddq_f32(s1[kk], vmulq_f32(vld1q_f32(A1), b)); A1 += sizeof(float32x4_t) / sizeof(float);
-				s2[kk] = vaddq_f32(s2[kk], vmulq_f32(vld1q_f32(A2), b)); A2 += sizeof(float32x4_t) / sizeof(float);
-			}
+			volatile float v1 = (float)*A1 * (float)*B;
+			volatile float v2 = (float)*A2 * (float)*B;
+			re1 += v1;
+			re2 += v2;
 		}
-
-		for (int KK = sizeof(s1) / sizeof(s1[0]) / 2; KK >= 1; KK >>= 1)
-		{
-			REP(KK) s1[kk] = vaddq_f32(s1[kk], s1[kk + KK]);
-			REP(KK) s2[kk] = vaddq_f32(s2[kk], s2[kk + KK]);
-		}
-
-		re1 = _neo_reduce_add_ps(s1[0]);
-		re2 = _neo_reduce_add_ps(s2[0]);
+		return re1 / re2;
 	}
-
-	for (; i < n; ++i, A1++, A2++, B += sep)
-	{
-		volatile float v1 = *A1 * *B;
-		volatile float v2 = *A2 * *B;
-		re1 += v1;
-		re2 += v2;
-	}
-
-	return re1 / re2;
 }
 
 TARGETNEO double SumProdNEO(double* A, double* B, int64 sep, int64 n)
 {
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= 2)
+	//suboptimal to compile
 	{
-		__builtin_prefetch(B, 0); B += sep;
-		__builtin_prefetch(B, 0); B += sep;
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A++, B += sep)
+			re += (double)*A * (double)*B;
+		return re;
+	}
 
-		float64x2_t s = vdupq_n_f64(0);
+#define N 2
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - 2; i <= l1; i += 2)
+	if (n >= N * E512D)
+	{
+		UNROLL(E128D) { __builtin_prefetch(B, 0); B += sep; }
+		
+		float64x2_t s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			__builtin_prefetch(B, 0); B += sep;
-			__builtin_prefetch(B, 0); B += sep;
-			s = vaddq_f64(s, vmulq_f64(vld1q_f64(A), vld1q_f64(((double[]) { B[-4 * sep], B[-3 * sep] }))));
-			A += 2;
+			UNROLL(N)
+			{
+				UNROLL(E512_128)
+				{
+					UNROLL(E128D) { __builtin_prefetch(B, 0); B += sep; }
+
+					s[kk] = _neo_fmaddx_pd(vld1q_f64(A), vld1q_f64(((double[]) { B[-4 * sep], B[-3 * sep] })), s[kk]);  A += E128D;
+				}
+			}
 		}
 
-		re = _neo_reduce_add_pd(s);
-		B -= 2 * sep;
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]); 
+
+		re = _neo_reduce_add_pd(s[0]);
+        
+		B -= E128D * sep;
 	}
 
 	for (; i < n; ++i, ++A, ++B)
@@ -2296,36 +2201,42 @@ TARGETNEO double SumProdNEO(double* A, double* B, int64 sep, int64 n)
 
 TARGETNEO double SumProdNEO(float* A, float* B, int64 sep, int64 n)
 {
-	int64 i = 0;
-	double re = 0;
-
-	if (n >= 4)
+	//suboptimal to compile
 	{
-		__builtin_prefetch(B, 0); B += sep;
-		__builtin_prefetch(B, 0); B += sep;
-		__builtin_prefetch(B, 0); B += sep;
-		__builtin_prefetch(B, 0); B += sep;
+		double re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A++, B += sep)
+			re += (double)*A * (double)*B;
+		return re;
+	}
 
-		float64x2_t s1 = vdupq_n_f64(0), s2 = vdupq_n_u64(0);
-		float32x4_t a;
+#define N 2
+	int64 i = 0;
+	volatile double re = 0;
 
-		for (int64 l1 = n - 4; i <= l1; i += 4)
+	if (n >= N * E512D)
+	{
+		UNROLL(E128D) { __builtin_prefetch(B, 0); B += sep; }
+		
+		float64x2_t s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			__builtin_prefetch(B, 0); B += sep;
-			__builtin_prefetch(B, 0); B += sep;
-			a = vld1q_f32(A); A += 4;
-			s1 = vaddq_f64(s1, vmulq_f64(vcvt_f64_f32(vget_low_f32 (a)), vld1q_f64(((double[]) { B[-6 * sep], B[-5 * sep] }))));
+			UNROLL(N) UNROLL(E512_128)
+			{
+				UNROLL(E128D) { __builtin_prefetch(B, 0); B += sep; }
 
-			__builtin_prefetch(B, 0); B += sep;
-			__builtin_prefetch(B, 0); B += sep;
-			//a
-			s2 = vaddq_f64(s2, vmulq_f64(vcvt_f64_f32(vget_high_f32(a)), vld1q_f64(((double[]) { B[-6 * sep], B[-5 * sep] }))));
+				s[kk] = _neo_fmaddx_pd(vcvt_f64_f32(vld1_f32(A)), vld1q_f64(((double[]) { B[-4 * sep], B[-3 * sep] })), s[kk]);
+			
+				A += E128D;
+			}
 		}
 
-		s1 = vaddq_f64(s1, s2);
-		re = _neo_reduce_add_pd(s1);
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
 
-		B -= 4 * sep;
+		re = _neo_reduce_add_pd(s[0]);
+
+		B -= E128D * sep;
 	}
 
 	for (; i < n; ++i, A++, B += sep)
@@ -2339,78 +2250,43 @@ TARGETNEO double SumProdNEO(float* A, float* B, int64 sep, int64 n)
 
 TARGETNEO float SumProdNEOx(float* A, float* B, int64 sep, int64 n)
 {
-	constexpr int N = 4;
-	int64 i = 0;
-	volatile float re = 0;
-
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	//suboptimal to compile
 	{
-		REP(N) { __builtin_prefetch(B, 0); B += sep; }
-
-		float32x4_t s[N];
-		REP(N) s[kk] = vdupq_n_f32(0);
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		float re = 0;
+		UNROLLHEAD(4)
+		for (int64 i = 0; i < n; ++i, A++, B += sep)
 		{
-			REP(N)
-			{
-				__builtin_prefetch(B, 0); B += sep;
-				__builtin_prefetch(B, 0); B += sep;
-				__builtin_prefetch(B, 0); B += sep;
-				__builtin_prefetch(B, 0); B += sep;
-
-				s[kk] = vaddq_f32(s[kk], vmulq_f32(vld1q_f32(A), vld1q_f32(((float[]) { B[-8 * sep], B[-7 * sep], B[-6 * sep], B[-5 * sep] }))));
-				A += sizeof(float32x4_t) / sizeof(float);
-			}
+			volatile float v1 = *A * *B;
+			re += v1;
 		}
-
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
-
-		re = _neo_reduce_add_ps(s[0]);
-
-		B -= 4 * sep;
+		return re;
 	}
-
-	for (; i < n; ++i, A++, B += sep)
-	{
-		volatile float v1 = *A * *B;
-		re += v1;
-	}
-
-	return re;
 }
 
 TARGETNEO double SumProdNEO(double* A, double* B, int64 n)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		float64x2_t s[N];
-		REP(N) s[kk] = vdupq_n_f64(0);
+		float64x2_t s[E512_128] = { 0 } ;
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N)
-			{
-				s[kk] = vaddq_f64(s[kk], vmulq_f64(vld1q_f64(A), vld1q_f64(B)));
-				A += sizeof(float64x2_t) / sizeof(double);
-				B += sizeof(float64x2_t) / sizeof(double);
-			}
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _neo_fmaddx_pd(vld1q_f64(A), vld1q_f64(B), s[kk]); A += E128D; B += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_add_pd(s[0]);
 	}
 
 	for (; i < n; ++i, ++A, ++B)
 	{
-		volatile double v1 = *A * *B;
+		volatile double v1 = (double)*A * (double)*B;
 		re += v1;
 	}
 
@@ -2419,31 +2295,21 @@ TARGETNEO double SumProdNEO(double* A, double* B, int64 n)
 
 TARGETNEO double SumProdNEO(float* A, float* B, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	double re = 0;
+	volatile double re = 0;
 
-	if (n >= N / 2 * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512D)
 	{
-		float64x2_t s[N];
-		REP(N) s[kk] = vdupq_n_f64(0);
+		float64x2_t s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N / 2 * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N / 2 * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(N / 2)
-			{
-				float32x4_t v1 = vld1q_f32(A), v2 = vld1q_f32(B);
-				A += sizeof(float32x4_t) / sizeof(float);
-				B += sizeof(float32x4_t) / sizeof(float);
-
-				s[0 + (kk << 1)] = vaddq_f64(s[0 + (kk << 1)], vmulq_f64(vcvt_f64_f32(vget_low_f32 (v1)), vcvt_f64_f32(vget_low_f32 (v2))));
-
-				s[1 + (kk << 1)] = vaddq_f64(s[1 + (kk << 1)], vmulq_f64(vcvt_f64_f32(vget_high_f32(v1)), vcvt_f64_f32(vget_high_f32(v2))));
-			}
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _neo_fmaddx_pd(vcvt_f64_f32(vld1_f32(A)), vcvt_f64_f32(vld1_f32(B)), s[kk]); A += E128D; B += E128D; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_add_pd(s[0]);
 	}
@@ -2459,34 +2325,148 @@ TARGETNEO double SumProdNEO(float* A, float* B, int64 n)
 
 TARGETNEO float SumProdNEOx(float* A, float* B, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
-	float re = 0;
+	volatile float re = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		float32x4_t s[N];
-		REP(N) s[kk] = vdupq_n_f32(0);
+		float32x4_t s[E512_128] = { 0 };
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N)
-			{
-				s[kk] = vaddq_f32(s[kk], vmulq_f32(vld1q_f32(A), vld1q_f32(B)));
-				A += sizeof(float32x4_t) / sizeof(float);
-				B += sizeof(float32x4_t) / sizeof(float);
-			}
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _neo_fmaddx_ps(vld1q_f32(A), vld1q_f32(B), s[kk]); A += E128F; B += E128F; }
 		}
 
-		for (int KK = sizeof(s) / sizeof(s[0]) / 2; KK >= 1; KK >>= 1)
-			REP(KK) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
+		REDUCE(s) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
 
 		re = _neo_reduce_add_ps(s[0]);
 	}
 
 	for (; i < n; ++i, ++A, ++B)
 	{
-		volatile float v1 = *A * *B;
+		volatile float v1 = (float)*A * (float)*B;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGETNEO double SumProdNEO(double* A, double* B, double* C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		float64x2_t s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _neo_fmaddx_pd(vmulq_f64(vld1q_f64(A), vld1q_f64(B)), vld1q_f64(C), s[kk]); A += E128D; B += E128D; C += E128D; }
+		}
+
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+
+		re = _neo_reduce_add_pd(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B, ++C)
+	{
+		volatile double v1 = (double)*A * (double)*B * (double)*C;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGETNEO float SumProdNEO(float* A, float* B, float* C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		float32x4_t s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
+		{
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _neo_fmaddx_ps(vmulq_f32(vld1q_f32(A), vld1q_f32(B)), vld1q_f32(C), s[kk]); A += E128F; B += E128F; C += E128F; }
+		}
+
+		REDUCE(s) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
+
+		re = _neo_reduce_add_ps(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B, ++C)
+	{
+		volatile float v1 = (float)*A * (float)*B * (float)*C;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGETNEO double SumSqProdNEO(double* A, double* B, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile double re = 0;
+
+	if (n >= N * E512D)
+	{
+		float64x2_t s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
+		{
+			UNROLL(N) UNROLL(E512_128)
+			{ s[kk] = _neo_fmaddx_pd(vmulq_f64(vld1q_f64(A), vld1q_f64(A)), vld1q_f64(B), s[kk]); A += E128D; B += E128D; }
+		}
+
+		REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+
+		re = _neo_reduce_add_pd(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B)
+	{
+		volatile double v1 = (double)*A * (double)*A * (double)*B;
+		re += v1;
+	}
+
+	return re;
+}
+
+TARGETNEO float SumSqProdNEO(float* A, float* B, int64 n)
+{
+#define N 4
+	int64 i = 0;
+	volatile float re = 0;
+
+	if (n >= N * E512F)
+	{
+		float32x4_t s[E512_128] = { 0 };
+
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
+		{
+			UNROLL(N) UNROLL(E512_128) 
+			{ s[kk] = _neo_fmaddx_ps(vmulq_f32(vld1q_f32(A), vld1q_f32(A)), vld1q_f32(B), s[kk]); A += E128F; B += E128F; }
+		}
+
+		REDUCE(s) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
+
+		re = _neo_reduce_add_ps(s[0]);
+	}
+
+	for (; i < n; ++i, ++A, ++B)
+	{
+		volatile float v1 = (float)*A * (float)*A * (float)*B;
 		re += v1;
 	}
 
@@ -2495,22 +2475,15 @@ TARGETNEO float SumProdNEOx(float* A, float* B, int64 n)
 
 TARGETNEO void AddNEO(double* A, double* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E512D)
 	{
-		float64x2_t a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E512D; i <= l1; i += N * E512D)
 		{
-			REP(4) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(4) { b[kk] = vld1q_f64(B); B += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(4) a[kk] = vaddq_f64(a[kk], b[kk]);
-
-			REP(4) vst1q_f64(A + (kk - N) * sizeof(float64x2_t) / sizeof(double), a[kk]);
+			UNROLL(N) UNROLL(E512_128) 
+			{ vst1q_f64(A, vaddq_f64(vld1q_f64(A), vld1q_f64(B))); A += E128D; B += E128D; }
 		}
 	}
 
@@ -2520,22 +2493,15 @@ TARGETNEO void AddNEO(double* A, double* B, int64 n)
 
 TARGETNEO void AddNEO(float* A, float* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E512F)
 	{
-		float32x4_t a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E512F; i <= l1; i += N * E512F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) { b[kk] = vld1q_f32(B); B += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) a[kk] = vaddq_f32(a[kk], b[kk]);
-
-			REP(N) vst1q_f32(A + (kk - N) * sizeof(float32x4_t) / sizeof(float), a[kk]);
+			UNROLL(N) UNROLL(E512_128) 
+			{ vst1q_f32(A, vaddq_f32(vld1q_f32(A), vld1q_f32(B))); A += E128F; B += E128F; }
 		}
 	}
 
@@ -2545,22 +2511,14 @@ TARGETNEO void AddNEO(float* A, float* B, int64 n)
 
 TARGETNEO void AddNEO(int64* A, int64* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(int64x2_t) / sizeof(int64))
+	if (n >= N * E128D)
 	{
-		int64x2_t a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(int64x2_t) / sizeof(int64); i <= l1; i += N * sizeof(int64x2_t) / sizeof(int64))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_s64(A); A += sizeof(int64x2_t) / sizeof(int64); }
-
-			REP(N) { b[kk] = vld1q_s64(B); B += sizeof(int64x2_t) / sizeof(int64); }
-
-			REP(N) a[kk] = vaddq_s64(a[kk], b[kk]);
-
-			REP(N) vst1q_s64(A + (kk - N) * sizeof(int64x2_t) / sizeof(int64), a[kk]);
+			UNROLL(N) { vst1q_s64(A, vaddq_s64(vld1q_s64(A), vld1q_s64(B))); A += E128D; B += E128D; }
 		}
 	}
 
@@ -2570,22 +2528,14 @@ TARGETNEO void AddNEO(int64* A, int64* B, int64 n)
 
 TARGETNEO void AddNEO(int* A, int* B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(int32x4_t) / sizeof(int))
+	if (n >= N * E128F)
 	{
-		int32x4_t a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(int32x4_t) / sizeof(int); i <= l1; i += N * sizeof(int32x4_t) / sizeof(int))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_s32(A); A += sizeof(int32x4_t) / sizeof(int); }
-
-			REP(N) { b[kk] = vld1q_s32(B); B += sizeof(int32x4_t) / sizeof(int); }
-
-			REP(N) a[kk] = vaddq_s32(a[kk], b[kk]);
-
-			REP(N) vst1q_s32(A + (kk - N) * sizeof(__m128i) / sizeof(int), a[kk]);
+			UNROLL(N) { vst1q_s32(A, vaddq_s32(vld1q_s32(A), vld1q_s32(B)));  A += E128F; B += E128F; }
 		}
 	}
 
@@ -2595,20 +2545,16 @@ TARGETNEO void AddNEO(int* A, int* B, int64 n)
 
 TARGETNEO void AddNEO(int* A, int B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(int32x4_t) / sizeof(int))
+	if (n >= N * E128F)
 	{
-		int32x4_t a[N], b = vdupq_n_s32(B);
+		int32x4_t b = b = vdupq_n_s32(B);
 
-		for (int64 l1 = n - N * sizeof(int32x4_t) / sizeof(int); i <= l1; i += N * sizeof(int32x4_t) / sizeof(int))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_s32(A); A += sizeof(int32x4_t) / sizeof(int); }
-
-			REP(N) a[kk] = vaddq_s32(a[kk], b);
-
-			REP(N) vst1q_s32(A + (kk - N) * sizeof(__m128i) / sizeof(int), a[kk]);
+			UNROLL(N) { vst1q_s32(A, vaddq_s32(vld1q_s32(A), b)); A += E128F; }
 		}
 	}
 
@@ -2618,20 +2564,16 @@ TARGETNEO void AddNEO(int* A, int B, int64 n)
 
 TARGETNEO void AddNEO(double* A, double B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		float64x2_t b = vdupq_n_f64(B), a[N];
+		float64x2_t b = vdupq_n_f64(B);
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) a[kk] = vaddq_f64(a[kk], b);
-
-			REP(N) vst1q_f64(A + (kk - N) * sizeof(float64x2_t) / sizeof(double), a[kk]);
+			UNROLL(N) { vst1q_f64(A, vaddq_f64(vld1q_f64(A), b)); A += E128D; }
 		}
 	}
 
@@ -2641,20 +2583,16 @@ TARGETNEO void AddNEO(double* A, double B, int64 n)
 
 TARGETNEO void AddNEO(float* A, float B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		float32x4_t b = vdupq_n_f32(B), a[N];
+		float32x4_t b = vdupq_n_f32(B);
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) a[kk] = vaddq_f32(a[kk], b);
-
-			REP(N) vst1q_f32(A + (kk - N) * sizeof(float32x4_t) / sizeof(float), a[kk]);
+			UNROLL(N) { vst1q_f32(A, vaddq_f32(vld1q_f32(A), b)); A += E128F; }
 		}
 	}
 
@@ -2662,130 +2600,102 @@ TARGETNEO void AddNEO(float* A, float B, int64 n)
 		*A += B;
 }
 
-TARGETNEO void MulNEO(double* C, double* A, double* B, int64 n)
+TARGETNEO void MulNEO(double* A, double* B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		float64x2_t a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) { b[kk] = vld1q_f64(B); B += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) a[kk] = vmulq_f64(a[kk], b[kk]);
-
-			REP(N) { vst1q_f64(C, a[kk]); C += sizeof(float64x2_t) / sizeof(double); }
+			UNROLL(N) { vst1q_f64(A, vmulq_f64(vld1q_f64(B), vld1q_f64(C))); A += E128D; B += E128D; C += E128D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * *B++;
-		*C++ = v1;
+		volatile double v1 = *B++ * *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETNEO void MulNEO(float* C, float* A, float* B, int64 n)
+TARGETNEO void MulNEO(float* A, float* B, float* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		float32x4_t a[N], b[N];
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) { b[kk] = vld1q_f32(B); B += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) a[kk] = vmulq_f32(a[kk], b[kk]);
-
-			REP(N) { vst1q_f32(C, a[kk]); C += sizeof(float32x4_t) / sizeof(float); }
+			UNROLL(N) { vst1q_f32(A, vmulq_f32(vld1q_f32(B), vld1q_f32(C))); A += E128F; B += E128F; C += E128F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * *B++;
-		*C++ = v1;
+		volatile float v1 = *B++ * *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETNEO void MulNEO(double* C, double* A, double B, int64 n)
+TARGETNEO void MulNEO(double* A, double* B, double C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		float64x2_t b = vdupq_n_f64(B), a[N];
+		float64x2_t c = vdupq_n_f64(C);
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) a[kk] = vmulq_f64(a[kk], b);
-
-			REP(N) { vst1q_f64(C, a[kk]); C += sizeof(float64x2_t) / sizeof(double); }
+			UNROLL(N) { vst1q_f64(A, vmulq_f64(vld1q_f64(B), c)); A += E128D; B += E128D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * B;
-		*C++ = v1;
+		volatile double v1 = *B++ * C;
+		*A++ = v1;
 	}
 }
 
-TARGETNEO void MulNEO(float* C, float* A, float B, int64 n)
+TARGETNEO void MulNEO(float* A, float* B, float C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		float32x4_t b = vdupq_n_f32(B), a[N];
+		float32x4_t c = vdupq_n_f32(C);
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) a[kk] = vmulq_f32(a[kk], b);
-
-			REP(N) { vst1q_f32(C, a[kk]); C += sizeof(float32x4_t) / sizeof(float); }
+			UNROLL(N) { vst1q_f32(A, vmulq_f32(vld1q_f32(B), c)); A += E128F; B += E128F;}
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * B;
-		*C++ = v1;
+		volatile float v1 = *B++ * C;
+		*A++ = v1;
 	}
 }
 
 TARGETNEO void MulNEO(double* A, double B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		float64x2_t b = vdupq_n_f64(B), a[N];
+		float64x2_t b = vdupq_n_f64(B);
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) a[kk] = vmulq_f64(a[kk], b);
-
-			REP(N) vst1q_f64(A + (kk - N) * sizeof(float64x2_t) / sizeof(double), a[kk]);
+			UNROLL(N) { vst1q_f64(A, vmulq_f64(vld1q_f64(A), b)); A += E128D; }
 		}
 	}
 
@@ -2798,20 +2708,16 @@ TARGETNEO void MulNEO(double* A, double B, int64 n)
 
 TARGETNEO void MulNEO(float* A, float B, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		float32x4_t b = vdupq_n_f32(B), a[N];
+		float32x4_t b = vdupq_n_f32(B);
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) a[kk] = vmulq_f32(a[kk], b);
-
-			REP(N) vst1q_f32(A + (kk - N) * sizeof(float32x4_t) / sizeof(float), a[kk]);
+			UNROLL(N) { vst1q_f32(A, vmulq_f32(vld1q_f32(A), b)); A += E128F; }
 		}
 	}
 
@@ -2822,183 +2728,241 @@ TARGETNEO void MulNEO(float* A, float B, int64 n)
 	}
 }
 
-TARGETNEO void AddProdNEO(double* C, double* A, double* B, int64 n)
+TARGETNEO void DivNEO(double* A, double B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		float64x2_t a[N];
+		float64x2_t b = vdupq_n_f64(B);
 
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) { a[kk] = vmulq_f64(a[kk], vld1q_f64(B)); B += sizeof(float64x2_t) / sizeof(double); }
-
-			double* C2 = C;
-
-			REP(N) { a[kk] = vaddq_f64(a[kk], vld1q_f64(C)); C += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) { vst1q_f64(C2, a[kk]); C2 += sizeof(float64x2_t) / sizeof(double); }
+			UNROLL(N) { vst1q_f64(A, vdivq_f64(b, vld1q_f64(C))); A += E128D; C += E128D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * *B++;
-		*C++ += v1;
+		volatile double v1 = B / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETNEO void AddProdNEO(float* C, float* A, float* B, int64 n)
+TARGETNEO void DivNEO(float* A, float B, float* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= 4 * N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128F)
 	{
-		float32x4_t a[N];
+		float32x4_t b = vdupq_n_f32(B);
 
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) { a[kk] = vmulq_f32(a[kk], vld1q_f32(B)); B += sizeof(float32x4_t) / sizeof(float); }
-
-			float* C2 = C;
-
-			REP(N) { a[kk] = vaddq_f32(a[kk], vld1q_f32(C)); C += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) { vst1q_f32(C2, a[kk]); C2 += sizeof(float32x4_t) / sizeof(float); }
+			UNROLL(N) { vst1q_f32(A, vdivq_f32(b, vld1q_f32(C))); A += E128F; C += E128F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * *B++;
-		*C++ += v1;
+		volatile float v1 = B / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETNEO void AddProdNEO(double* C, double* A, double B, int64 n)
+TARGETNEO void DivNEO(double* A, double* B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= 4 * N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128D)
 	{
-		float64x2_t a[N], b = vdupq_n_f64(B);
-
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N)  a[kk] = vmulq_f64(a[kk], b);
-
-			double* C2 = C;
-
-			REP(N) { a[kk] = vaddq_f64(a[kk], vld1q_f64(C)); C += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) { vst1q_f64(C2, a[kk]); C2 += sizeof(float64x2_t) / sizeof(double); }
+			UNROLL(N) { vst1q_f64(A, vdivq_f64(vld1q_f64(B), vld1q_f64(C))); A += E128D; B += E128D; C += E128D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * B;
-		*C++ += v1;
+		volatile double v1 = *B++ / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETNEO void AddProdNEO(double* C, float* A, double B, int64 n)
+TARGETNEO void DivNEO(float* A, float* B, float* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 4
 	int64 i = 0;
 
-	if (n >= 4 * N * sizeof(float64x2_t) / sizeof(double))
+	if (n >= N * E128F)
 	{
-		float64x2_t a[N], b = vdupq_n_f64(B);
-
-		for (int64 l1 = n - N * sizeof(float64x2_t) / sizeof(double); i <= l1; i += N * sizeof(float64x2_t) / sizeof(double))
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
 		{
-			REP(N / 2)
-			{
-				float32x4_t v1 = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float);
-
-				a[0 + (kk << 1)] = vcvt_f64_f32(vget_low_f32 (v1));
-				a[1 + (kk << 1)] = vcvt_f64_f32(vget_high_f32(v1));
-			}
-
-			REP(N)  a[kk] = vmulq_f64(a[kk], b);
-
-			double* C2 = C;
-
-			REP(N) { a[kk] = vaddq_f64(a[kk], vld1q_f64(C)); C += sizeof(float64x2_t) / sizeof(double); }
-
-			REP(N) { vst1q_f64(C2, a[kk]); C2 += sizeof(float64x2_t) / sizeof(double); }
+			UNROLL(N) { vst1q_f32(A, vdivq_f32(vld1q_f32(B), vld1q_f32(C))); A += E128F; B += E128F; C += E128F; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile double v1 = *A++ * B;
-		*C++ += v1;
+		volatile float v1 = *B++ / *C++;
+		*A++ = v1;
 	}
 }
 
-TARGETNEO void AddProdNEO(float* C, float* A, float B, int64 n)
+TARGETNEO void AddProdNEO(double* A, double* B, double* C, int64 n)
 {
-	constexpr int N = 4;
+#define N 1
 	int64 i = 0;
 
-	if (n >= 4 * N * sizeof(float32x4_t) / sizeof(float))
+	if (n >= N * E128D)
 	{
-		float32x4_t a[N], b = vdupq_n_f32(B);
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N * sizeof(float32x4_t) / sizeof(float))
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
 		{
-			REP(N) { a[kk] = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N)  a[kk] = vmulq_f32(a[kk], b);
-
-			float* C2 = C;
-
-			REP(N) { a[kk] = vaddq_f32(a[kk], vld1q_f32(C)); C += sizeof(float32x4_t) / sizeof(float); }
-
-			REP(N) { vst1q_f32(C2, a[kk]); C2 += sizeof(float32x4_t) / sizeof(float); }
+			UNROLL(N) { vst1q_f64(A, _neo_fmaddx_pd(vld1q_f64(B), vld1q_f64(C), vld1q_f64(A))); A += E128D; B += E128D; C += E128D; }
 		}
 	}
 
 	for (; i < n; ++i)
 	{
-		volatile float v1 = *A++ * B;
-		*C++ += v1;
+		volatile double v1 = *B++ * *C++;
+		*A++ += v1;
+	}
+}
+
+TARGETNEO void AddProdNEO(float* A, float* B, float* C, int64 n)
+{
+#define N 1
+	int64 i = 0;
+
+	if (n >= N * E128F)
+	{
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
+		{
+			UNROLL(N) { vst1q_f32(A, _neo_fmaddx_ps(vld1q_f32(B), vld1q_f32(C), vld1q_f32(A))); A += E128F; B += E128F; C += E128F; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile float v1 = *B++ * *C++;
+		*A++ += v1;
+	}
+}
+
+TARGETNEO void AddProdNEO(double* A, double* B, double C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+
+	if (n >= N * E128D)
+	{
+		float64x2_t b[N], c = vdupq_n_f64(C);
+
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
+		{
+			UNROLL(N) { b[kk] = vld1q_f64(B); B += E128D; }
+
+			UNROLL(N)  b[kk] = vmulq_f64(b[kk], c);
+
+			double* A2 = A;
+
+			UNROLL(N) { b[kk] = vaddq_f64(b[kk], vld1q_f64(A)); A += E128D; }
+
+			UNROLL(N) { vst1q_f64(A2, b[kk]); A2 += E128D; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile double v1 = *B++ * C;
+		*A++ += v1;
+	}
+}
+
+TARGETNEO void AddProdNEO(double* A, float* B, double C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+
+	if (n >= N * E128D)
+	{
+		float64x2_t b[N], c = vdupq_n_f64(C);
+
+		for (int64 l1 = n - N * E128D; i <= l1; i += N * E128D)
+		{
+			float32x4_t v1 = vld1q_f32(B); B += E128F;
+			b[0] = vcvt_f64_f32(vget_low_f32(v1));
+			b[1] = vcvt_f64_f32(vget_high_f32(v1));
+
+			float32x4_t v2 = vld1q_f32(B); B += E128F;
+			b[2] = vcvt_f64_f32(vget_low_f32(v2));
+			b[3] = vcvt_f64_f32(vget_high_f32(v2));
+
+			UNROLL(N) b[kk] = vmulq_f64(b[kk], c);
+
+			double* A2 = A;
+
+			UNROLL(N) { b[kk] = vaddq_f64(b[kk], vld1q_f64(A)); A += E128D; }
+
+			UNROLL(N) { vst1q_f64(A2, b[kk]); A2 += E128D; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile double v1 = *B++ * C;
+		*A++ += v1;
+	}
+}
+
+TARGETNEO void AddProdNEO(float* A, float* B, float C, int64 n)
+{
+#define N 4
+	int64 i = 0;
+
+	if (n >= N * E128F)
+	{
+		float32x4_t b[N], c = vdupq_n_f32(C);
+
+		for (int64 l1 = n - N * E128F; i <= l1; i += N * E128F)
+		{
+			UNROLL(N) { b[kk] = vld1q_f32(B); B += E128F; }
+
+			UNROLL(N)  b[kk] = vmulq_f32(b[kk], c);
+
+			float* A2 = A;
+
+			UNROLL(N) { b[kk] = vaddq_f32(b[kk], vld1q_f32(A)); A += E128F; }
+
+			UNROLL(N) { vst1q_f32(A2, b[kk]); A2 += E128F; }
+		}
+	}
+
+	for (; i < n; ++i)
+	{
+		volatile float v1 = *B++ * C;
+		*A++ += v1;
 	}
 }
 
 TARGETNEO void UnifyNEO(double* A, int64 n)
 {
-	constexpr int N = 16;
+#define N 4
 	int64 i = 0;
 	double invsum = 1.0 / (SumNEO(A, n) + n * MIN_FREQ);
 
-	if (n >= N * sizeof(float32x4_t) / sizeof(double))
+	if (n >= E128D)
 	{
-		float64x2_t a[N], minf = vdupq_n_f64(MIN_FREQ), invs = vdupq_n_f64(invsum);
-
-		for (int64 l1 = n - N * sizeof(float32x4_t) / sizeof(double); i <= l1; i += N * sizeof(float32x4_t) / sizeof(double))
+		float64x2_t b = vdupq_n_f64(invsum), c = vdupq_n_f64(MIN_FREQ * invsum);
+		
+		UNROLLHEAD(N)
+		for (int64 l1 = n - E128D; i <= l1; i += E128D)
 		{
-			double* A2 = A;
-
-			REP(N) { a[kk] = vld1q_f64(A); A += sizeof(float32x4_t) / sizeof(double); }
-
-			REP(N) a[kk] = vaddq_f64(a[kk], minf);
-
-			REP(N) a[kk] = vmulq_f64(a[kk], invs);
-
-			REP(N) { vst1q_f64(A2, a[kk]); A2 += sizeof(float32x4_t) / sizeof(double); }
+			vst1q_f64(A, _neo_fmaddx_pd(vld1q_f64(A), b, c)); 
+			A += E128D;
 		}
 	}
 
@@ -3011,37 +2975,21 @@ TARGETNEO void UnifyNEO(double* A, int64 n)
 
 TARGETNEO void UnifyNEO(float* A, int64 n)
 {
-	constexpr int N = 8;
+#define N 4
 	int64 i = 0;
 	double invsum = 1.0 / (SumNEO(A, n) + n * MIN_FREQ);
 
-	if (n >= N / 2 * sizeof(float32x4_t) / sizeof(float))
+	if (n >= E128F)
 	{
-		float64x2_t a[N], minf = vdupq_n_f64(MIN_FREQ), invs = vdupq_n_f64(invsum);
-
-		for (int64 l1 = n - N / 2 * sizeof(float32x4_t) / sizeof(float); i <= l1; i += N / 2 * sizeof(float32x4_t) / sizeof(float))
+		float64x2_t b = vdupq_n_f64(invsum), c = vdupq_n_f64(MIN_FREQ * invsum);
+		
+		UNROLLHEAD(N)
+		for (int64 l1 = n - E128F; i <= l1; i += E128F)
 		{
-			float* A2 = A;
-
-			REP(N / 2) 
-			{
-				float32x4_t aa = vld1q_f32(A); A += sizeof(float32x4_t) / sizeof(float);
-				a[0 + (kk << 1)] = vcvt_f64_f32(vget_low_f32 (aa));
-				a[1 + (kk << 1)] = vcvt_f64_f32(vget_high_f32(aa));
-			}
-
-			REP(N) a[kk] = vaddq_f64(a[kk], minf);
-
-			REP(N) a[kk] = vmulq_f64(a[kk], invs);
-
-			REP(N / 2)
-			{
-				vst1q_f32(A2, vcombine_f32(
-					vcvt_f32_f64(a[0 + (kk << 1)]),
-					vcvt_f32_f64(a[1 + (kk << 1)])));
-
-				A2 += sizeof(float32x4_t) / sizeof(float);
-			}
+			vst1q_f32(A, vcombine_f32(
+					vcvt_f32_f64(_neo_fmaddx_pd(vcvt_f64_f32(vld1_f32(A)), b, c)), 
+					vcvt_f32_f64(_neo_fmaddx_pd(vcvt_f64_f32(vld1_f32(A + E128D)), b, c))));
+			A += E128F;
 		}
 	}
 
@@ -3054,39 +3002,29 @@ TARGETNEO void UnifyNEO(float* A, int64 n)
 
 TARGETNEO char* StrNextIdxNEO(char* A, char val, int64 rep, int64 n)
 {
+#define N 4
 	A++; n--;
 	int64 i = 0;
 
-	if (n >= 16)
+	if (n >= E512B)
 	{
-		uint8x16_t r = vdupq_n_u8(0), v = vdupq_n_u8(val), o = vdupq_n_u8(0), a;
-		uint64 s1, s2;
+		uint8x16_t v = vdupq_n_u8(val), o = vdupq_n_u8(0);
 
-		for (int64 l1 = n - 16; i <= l1; )
+		for (int64 l1 = n - E512B; i <= l1; i += E512B)
 		{
-			a = vld1q_u8((byte*)A);
+			char* Ab = A;
+			int count = 0;
 
-			r = vceqq_u8(a, v);
-			
-			if (!(vgetq_lane_u64((uint64x2_t)r, 0) | vgetq_lane_u64((uint64x2_t)r, 1))) { A += 16; i += 16; continue; }
-			
-			r = vsubq_u8(o, r);
+			UNROLL(N) { count += vaddvq_u8(vsubq_u8(o,vceqq_u8(vld1q_u8((byte*)A), v))); A += E128B; }
 
-			//r = _mm_sad_epu8(o, r);
-			s1 = __builtin_popcountll(vgetq_lane_u64((uint64x2_t)r, 0));
-			s2 = __builtin_popcountll(vgetq_lane_u64((uint64x2_t)r, 1));
-
-			if (rep > s1) 
-				rep -= s1;
-			else for (;; A++) 
-				if (*A == val && !--rep) return A;
-			A += 8;
-
-			if (rep > s2) 
-				rep -= s2;
-			else for (;; A++) 
-				if (*A == val && !--rep) return A;
-			A += 8;
+			if (rep > count) [[likely]]
+			{
+				rep -= count;
+				continue;
+			}
+			else for (;; Ab++)
+				if (*Ab == val && !--rep)
+					return Ab;
 		}
 	}
 
@@ -3099,31 +3037,569 @@ TARGETNEO char* StrNextIdxNEO(char* A, char val, int64 rep, int64 n)
 
 TARGETNEO int64 CountCharNEO(char* A, char val, int64 n)
 {
+#define N 4
 	uint64 re = 0;
 	int64 i = 0;
 
-	if (n >= 16)
+	if (n >= E128B)
 	{
-		uint8x16_t v = vdupq_n_u8(val), o = vdupq_n_u8(0), a;
-		uint64 s1 = 0, s2 = 0;
-
-		for (int64 l1 = n - 16; i <= l1; i += 16)
+		uint8x16_t v = vdupq_n_u8(val), o = vdupq_n_u8(0);
+		
+		UNROLLHEAD(N)
+		for (int64 l1 = n - E128B; i <= l1; i += E128B)
 		{
-			a = vld1q_u8((byte*)A);
-			A += 16;
-			a = vceqq_u8(a, v);
-			a = vsubq_u8(o, a);
-			s1 += __builtin_popcountll(vgetq_lane_u64((uint64x2_t)a, 0));
-			s2 += __builtin_popcountll(vgetq_lane_u64((uint64x2_t)a, 1));
+			re += vaddvq_u8(vsubq_u8(o, vceqq_u8(vld1q_u8((byte*)A), v)));
+			A += E128B;
 		}
-
-		re = s1 + s2;
 	}
 
 	for (; i < n; ++i, A++)
 		if (*A == val) re++;
 
 	return (int64)re;
+}
+
+TARGETNEO void DiagQuadFormNEO(double* res1, double* A, double* D, int64 m, int64 n)
+{
+#define N 3
+
+#define DECLARE			double* pA1 = (A + n * i), *pA2 = (A + n * j), *pD = D; float64x2_t a1[N], a2[N], r[N][N] = { 0 }
+#define ALOAD1(ii)		a1[ii] = vld1q_f64(pA1 + n * ii)
+#define ALOAD2(ii)		a2[ii] = vld1q_f64(pA2 + n * ii)
+#define ALOAD3(ii)		a1[ii] = a2[ii] = vld1q_f64(pA1 + n * ii)
+#define ADMUL(ii)		a1[ii] = vmulq_f64(a1[ii], vld1q_f64(pD))
+#define FMADD(ii,jj)	r[ii][jj] = _neo_fmaddx_pd(a1[ii], a2[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res1[(i+ii) * m + (j+jj)] = _neo_reduce_add_pd(r[ii][jj])
+#define REMAIN(ii,jj)	res1[(i+ii) * m + (j+jj)] += A[(i+ii) * n + k] * A[(j+jj) * n + k] * D[k]
+#define FINAL(ii,jj)	res1[(i+ii) + (j+jj) * m] = res1[(i+ii) * m + (j+jj)]
+	
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA1 += E128D, pA2 += E128D, pD += E128D) 
+			{ LOOP(ALOAD1); LOOP(ALOAD2); LOOP(ADMUL); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+
+			LOOP2(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA1 += E128D, pD += E128D) 
+			{ LOOP(ALOAD3); LOOP(ADMUL); LOOP3(FMADD); }
+
+			LOOP3(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3(REMAIN); }
+
+			LOOP3(FINAL);
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA1 += E128D, pA2 += E128D, pD += E128D) 
+			{ LOOPNa(ALOAD1); LOOP(ALOAD2); LOOPNa(ADMUL); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+
+			LOOP2Na(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA1 += E128D, pD += E128D) 
+			{ LOOPNa(ALOAD3); LOOP(ADMUL); LOOP3Na(FMADD); }
+
+			LOOP3Na(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3Na(REMAIN); }
+
+			LOOP3Na(FINAL);
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD1
+#undef ALOAD2
+#undef ALOAD3
+#undef ADMUL
+#undef FMADD
+#undef RDUADD
+#undef REMAIN
+#undef FINAL
+}
+
+TARGETNEO void DiagQuadFormNEO(double* res2, double* A, double* D, double* B, int64 m, int64 n)
+{
+#define N 8
+
+#define DECLARE			double* pA = (A + n * i), *pB = B, *pD = D; float64x2_t bd, r[N] = { 0 }
+#define BDMUL			bd = vmulq_f64(vld1q_f64(pB), vld1q_f64(pD)); pB += E128D; pD += E128D
+#define FMADD(ii)		r[ii] = _neo_fmaddx_pd(vld1q_f64(pA + n * ii), bd, r[ii]); 
+#define RDUADD(ii)		res2[(i+ii)] = _neo_reduce_add_pd(r[ii])
+#define FINAL(ii)		res2[(i+ii)] += A[(i+ii) * n + k] * B[k] * D[k]
+
+    int64 i = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+		DECLARE;
+
+        for (k = 0; k + E128D <= n; k += E128D, pA += E128D) 
+		{ BDMUL; LOOP(FMADD); }
+			
+		LOOP(RDUADD);
+
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOP(FINAL); }
+	}
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+			
+		DECLARE;
+
+        for (k = 0; k + E128D <= n; k += E128D, pA += E128D) 
+		{ BDMUL; LOOPNa(FMADD); }
+			
+		LOOPNa(RDUADD);
+			
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOPNa(FINAL); }
+	}
+
+#undef DECLARE
+#undef BDMUL
+#undef FMADD
+#undef RDUADD
+#undef FINAL
+}
+
+TARGETNEO void DiagQuadFormNEO(double* res3, double* B, double* D, int64 n)
+{
+#define N 4
+    double re = 0;
+	float64x2_t s[N] = { 0 };
+
+	int64 k = 0;
+    for (; k + N * E128D <= n; k += N * E128D)
+	{
+		UNROLL(N) 
+		{
+			s[kk] = _neo_fmaddx_pd(vmulq_f64(vld1q_f64(B), vld1q_f64(B)), vld1q_f64(D), s[kk]);
+			B += E128D;
+			D += E128D;
+		}
+	}
+
+	REDUCE(s) s[kk] = vaddq_f64(s[kk], s[kk + KK]);
+    
+    res3[0] = _neo_reduce_add_pd(s[0]);
+            
+    VECTORIZE
+    for (; k < n; k++, B++, D++)
+        res3[0] += B[0] * B[0] * D[0];
+}
+
+TARGETNEO void MatrixMulNEO(double* res, double* A, double* B, int64 m, int64 n, int64 p)
+{
+    //suboptimal to compile
+    {
+        Mat<double> a(A, n, m, false, true);
+        Mat<double> b(B, n, p, false, true);
+        Mat<double> r(res, m, p, false, true);
+
+        r = a.t() * b;
+        return;
+    }
+    
+#define N 3
+	
+#define DECLARE			double* pA = (A + n * i), *pB = (B + n * j); float64x2_t a[N], b[N], r[N][N] = { 0 }
+#define ALOAD(kk)		a[kk] = vld1q_f64(pA + n * kk)
+#define BLOAD(kk)		b[kk] = vld1q_f64(pB + n * kk)
+#define FMADD(ii,jj)	r[ii][jj] = _neo_fmaddx_pd(a[ii], b[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res[(i+ii) + (j+jj) * m] = _neo_reduce_add_pd(r[ii][jj])
+#define REMAIN(ii,jj)	res[(i+ii) + (j+jj) * m] += A[(i+ii) * n + k] * B[(j+jj) * n + k]
+
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA += E128D, pB += E128D) 
+			{ LOOP(ALOAD); LOOP(BLOAD); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+        }
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA += E128D, pB += E128D) 
+			{ LOOP(ALOAD); LOOPNb(BLOAD); LOOP2Nb(FMADD); }
+			
+			LOOP2Nb(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Nb(REMAIN); }
+
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA += E128D, pB += E128D) 
+			{ LOOPNa(ALOAD); LOOP(BLOAD); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+        }
+
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E128D <= n; k += E128D, pA += E128D, pB += E128D) 
+			{ LOOPNa(ALOAD); LOOPNb(BLOAD); LOOP2NaNb(FMADD); }
+			
+			LOOP2NaNb(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2NaNb(REMAIN); }
+
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD
+#undef BLOAD
+#undef FMADD
+#undef RDUADD
+#undef FINAL
+}
+
+TARGETNEO void DiagQuadFormNEO(float* res1, float* A, float* D, int64 m, int64 n)
+{
+#define N 3
+
+#define DECLARE			float* pA1 = (A + n * i), *pA2 = (A + n * j), *pD = D; float32x4_t a1[N], a2[N], r[N][N] = { 0 }
+#define ALOAD1(ii)		a1[ii] = vld1q_f32(pA1 + n * ii)
+#define ALOAD2(ii)		a2[ii] = vld1q_f32(pA2 + n * ii)
+#define ALOAD3(ii)		a1[ii] = a2[ii] = vld1q_f32(pA1 + n * ii)
+#define ADMUL(ii)		a1[ii] = vmulq_f32(a1[ii], vld1q_f32(pD))
+#define FMADD(ii,jj)	r[ii][jj] = _neo_fmaddx_ps(a1[ii], a2[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res1[(i+ii) * m + (j+jj)] = _neo_reduce_add_ps(r[ii][jj])
+#define REMAIN(ii,jj)	res1[(i+ii) * m + (j+jj)] += A[(i+ii) * n + k] * A[(j+jj) * n + k] * D[k]
+#define FINAL(ii,jj)	res1[(i+ii) + (j+jj) * m] = res1[(i+ii) * m + (j+jj)]
+	
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA1 += E128F, pA2 += E128F, pD += E128F) 
+			{ LOOP(ALOAD1); LOOP(ALOAD2); LOOP(ADMUL); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+
+			LOOP2(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA1 += E128F, pD += E128F) 
+			{ LOOP(ALOAD3); LOOP(ADMUL); LOOP3(FMADD); }
+
+			LOOP3(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3(REMAIN); }
+
+			LOOP3(FINAL);
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+
+        for (j = 0; j < i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA1 += E128F, pA2 += E128F, pD += E128F) 
+			{ LOOPNa(ALOAD1); LOOP(ALOAD2); LOOPNa(ADMUL); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+
+			LOOP2Na(FINAL);
+        }
+		
+		for (; j <= i; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA1 += E128F, pD += E128F) 
+			{ LOOPNa(ALOAD3); LOOP(ADMUL); LOOP3Na(FMADD); }
+
+			LOOP3Na(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP3Na(REMAIN); }
+
+			LOOP3Na(FINAL);
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD1
+#undef ALOAD2
+#undef ALOAD3
+#undef ADMUL
+#undef FMADD
+#undef RDUADD
+#undef REMAIN
+#undef FINAL
+}
+
+TARGETNEO void DiagQuadFormNEO(float* res2, float* A, float* D, float* B, int64 m, int64 n)
+{
+#define N 8
+
+#define DECLARE			float* pA = (A + n * i), *pB = B, *pD = D; float32x4_t bd, r[N] = { 0 }
+#define BDMUL			bd = vmulq_f32(vld1q_f32(pB), vld1q_f32(pD)); pB += E128F; pD += E128F
+#define FMADD(ii)		r[ii] = _neo_fmaddx_ps(vld1q_f32(pA + n * ii), bd, r[ii]); 
+#define RDUADD(ii)		res2[(i+ii)] = _neo_reduce_add_ps(r[ii])
+#define FINAL(ii)		res2[(i+ii)] += A[(i+ii) * n + k] * B[k] * D[k]
+
+    int64 i = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+		DECLARE;
+
+        for (k = 0; k + E128F <= n; k += E128F, pA += E128F) 
+		{ BDMUL; LOOP(FMADD); }
+			
+		LOOP(RDUADD);
+
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOP(FINAL); }
+	}
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+			
+		DECLARE;
+
+        for (k = 0; k + E128F <= n; k += E128F, pA += E128F) 
+		{ BDMUL; LOOPNa(FMADD); }
+			
+		LOOPNa(RDUADD);
+			
+		VECTORIZE
+        for (; k < n; k++) 
+		{ LOOPNa(FINAL); }
+	}
+
+#undef DECLARE
+#undef BDMUL
+#undef FMADD
+#undef RDUADD
+#undef FINAL
+}
+
+TARGETNEO void DiagQuadFormNEO(float* res3, float* B, float* D, int64 n)
+{
+#define N 4
+	float32x4_t s[N] = { 0 };
+
+	int64 k = 0;
+    for (; k + N * E128F <= n; k += N * E128F) 
+	{
+		UNROLL(N) 
+		{
+			s[kk] = _neo_fmaddx_ps(vmulq_f32(vld1q_f32(B), vld1q_f32(B)), vld1q_f32(D), s[kk]); 
+			B += E128F;
+			D += E128F;
+		}
+	}
+
+	REDUCE(s) s[kk] = vaddq_f32(s[kk], s[kk + KK]);
+    
+    res3[0] = _neo_reduce_add_ps(s[0]);
+            
+    VECTORIZE
+    for (; k < n; k++, B++, D++)
+        res3[0] += B[0] * B[0] * D[0];
+}
+
+TARGETNEO void MatrixMulNEO(float* res, float* A, float* B, int64 m, int64 n, int64 p)
+{
+    //suboptimal to compile
+    {
+        Mat<float> a(A, n, m, false, true);
+        Mat<float> b(B, n, p, false, true);
+        Mat<float> r(res, m, p, false, true);
+
+        r = a.t() * b;
+        return;
+    }
+    
+#define N 3
+	
+#define DECLARE			float* pA = (A + n * i), *pB = (B + n * j); float32x4_t a[N], b[N], r[N][N] = { 0 }
+#define ALOAD(kk)		a[kk] = vld1q_f32(pA + n * kk)
+#define BLOAD(kk)		b[kk] = vld1q_f32(pB + n * kk)
+#define FMADD(ii,jj)	r[ii][jj] = _neo_fmaddx_ps(a[ii], b[jj], r[ii][jj])
+#define RDUADD(ii,jj)	res[(i+ii) + (j+jj) * m] = _neo_reduce_add_ps(r[ii][jj])
+#define REMAIN(ii,jj)	res[(i+ii) + (j+jj) * m] += A[(i+ii) * n + k] * B[(j+jj) * n + k]
+
+    int64 i = 0, j = 0, k = 0;
+    for (i = 0; i + N <= m; i += N)
+	{
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA += E128F, pB += E128F) 
+			{ LOOP(ALOAD); LOOP(BLOAD); LOOP2(FMADD); }
+			
+			LOOP2(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2(REMAIN); }
+        }
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA += E128F, pB += E128F) 
+			{ LOOP(ALOAD); LOOPNb(BLOAD); LOOP2Nb(FMADD); }
+			
+			LOOP2Nb(RDUADD);
+
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Nb(REMAIN); }
+
+		}
+    }
+	
+    for (; i < m; i += N)
+	{
+		int64 Na = std::min(m - i, (int64)N);
+        for (j = 0; j + N <= p; j += N)
+		{
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA += E128F, pB += E128F) 
+			{ LOOPNa(ALOAD); LOOP(BLOAD); LOOP2Na(FMADD); }
+			
+			LOOP2Na(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2Na(REMAIN); }
+        }
+
+		
+		for (; j < p; j += N)
+		{
+			int64 Nb = std::min(p - j, (int64)N);
+			
+			DECLARE;
+
+            for (k = 0; k + E128F <= n; k += E128F, pA += E128F, pB += E128F) 
+			{ LOOPNa(ALOAD); LOOPNb(BLOAD); LOOP2NaNb(FMADD); }
+			
+			LOOP2NaNb(RDUADD);
+			
+			VECTORIZE
+            for (; k < n; k++) 
+			{ LOOP2NaNb(REMAIN); }
+
+		}
+    }
+
+#undef DECLARE
+#undef ALOAD
+#undef BLOAD
+#undef FMADD
+#undef RDUADD
+#undef FINAL
 }
 
 #endif

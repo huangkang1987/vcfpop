@@ -1,16 +1,14 @@
 # Draw scatter plot for PCoA results of vcfpop
+
 options(warn = -1)
 options(echo = FALSE)
 
-UseLibrary <- function(lib) 
-{
-  res <- eval(parse(text = paste('require(', lib, ', quietly = TRUE)', sep = '')))
-  if (res == FALSE)
-  {
+UseLibrary <- function(lib) {
+  if (!require(lib, character.only = TRUE, quietly = TRUE)) {
     install.packages(lib)
-    res <- eval(parse(text = paste('require(', lib, ', quietly = TRUE)', sep = '')))
-    if (res == FALSE)
-      stop(paste('Error: library ', lib, ' cannot be installed\n',  sep = ''))
+    if (!require(lib, character.only = TRUE, quietly = TRUE)) {
+      stop(paste('Error: library', lib, 'cannot be installed\n'))
+    }
   }
 }
 

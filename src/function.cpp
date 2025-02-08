@@ -49,6 +49,10 @@ template TARGET bool POP<float >::IsSubpop(POP<float >* pop);
 template TARGET void POP<double>::CalcFreqGcount();
 template TARGET void POP<float >::CalcFreqGcount();
 
+template TARGET void CheckPop<double>(string& pop_val, const char* parname);
+template TARGET void CheckPop<float >(string& pop_val, const char* parname);
+template TARGET void AssignPop<double>(bool pop_b, string& pop_val, const char* parname);
+template TARGET void AssignPop<float >(bool pop_b, string& pop_val, const char* parname);
 template TARGET void Initialize<double>();
 template TARGET void Initialize<float >();
 template TARGET void UnInitialize1<double>();
@@ -68,40 +72,49 @@ template TARGET float  GENOTYPE::GetFreq<float >(int k2);
 template TARGET void GENOTYPE::GetFreq<double>(double* p, int k2);
 template TARGET void GENOTYPE::GetFreq<float >(float * p, int k2);
 
+template<> POP<double>* cpop<double>;
+template<> POP<float >* cpop<float >;
+template<> LIST<POP<double>> pop<double>;
+template<> LIST<POP<float >> pop<float >;
+template<> LIST<LIST<POP<double>>> reg<double>;
+template<> LIST<LIST<POP<float >>> reg<float >;
+template<> IND<double>** rinds<double>;
+template<> IND<float >** rinds<float >;
+
 #define extern 
 
 /* Misc */
-extern void* cpop_;									//Current population
-#define cpop (*(POP<REAL>**)&cpop_)
-extern ushort missing_array[N_MAX_PLOIDY];			//Allele array of the missing genotypes
-extern GENOTYPE missing_genotype[N_MAX_PLOIDY + 1];	//Missing genotype at different ploidy level
-extern HASH missing_hash[N_MAX_PLOIDY + 1];			//Hash of missing genotype
+template<typename REAL>
+extern POP<REAL>* cpop;												//Current population
+extern ushort missing_array[N_MAX_PLOIDY];							//Allele array of the missing genotypes
+extern GENOTYPE missing_genotype[N_MAX_PLOIDY + 1];					//Missing genotype at different ploidy level
+extern HASH missing_hash[N_MAX_PLOIDY + 1];							//Hash of missing genotype
 
 /* Global */
-extern SLOCUS* slocus;								//SLocus information
-extern bool useslocus;								//Use small locus
-extern TABLE<HASH, GENOTYPE*> emptygftab;			//Empty genotype table
+extern SLOCUS* slocus;												//SLocus information
+extern bool useslocus;												//Use small locus
+extern TABLE<HASH, GENOTYPE*> emptygftab;							//Empty genotype table
 
 /* Load File */
-template<> extern LIST<POP<double>> pop<double>;						//Original input population
-template<> extern LIST<POP<float >> pop<float >;						//Original input population
-template<> extern LIST<LIST<POP<double>>> reg<double>; 				//Original input regions
-template<> extern LIST<LIST<POP<float >>> reg<float >; 				//Original input regions
+template<typename REAL>
+extern LIST<POP<REAL>> pop;											//Original input population
+template<typename REAL>
+extern LIST<LIST<POP<REAL>>> reg;									//Original input population
 
-extern LOCUS* locus;								//Locus information
-extern MEMORY* individual_memory;					//Individual memory class
-extern MEMORY* locus_memory;						//Locus memory class
-extern MEMORY* nvcf_memory;							//Locus memory for first round counting ngeno
-extern TABLE<HASH, uint>* nvcf_gfid;				//Hash table for counting ngeno 
+extern LOCUS* locus;												//Locus information
+extern MEMORY* individual_memory;									//Individual memory class
+extern MEMORY* locus_memory;										//Locus memory class
+extern MEMORY* nvcf_memory;											//Locus memory for first round counting ngeno
+extern TABLE<HASH, uint>* nvcf_gfid;								//Hash table for counting ngeno 
 
 /* Allele frequency and genotype count offset */
-extern uint64* allele_freq_offset;					//Allele frequency array at locus l
-extern int maxK;									//Max number of alleles
-extern int64 KT;									//Total number of alleles
+extern uint64* allele_freq_offset;									//Allele frequency array at locus l
+extern int maxK;													//Max number of alleles
+extern int64 KT;													//Total number of alleles
 
-extern uint64* genotype_count_offset;					//Genotype count array at locus l
-extern int maxG;									//Max number of genotypes at all loci
-extern int64 GT;									//Total number of genotypes
+extern uint64* genotype_count_offset;								//Genotype count array at locus l
+extern int maxG;													//Max number of genotypes at all loci
+extern int64 GT;													//Total number of genotypes
 
 
 /* Genotype bucket */
@@ -112,8 +125,8 @@ extern BUCKET ad_bucket;
 
 /* Reassign individuals and populations */
 extern bool reassigned;								//Is ploidy assigned, to distiguish diversity filter and diversity estimation
-extern void* rinds_;						//Rearranged individuals according to population source
-#define rinds (*(IND<REAL>***)&rinds_)
+template<typename REAL>
+extern IND<REAL>** rinds;							//Rearranged individuals according to population source
 #undef extern
 
 #ifndef _BCFHEADER
@@ -123,12 +136,8 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	{
 		if (contig_name == NULL) return;
 		for (int64 i = 0; i < contig_size; ++i)
-		{
-			delete[] contig_name[i];
-			contig_name[i] = NULL;
-		}
-		delete[] contig_name;
-		contig_name = NULL;
+			DEL(contig_name[i]);
+		DEL(contig_name);
 	}
 
 	/* Initialize BCF header */
@@ -170,7 +179,7 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 			{
 				header = LineNextIdx(header, "IDX=", 1) + 4;
 				int64 idx = header == (char*)4 ? contigidx : ReadInteger(header);
-				contig_size = Max(idx + 1, contig_size);
+				contig_size = std::max(idx + 1, contig_size);
 				contigidx++;
 			}
 			else if (LwrLineCmp("format=<", header) == 0)
@@ -3359,6 +3368,9 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	/* Get locus identifier */
 	TARGET char* LOCUS::GetNameStr(char* buf)
 	{
+		if (abs(g_format_val) > BCF)
+			return GetName();
+
 		char* chr = GetChrom();
 
 		if (g_locusname_val == 1)
@@ -3427,6 +3439,7 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 				strcpy(buf + chrlen + 1, pos2);
 			}
 		}
+
 		return buf;
 	}
 
@@ -3778,7 +3791,7 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 			if (gt.Nalleles() == 0) continue;
 			int m = model == 4 ? GetLoc(l).pes_model : model;
 			double pr = gt.GFZ(m, grp->GetFreq(l));
-			ChargeLog(slog, prod, e1 * pr + e2 * gt.GFZ(m, total_pop->GetFreq(l)) * (1 - pr));
+			ChargeLog(slog, prod, e1 * pr + e2 * gt.GFZ(m, total_pop<REAL>->GetFreq(l)) * (1 - pr));
 		}
 		CloseLog(slog, prod);
 
@@ -3846,87 +3859,36 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	template<typename REAL>
 	TARGET void POP<REAL>::Uninitialize1()
 	{
-		if (allelefreq && allelefreq != total_pop->allelefreq) 
-		{
-			delete[] allelefreq; 
-			allelefreq = NULL;
-		}
+		if (allelefreq != total_pop<REAL>->allelefreq) 
+			DEL(allelefreq);
 
-		if (genocount)
-		{
-			delete[] genocount;
-			genocount = NULL;
-		}
+		DEL(genocount);
 
-		if (loc_stat1 != total_pop->loc_stat1)
-		{
-			delete[] loc_stat1; 
-			loc_stat1 = NULL;
-		}
+		if (loc_stat1 != total_pop<REAL>->loc_stat1)
+			DEL(loc_stat1);
 		
 		if (names) 
-		{ 
-			delete[] names;
-			names = NULL;
-		}
+			DEL(names);
 	}
 
 	/* Uninitialize a pop, unalloc population name */
 	template<typename REAL>
 	TARGET void POP<REAL>::Uninitialize2()
 	{
-		if (allelefreq)
-		{
-			delete[] allelefreq;
-			allelefreq = NULL;
-		}
-
-		if (genocount)
-		{
-			delete[] genocount;
-			genocount = NULL;
-		}
-
-		if (loc_stat1)
-		{
-			delete[] loc_stat1;
-			loc_stat1 = NULL;
-		}
-
-		if (names)
-		{
-			delete[] names;
-			names = NULL;
-		}
-
-		if (name)
-		{
-			delete[] name;
-			name = NULL;
-		}
+		DEL(allelefreq);
+		DEL(genocount);
+		DEL(loc_stat1);
+		DEL(names);
+		DEL(name);
 	}
 
 	/* Uncllocate memory for locstat, allele frequency, genotype count */
 	template<typename REAL>
 	TARGET void POP<REAL>::UnAllocFreq()
 	{
-		if (loc_stat1) 
-		{ 
-			delete[] loc_stat1; 
-			loc_stat1 = NULL;
-		}
-
-		if (allelefreq) 
-		{ 
-			delete[] allelefreq; 
-			allelefreq = NULL; 
-		}
-
-		if (genocount) 
-		{ 
-			delete[] genocount; 
-			genocount = NULL; 
-		}
+		DEL(loc_stat1);
+		DEL(allelefreq);
+		DEL(genocount);
 	}
 
 	/* Allocate memory for locstat, allele frequency, genotype count */
@@ -3981,19 +3943,19 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 
 		if (loc_stat1)
 		{
-			delete[] loc_stat1;
+			DEL(loc_stat1);
 			loc_stat1 = nloc_stat;
 		}
 
 		if (allelefreq)
 		{
-			delete[] allelefreq;
+			DEL(loc_stat1);
 			allelefreq = nallelefreq;
 		}
 
 		if (genocount)
 		{
-			delete[] genocount;
+			DEL(loc_stat1);
 			genocount = ngenocount;
 		}
 	}
@@ -4084,7 +4046,7 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 	template<typename REAL>
 	TARGET void POP<REAL>::GetLocStat2(LOCSTAT2<REAL>* loc_stat2)
 	{
-		SetZero(relatedness_loc_stat, nloc);
+		SetZero(relatedness_loc_stat<REAL>, nloc);
 
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 		for (int64 l = 0; l < nloc; ++l)
@@ -4120,6 +4082,59 @@ extern void* rinds_;						//Rearranged individuals according to population sourc
 
 #endif
 
+/* Check pop value */
+template<typename REAL>
+TARGET void CheckPop(string& pop_val, const char* parname)
+{
+	if ("total" != pop_val && "Total" != pop_val)
+	{
+		bool find = false;
+		for (int i = 0; i < pop<REAL>.size; ++i)
+			if (pop<REAL>[i].name == pop_val)
+				find = true;
+
+		if (!find)
+		{
+			for (uint rl = 0; rl < reg<REAL>.size - 1; ++rl)
+				for (uint i = 0; i < reg<REAL>[rl].size; ++i)
+					if (reg<REAL>[rl][i].name == pop_val)
+						find = true;
+			if (!find) Exit("\nError: Cannot find target population %s, check parameter %s.\n", pop_val.c_str(), parname);
+		}
+	}
+}
+
+/* Assign cpop */
+template<typename REAL>
+TARGET void AssignPop(bool pop_b, string& pop_val, const char* parname)
+{
+	if (pop_b && ("total" == pop_val || "Total" == pop_val) || !pop_b)
+		cpop<REAL> = total_pop<REAL>;
+	else if (pop_b)
+	{
+		bool find = false;
+		for (int i = 0; !find && i < pop<REAL>.size; ++i)
+			if (pop<REAL>[i].name == pop_val)
+			{
+				find = true;
+				cpop<REAL> = &pop<REAL>[i];
+			}
+
+		if (!find)
+		{
+			for (uint rl = 0; !find && rl < reg<REAL>.size - 1; ++rl)
+				for (uint i = 0; !find && i < reg<REAL>[rl].size; ++i)
+					if (reg<REAL>[rl][i].name == pop_val)
+					{
+						find = true;
+						cpop<REAL> = &reg<REAL>[rl][i];
+					}
+		}
+
+		if (!find) Exit("\nError: Cannot find target population %s, check parameter %s.\n", pop_val.c_str(), parname);
+	}
+}
+
 /* Initialize */
 template<typename REAL>
 TARGET void Initialize()
@@ -4143,7 +4158,7 @@ TARGET void Initialize()
 	conversion_string = NULL;
 
 	clustering_memory = NULL;
-	gd_tab = NULL;
+	gd_tab<REAL> = NULL;
 
 	allele_freq_offset = NULL;
 	maxK = 0;
@@ -4171,24 +4186,24 @@ TARGET void Initialize()
 	slocus = NULL;
 	useslocus = false;
 
-	ainds = NULL;
-	apops = NULL;
-	aregs = NULL;
+	ainds<REAL> = NULL;
+	apops<REAL> = NULL;
+	aregs<REAL> = NULL;
 	npop = 0;
 	lreg = 0;
 	SetZero(nreg, N_MAX_REG);
 	nregt = 0;
 	nregt2 = 0;
 
-	total_pop = NULL;
+	total_pop<REAL> = NULL;
 
 	nloc = 0;
 	nfilter = 0;
 	nind = 0;
 	nfilterind = 0;
 	reassigned = 0;
-	rinds = NULL;
-	cpop = NULL;
+	rinds<REAL> = NULL;
+	cpop<REAL> = NULL;
 	maxploidy = 0;
 	minploidy = 0;
 
@@ -4203,25 +4218,25 @@ TARGET void Initialize()
 	convert_buf = NULL;
 	convert_linesize = 0;
 
-	diversity_buf = NULL;
+	diversity_buf<REAL> = NULL;
 	SetZero(&diversity_sum<REAL>, 1);
 	diversity_stage = 0;
 
-	SetZero(fst_buf, 6);
+	SetZero(fst_buf<REAL>, 6);
 	fst_type = 0;
 
-	gdist_buf = NULL;
+	gdist_buf<REAL> = NULL;
 	gdist_type = 0;
 
-	amova_buf = NULL;
+	amova_buf<REAL> = NULL;
 
-	relatedness_buf = NULL;
-	relatedness_loc_stat = NULL;
+	relatedness_buf<REAL> = NULL;
+	relatedness_loc_stat<REAL> = NULL;
 
-	kinship_buf = NULL;
+	kinship_buf<REAL> = NULL;
 	SetZero(gdindex, N_GD_ESTIMATOR + 1);
 
-	clustering_matrix = NULL;
+	clustering_matrix<REAL> = NULL;
 	structure_par = NULL;
 	structure_totalruns = 0;
 
@@ -4242,8 +4257,7 @@ TARGET void Initialize()
 				Exit("\nError: input file %s does not exist.\n", FILE_INFO[i][j].path.c_str());
 
 			FILEINFO& tf = FILE_INFO[i][j];
-			path tpath(tf.path);
-			tf.name = canonical(tpath).string();
+			tf.name = GetAbsPath(tf.path);
 			tf.compressed_len = GetFileLen((char*)FILE_INFO[i][j].path.c_str());
 
 			uint magic = FGetUshort(tf.handle);
@@ -4299,7 +4313,7 @@ TARGET void Initialize()
 
 	FRES_BUF = new char[LINE_BUFFER];
 	FRES_NAME = new char[PATH_LEN];
-	omp_set_num_threads(g_nthread_val);
+	//omp_set_num_threads(g_nthread_val);
 
 	InitBinomial();
 	InitAlpha();
@@ -4446,7 +4460,7 @@ TARGET void Initialize()
 						if (v2 <= 0 || v2 >= popv.size)
 							Exit("\nError: the second number of indtext %s for region %s exceeds range.", tr.names[j2], tr.name);
 
-						int vmin = Min(v1, v2), vmax = Max(v1, v2);
+						int vmin = std::min(v1, v2), vmax = std::max(v1, v2);
 						for (int i = vmin; i <= vmax; ++i)
 						{
 							if (popv[i].rid == tr.id)
@@ -4481,8 +4495,7 @@ TARGET void Initialize()
 					}
 				}
 
-				delete[] tr.names;
-				tr.names = NULL;
+				DEL(tr.names);
 				tr.npop = npop2;
 				reg<REAL>[rl].Push(tr);
 			}
@@ -4495,46 +4508,17 @@ TARGET void Initialize()
 	for (int i = 0; i < 256; ++i)
 		InitLock(GLOCK3[i]);
 
-	// check f_pop and slide_pop existence
-	if (diversity_filter && f_pop_b)
-	{
-		if ("total" != f_pop_val && "Total" != f_pop_val)
-		{
-			bool find = false;
-			for (int i = 0; i < pop<REAL>.size; ++i)
-				if (pop<REAL>[i].name == f_pop_val)
-					find = true;
+	if (diversity_filter && f_pop_b) CheckPop<REAL>(f_pop_val, "-f_pop");
 
-			if (!find)
-			{
-				for (uint rl = 0; rl < reg<REAL>.size - 1; ++rl)
-					for (uint i = 0; i < reg<REAL>[rl].size; ++i)
-						if (reg<REAL>[rl][i].name == f_pop_val)
-							find = true;
-				if (!find) Exit("\nError: Cannot find target population %s, check parameter -f_pop.\n", f_pop_val.c_str());
-			}
-		}
-	}
+	if (slide && slide_pop_b) CheckPop<REAL>(slide_pop_val, "-slide_pop");
 
-	if (slide && slide_pop_b)
-	{
-		if ("total" != slide_pop_val && "Total" != slide_pop_val)
-		{
-			bool find = false;
-			for (int i = 0; i < pop<REAL>.size; ++i)
-				if (pop<REAL>[i].name == slide_pop_val)
-					find = true;
+	if (decay && decay_pop_b) CheckPop<REAL>(decay_pop_val, "-decay_pop");
 
-			if (!find)
-			{
-				for (uint rl = 0; rl < reg<REAL>.size - 1; ++rl)
-					for (uint i = 0; i < reg<REAL>[rl].size; ++i)
-						if (reg<REAL>[rl][i].name == slide_pop_val)
-							find = true;
-				if (!find) Exit("\nError: Cannot find target population %s, check parameter -slide_pop.\n", slide_pop_val.c_str());
-			}
-		}
-	}
+	if (block && block_pop_b) CheckPop<REAL>(block_pop_val, "-block_pop");
+
+	if (gwas && gwas_pop_b) CheckPop<REAL>(gwas_pop_val, "-gwas_pop");
+
+	openblas_set_num_threads(1);
 }
 
 /* UnInitialize before Bayesian clustering*/
@@ -4549,10 +4533,7 @@ TARGET void UnInitialize1()
 	TOTLEN_DECOMPRESS = 0;
 
 	if (lreg == -1 && npop == 1)
-	{
-		delete[] total_pop->name;
-		total_pop->name = NULL;
-	}
+		DEL(total_pop<REAL>->name);
 
 	for (uint rl = 0; rl < reg<REAL>.size; ++rl)
 		for (uint i = 0; i < reg<REAL>[rl].size; ++i)
@@ -4565,47 +4546,45 @@ TARGET void UnInitialize1()
 	haplo_bucket.~BUCKET();		new (&haplo_bucket) BUCKET();
 	ad_bucket.~BUCKET();		new (&ad_bucket) BUCKET();
 
-	if (genotype_count_offset)  delete[] genotype_count_offset;    genotype_count_offset = NULL;
-	if (cryptTable)				delete[] cryptTable;				cryptTable = NULL;
+	DEL(genotype_count_offset);
+	DEL(cryptTable);
     
     if (GLOCK3)
     {
         for (int i = 0; i < 256; ++i)
             UnInitLock(GLOCK3[i]);
-                                delete[] GLOCK3;					GLOCK3 = NULL;
+		DEL(GLOCK3);
     }
+
+	openblas_set_num_threads(1);
 }
 
 /* Final unInitialize */
 template<typename REAL>
 TARGET void UnInitialize2()
 {
-	if (ainds || rinds)
+	if (ainds<REAL> || rinds<REAL>)
 	{
-		if (ainds) delete[] ainds;
-		if (rinds && ainds != rinds) delete[] rinds;
-		ainds = rinds = NULL;
+		if (ainds<REAL> != rinds<REAL>) 
+			DEL(rinds<REAL>);
+		DEL(ainds<REAL>);
 	}
 
 	for (uint rl = 0; rl < reg<REAL>.size; ++rl)
 		for (uint i = 0; i < reg<REAL>[rl].size; ++i)
 			reg<REAL>[rl][i].Uninitialize2();
 
-	if (aregs)
+	if (aregs<REAL>)
 	{
 		for (uint rl = 0; rl < reg<REAL>.size; ++rl)
-			if (aregs[rl])
-			{
-				delete[] aregs[rl];
-				aregs[rl] = NULL;
-			}
-		delete[] aregs; aregs = NULL;
+			DEL(aregs<REAL>[rl]);
+		DEL(aregs<REAL>);
 	}
 
 	for (uint i = 0; i < pop<REAL>.size; ++i)
 		pop<REAL>[i].Uninitialize2();
 
-	if (apops) delete[] apops; apops = NULL;
+	DEL(apops<REAL>);
 
 	for (uint rl = 0; rl < reg<REAL>.size; ++rl)
 		reg<REAL>[rl].~LIST();
@@ -4613,13 +4592,13 @@ TARGET void UnInitialize2()
 	pop<REAL>.~LIST();			new (&pop<REAL>) LIST<POP<REAL>>();
 	geno_bucket.~BUCKET();		new (&geno_bucket) BUCKET();
 
-	if (slocus)					delete[] slocus;					slocus = NULL;
-	if (allele_freq_offset)     delete[] allele_freq_offset;		allele_freq_offset = NULL;
-	if (state_lock)				delete[] state_lock;				state_lock = NULL;
-	if (locus_memory)			delete[] locus_memory;				locus_memory = NULL;
-	if (individual_memory)		delete[] individual_memory;			individual_memory = NULL;
-	if (FRES_BUF)				delete[] FRES_BUF;			FRES_BUF = NULL;
-	if (FRES_NAME)				delete[] FRES_NAME;			FRES_NAME = NULL;
+	DEL(slocus);
+	DEL(allele_freq_offset);
+	DEL(state_lock);
+	DEL(locus_memory);
+	DEL(individual_memory);
+	DEL(FRES_BUF);
+	DEL(FRES_NAME);
 }
 
 /* Calculate individual mininum and maximum ploidy, and sum ploidy levels */
@@ -4632,15 +4611,15 @@ TARGET void AssignPloidy()
 
 	//Calculate the total number of haplotypes in each population
 	for (int i = 0; i < npop; ++i)
-		apops[i]->nhaplotypes = 0;
+		apops<REAL>[i]->nhaplotypes = 0;
 
 	for (int i = 0; i < nind; ++i)
-		apops[ainds[i]->popid]->nhaplotypes += ainds[i]->vmax;
+		apops<REAL>[ainds<REAL>[i]->popid]->nhaplotypes += ainds<REAL>[i]->vmax;
 
 	for (int rl = 0; rl <= lreg; ++rl)
 		for (int i = 0; i < nreg[rl]; ++i)
 		{
-			POP<REAL>* tp = aregs[rl][i];
+			POP<REAL>* tp = aregs<REAL>[rl][i];
 			tp->nhaplotypes = 0;
 			for (int j = 0; j < tp->npop; ++j)
 				tp->nhaplotypes += tp->vpop[j]->nhaplotypes;
@@ -4691,8 +4670,20 @@ TARGET void Calculate()
 	// 3. Sliding window
 	CalcSlide<REAL>(); //forbid ad, locpos
 
-	// 4. Haplotype
-	CalcHaplotype<REAL>();//forbid ad, locpos
+	// 4. LD decay
+	CalcDecay<REAL>(); //forbid ad, locpos, usephase
+
+	// 5. LD block
+	CalcBlock<REAL>(); //forbid ad, locpos, usephase
+
+	// 5. GWAS
+	CalcGWAS<REAL>(); //forbid ad, locpos, usephase
+
+	// 6. Haplotype
+	CalcHaplotype<REAL>();//forbid ad, locpos, usephase
+
+	// unphase genotypes
+	if (usephase) RunThreads(&UpdateUnphaseGenotypes<REAL>, NULL, NULL, nloc * 3, nloc * 3, "\nUnphasing genotypes:\n", 1, true);
 
 	AssignPloidy<REAL>();//allow ad
 
@@ -4705,55 +4696,51 @@ TARGET void Calculate()
 	//    Estimate pes model
 	EstimatePES<REAL>();//allow ad
 
-	// 5. Convert
+	// 7. Convert
 	ConvertFile<REAL>(); //forbid ad, circle buf, locpos
 
-	if (locus_pos)
-	{
-		delete[] locus_pos;
-		locus_pos = NULL;
-	}
+	DEL(locus_pos); uselocpos = false;
 
-	// 6. Genetic diversity
+	// 8. Genetic diversity
 	CalcDiversity<REAL>(); //allow ad, circle buf
 
-	// 7. Individual statistics
+	// 9. Individual statistics
 	CalcIndstat<REAL>(); //forbid ad, circle buf
 
-	// 8. Genetic differentiation
+	// 10. Genetic differentiation
 	CalcDiff<REAL>(); //allow ad
 
-	// 9. Genetic distance
+	// 11. Genetic distance
 	CalcDist<REAL>(); //allow ad, circle buf
 
-	// 10. AMOVA
+	// 12. AMOVA
 	CalcAMOVA<REAL>(); //forbid ad
 
-	// 11. Population assignment
+	// 13. Population assignment
 	CalcAssignment<REAL>(); //forbid ad
 
-	// 12. Relatedness coefficient
+	// 14. Relatedness coefficient
 	CalcRelatedness<REAL>(); //forbid ad, circle buf
 
-	// 13. Kinship coefficient
+	// 15. Kinship coefficient
 	CalcKinship<REAL>(); //forbid ad, circle buf
 
-	// 14. Principal coordinate analysis
+	// 16. Principal coordinate analysis
 	CalcPCOA<REAL>(); //allow ad
 
-	// 15. Hierarchical clustering
+	// 17. Hierarchical clustering
 	CalcClustering<REAL>(); //allow ad
 
 	//TEST SPA
 	CalcSPA<REAL>();//allow ad
 
-	// 16. Ploidy Inference
+	// 18. Ploidy Inference
 	CalcPloidyInference<REAL>(); //forbid ad
 
 	// Free allele freq
 	UnInitialize1<REAL>();
 
-	// 17. Bayesian clustering
+	// 19. Bayesian clustering
 	if (structure_eval_val == 1)
 	{
 		structure_nadmburnin_val = 0;
@@ -4765,14 +4752,6 @@ TARGET void Calculate()
 		structure_krange_max = 5;
 		g_nthread_val = 4;
 		structure_nstream_val = 1;
-
-#ifdef CUDA
-			g_gpu_val = 2;
-			nGPU = GetDeviceCountCUDA();
-#else
-			g_gpu_val = 1;
-			nGPU = 0;
-#endif
 
 		for (structure_admix_val = 1; structure_admix_val <= 2; ++structure_admix_val)
 		{
@@ -4795,8 +4774,8 @@ TARGET void Calculate()
 /* Calculate allele frequencies for each population and region */
 THREAD2(CalcFreqThread)
 {
-	if (allele_freq_offset)      delete[] allele_freq_offset;
-	if (genotype_count_offset)   delete[] genotype_count_offset;
+	DEL(allele_freq_offset);
+	DEL(genotype_count_offset);
 
 	//Allocate new offset
 	allele_freq_offset = new uint64[nloc];
@@ -4812,27 +4791,27 @@ THREAD2(CalcFreqThread)
 		genotype_count_offset[l] = GT;
 		KT += GetLoc(l).k;
 		GT += GetLoc(l).ngeno;
-		maxK = Max((int)GetLoc(l).k, maxK);
-		maxG = Max((int)GetLoc(l).ngeno, maxG);
+		maxK = std::max((int)GetLoc(l).k, maxK);
+		maxG = std::max((int)GetLoc(l).ngeno, maxG);
 	}
 
 	//Allocate memory for allele frequency and genotype count for each population and region
 	for (int i = 0; i < npop; ++i)
-		if (apops[i]->nind && ad == 0)
-			apops[i]->AllocFreq();
+		if (apops<REAL>[i]->nind && ad == 0)
+			apops<REAL>[i]->AllocFreq();
 
 	for(int rl = 0; rl < lreg; ++rl)
 		for (int i = 0; i < nreg[rl]; ++i)
-				aregs[rl][i]->AllocFreq();
+				aregs<REAL>[rl][i]->AllocFreq();
 
-	if (lreg > -1) total_pop->AllocFreq();
+	if (lreg > -1) total_pop<REAL>->AllocFreq();
 
 	if (ad)
 	{
 		for (int rl = 0; rl < lreg; ++rl)
 			for (int i = 0; i < nreg[rl]; ++i)
 			{
-				POP<REAL>* cp = aregs[rl][i];
+				POP<REAL>* cp = aregs<REAL>[rl][i];
 				POP<REAL>* *vp = cp->vpop;
 				for (int p = 0; p < cp->npop; ++p)
 					Add(cp->allelefreq, vp[p]->allelefreq, KT);
@@ -4840,7 +4819,7 @@ THREAD2(CalcFreqThread)
 
 		if (lreg > -1)
 		{
-			POP<REAL>* cp = total_pop;
+			POP<REAL>* cp = total_pop<REAL>;
 			POP<REAL>* *vp = cp->vpop;
 			for (int p = 0; p < cp->npop; ++p)
 				Add(cp->allelefreq, vp[p]->allelefreq, KT);
@@ -4848,13 +4827,13 @@ THREAD2(CalcFreqThread)
 	}
 
 	for (int i = 0; i < npop; ++i)
-		apops[i]->CalcFreqGcount();
+		apops<REAL>[i]->CalcFreqGcount();
 
 	for (int rl = 0; rl < lreg; ++rl)
 		for (int i = 0; i < nreg[rl]; ++i)
-			aregs[rl][i]->CalcFreqGcount();
+			aregs<REAL>[rl][i]->CalcFreqGcount();
 
-	if (lreg > -1) total_pop->CalcFreqGcount();
+	if (lreg > -1) total_pop<REAL>->CalcFreqGcount();
 }
 
 /* Calculate individual minimum and maximum ploidy, and sum ploidy levels */
@@ -4900,8 +4879,8 @@ THREAD2(AssignPloidyThread)
 			{
 				byte v = (byte)ploidy[gid];
 				vt[j] += v;
-				vmin[j] = Min(vmin[j], v);
-				vmax[j] = Max(vmax[j], v);
+				vmin[j] = std::min(vmin[j], v);
+				vmax[j] = std::max(vmax[j], v);
 			}
 		}
 		PROGRESS_VALUE++;
@@ -4917,29 +4896,29 @@ THREAD2(AssignPloidyThread)
 		for (int j = 0; j < nind; ++j)
 		{
 			Vt[j] += vt[j];
-			Vmin[j] = Min(Vmin[j], vmin[j]);
-			Vmax[j] = Max(Vmax[j], vmax[j]);
+			Vmin[j] = std::min(Vmin[j], vmin[j]);
+			Vmax[j] = std::max(Vmax[j], vmax[j]);
 		}
 	}
 
 	minploidy = 100; maxploidy = 0; maxvt = 0;
 	for (int i = 0; i < nind; ++i)
 	{
-		ainds[i]->vt = Vt[i];
-		ainds[i]->vmin = Vmin[i] == 100 ? 0 : (byte)Vmin[i];
-		ainds[i]->vmax = Vmax[i];
+		ainds<REAL>[i]->vt = Vt[i];
+		ainds<REAL>[i]->vmin = Vmin[i] == 100 ? 0 : (byte)Vmin[i];
+		ainds<REAL>[i]->vmax = Vmax[i];
 
-		minploidy = Min(minploidy, ainds[i]->vmin);
-		maxploidy = Max(maxploidy, ainds[i]->vmax);
-		maxvt = Max(maxvt, ainds[i]->vt);
-		sumvt += ainds[i]->vt;
+		minploidy = std::min(minploidy, ainds<REAL>[i]->vmin);
+		maxploidy = std::max(maxploidy, ainds<REAL>[i]->vmax);
+		maxvt = std::max(maxvt, ainds<REAL>[i]->vt);
+		sumvt += ainds<REAL>[i]->vt;
 	}
 
-	delete[] Vt;
-	delete[] Vmin;
-	delete[] Vmax;
-	delete[] Ploidy;
-	delete[] Nalleles;
+	DEL(Vt);
+	DEL(Vmin);
+	DEL(Vmax);
+	DEL(Ploidy);
+	DEL(Nalleles);
 }
 
 /* Find the optimal Partial Equational Segregation model for each locus */
@@ -4961,8 +4940,8 @@ THREAD2(GetLocusPESModel)
 			OpenLog(slog, prod);
 			for (int p = 0; p < npop; ++p)
 			{
-				ushort* gcount = cpop->GetGenoCount(l);
-				REAL* freq = apops[p]->GetFreq(l);
+				ushort* gcount = cpop<REAL>->GetGenoCount(l);
+				REAL* freq = apops<REAL>[p]->GetFreq(l);
 
 				for (int gi = 0; gi < ngeno; ++gi)
 				{

@@ -186,20 +186,38 @@ TARGET void GetParStringArray(string gpar, const string& ref, bool& parid, int* 
 /* Read multiple section parameters */
 TARGET void GetParStringMultiSel(string gpar, const string& ref, bool& parid, byte* val);
 
-/* Print a real number to a file */
+/* Write a real number to a file */
 TARGET void WriteReal(FILE* fout, double val);
 
-/* Print a real number to a string */
+/* Write a real number to a string */
 TARGET void WriteReal(char*& fout, double val);
 
 /* Append a real number to a string */
 TARGET void AppendReal(char* sout, double val);
 
-/* Print a real number to a file */
+/* Write a real number to a file */
 TARGET void WriteReal(FILE* fout, float val);
 
-/* Print a real number to a string */
+/* Write a real number to a string */
 TARGET void WriteReal(char*& fout, float val);
 
 /* Append a real number to a string */
 TARGET void AppendReal(char* sout, float val);
+
+/* Write a real number to a file in scientific notation */
+TARGET void WriteScientific(FILE* fout, double val);
+
+/* Write a real number to a string in scientific notation */
+TARGET void WriteScientific(char*& fout, double val);
+
+/* Append a real number to a string in scientific notation */
+TARGET void AppendScientific(char* sout, double val);
+
+/* Write a real number to a file in scientific notation */
+TARGET void WriteScientific(FILE* fout, float val);
+
+/* Write a real number to a string in scientific notation */
+TARGET void WriteScientific(char*& fout, float val);
+
+/* Append a real number to a string in scientific notation */
+TARGET void AppendScientific(char* sout, float val);

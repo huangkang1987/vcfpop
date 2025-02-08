@@ -1,16 +1,14 @@
 # Draw dendrogram for hierarchical clustering results of vcfpop
+
 options(warn = -1)
 options(echo = FALSE)
 
-UseLibrary <- function(lib) 
-{
-  res <- eval(parse(text = paste('require(', lib, ', quietly = TRUE)', sep = '')))
-  if (res == FALSE)
-  {
+UseLibrary <- function(lib) {
+  if (!require(lib, character.only = TRUE, quietly = TRUE)) {
     install.packages(lib)
-    res <- eval(parse(text = paste('require(', lib, ', quietly = TRUE)', sep = '')))
-    if (res == FALSE)
-      stop(paste('Error: library ', lib, ' cannot be installed\n',  sep = ''))
+    if (!require(lib, character.only = TRUE, quietly = TRUE)) {
+      stop(paste('Error: library', lib, 'cannot be installed\n'))
+    }
   }
 }
 
@@ -57,6 +55,5 @@ for (i in 1 : ntree)
   if (nobj <= 1) next
   plot(tree, font = 1, cex = 1.2, main = title); axisPhylo()
 }
-garbage <- dev.off()
-
+invisible(dev.off())
 cat(paste('\n', basename(figfile), '\n', sep=''))

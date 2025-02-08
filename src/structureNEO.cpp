@@ -52,8 +52,8 @@ struct GENO_READERNEO
 	{
 		//set pos and size
 		SetZero(this, 1);
-		num = Min(num, 64);
-
+		num = std::min(num, 64LL);
+            
 		//set bucket from default bucket or assigned bucket
 		if (bucket == NULL) bucket = &geno_bucket;
 
@@ -137,8 +137,7 @@ struct GENO_READERNEO
 		}
 	}
 
-	__forceinline
-	TARGETNEO void Read(uint32x4_t* gid)
+	forceinline TARGETNEO void Read(uint32x4_t* gid)
 	{
 		// if data is empty
 		if (nbits < size) [[unlikely]]
@@ -284,44 +283,6 @@ struct GENO_READERNEO
 
 #endif
 
-__forceinline TARGETNEO double _neo_reduce_add_pd(float64x2_t v2)
-{
-	return vgetq_lane_f64(v2, 0) + vgetq_lane_f64(v2, 1);
-}
-
-__forceinline TARGETNEO double _neo_reduce_mul_pd(float64x2_t v2)
-{
-	return vgetq_lane_f64(v2, 0) * vgetq_lane_f64(v2, 1);
-}
-
-__forceinline TARGETNEO float _neo_reduce_add_ps(float32x4_t v2)
-{
-	volatile float a1 = vgetq_lane_f32(v2, 0) + vgetq_lane_f32(v2, 1);
-	volatile float a2 = vgetq_lane_f32(v2, 1) + vgetq_lane_f32(v2, 2);
-	return a1 + a2;
-}
-
-__forceinline TARGETNEO float _neo_reduce_mul_ps(float32x4_t v2)
-{
-	volatile float a1 = vgetq_lane_f32(v2, 0) * vgetq_lane_f32(v2, 1);
-	volatile float a2 = vgetq_lane_f32(v2, 1) * vgetq_lane_f32(v2, 2);
-	return a1 * a2;
-}
-
-__forceinline TARGETNEO double _neo_reduce_add_psd(float32x4_t v2)
-{
-	volatile double a1 = (double)vgetq_lane_f32(v2, 0) + (double)vgetq_lane_f32(v2, 1);
-	volatile double a2 = (double)vgetq_lane_f32(v2, 1) + (double)vgetq_lane_f32(v2, 2);
-	return a1 + a2;
-}
-
-__forceinline TARGETNEO double _neo_reduce_mul_psd(float32x4_t v2)
-{
-	volatile double a1 = (double)vgetq_lane_f32(v2, 0) * (double)vgetq_lane_f32(v2, 1);
-	volatile double a2 = (double)vgetq_lane_f32(v2, 1) * (double)vgetq_lane_f32(v2, 2);
-	return a1 * a2;
-}
-
 /* Update a priori ancetral proportion for non-admix model */
 template<typename REAL>
 TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
@@ -335,8 +296,8 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
 		double* buf1 = bufNK1, * buf2 = bufNK2;
 		if (locpriori) for (int i = 0; i < N; ++i, buf1 += K, buf2 += K)
 		{
-			if (ainds[i]->vt == 0) continue;
-			ChargeLog((int64*)buf1, buf2, Gamma + ainds[i]->popid * K, K);
+			if (ainds<REAL>[i]->vt == 0) continue;
+			ChargeLog((int64*)buf1, buf2, Gamma + ainds<REAL>[i]->popid * K, K);
 		}
 
 		//////////////////////////////////////////////////////////
@@ -351,10 +312,10 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
 
 		buf1 = bufNK1;
 		REAL* q = Q;
-		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//double
 		for (int i = 0; i < N; ++i, buf1 += K, q += K)
 		{
-			if (ainds[i]->vt == 0) continue;
+			if (ainds<REAL>[i]->vt == 0) continue;
 			ushort k2 = (ushort)rng.PolyLog(buf1, K);
 			q[k2] = 1;
 			Z[i] = k2;
@@ -457,7 +418,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
 										vmaxq_u32(gtploidy[12], gtploidy[13]),
 										vmaxq_u32(gtploidy[14], gtploidy[15]))));
 
-						maxv = Max(Max(vgetq_lane_u32(maxv1, 0), vgetq_lane_u32(maxv1, 1)), Max(vgetq_lane_u32(maxv1, 2), vgetq_lane_u32(maxv1, 3)));
+						maxv = _neo_reduce_max_epi32(maxv1);
 					}
 
 					uint32x4_t ai = vdupq_n_u32(0);
@@ -467,7 +428,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
 						{
 							typed[kk] = vcgtq_u32(gtploidy[kk], ai);
 
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 							{
                                 typed64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 0), (uint64)vgetq_lane_s32(typed[kk], 1) }));
                                 typed64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 2), (uint64)vgetq_lane_s32(typed[kk], 3) }));
@@ -487,7 +448,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQNoAdmixNEO(int tid)
 						REAL* p2 = p;
 						for (int k = 0; k < K; ++k, p2 += KT)
 						{
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 							{
 								REP(32) freq[kk] = vbslq_f64(typed64[kk], vld1q_f64(((double []) { p2[allele2[0 + (kk << 1)]] , p2[allele2[1 + (kk << 1)]] })), maskoned);
 							}
@@ -526,7 +487,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateZNoAdmixNEO(int tid)
 		SetZero(Ni, K * KT);
 
 		for (int i = 0; i < N; ++i)
-			Mi[i * K + Z[i]] = ainds[i]->vt;
+			Mi[i * K + Z[i]] = ainds<REAL>[i]->vt;
 
 		//////////////////////////////////////////////////////////
 
@@ -622,8 +583,8 @@ TARGETNEO void BAYESIAN<REAL>::UpdateZNoAdmixNEO(int tid)
 									vmaxq_u32(
 										vmaxq_u32(gtploidy[12], gtploidy[13]),
 										vmaxq_u32(gtploidy[14], gtploidy[15]))));
-
-						maxv = Max(Max(vgetq_lane_u32(maxv1, 0), vgetq_lane_u32(maxv1, 1)), Max(vgetq_lane_u32(maxv1, 2), vgetq_lane_u32(maxv1, 3)));
+						
+						maxv = _neo_reduce_max_epi32(maxv1);
 					}
 
 					int* ni = Ni + Z[i] * KT + o;
@@ -660,14 +621,14 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid)
 {
 	if (tid == -1)
 	{
-		RNG<REAL> rng(seed + m, RNG_SALT_UPDATEQ);//checked
+		RNG<double> rng(seed + m, RNG_SALT_UPDATEQ);//REAL
 		REAL* bufi = (REAL*)bufNK1;
 		REAL* q = NULL;
 
 		for (int i = 0; i < N; ++i, bufi += K)
 		{
-			if (ainds[i]->vt == 0) continue;
-			if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds[i]->popid * K, K);
+			if (ainds<REAL>[i]->vt == 0) continue;
+			if (locpriori) rng.Dirichlet(bufi, AlphaLocal + ainds<REAL>[i]->popid * K, K);
 			else           rng.Dirichlet(bufi, Alpha, K);
 		}
 
@@ -686,7 +647,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid)
 		bufi = (REAL*)bufNK1; q = Q;
 		for (int i = 0; i < N; ++i, q += K, bufi += K)
 		{
-			if (ainds[i]->vt == 0) continue;
+			if (ainds<REAL>[i]->vt == 0) continue;
 			if (bufN1[i] >= NZERO || rng.Uniform() < exp(bufN1[i]))
 				SetVal(q, bufi, K);
 		}
@@ -790,8 +751,8 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid)
 									vmaxq_u32(
 										vmaxq_u32(gtploidy[12], gtploidy[13]),
 										vmaxq_u32(gtploidy[14], gtploidy[15]))));
-
-						maxv = Max(Max(vgetq_lane_u32(maxv1, 0), vgetq_lane_u32(maxv1, 1)), Max(vgetq_lane_u32(maxv1, 2), vgetq_lane_u32(maxv1, 3)));
+						
+						maxv = _neo_reduce_max_epi32(maxv1);
 					}
 
 					uint32x4_t ai = vdupq_n_u32(0);
@@ -801,7 +762,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid)
 						{
 							typed[kk] = vcgtq_u32(gtploidy[kk], ai);
 
-							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 							{
                                 typed64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 0), (uint64)vgetq_lane_s32(typed[kk], 1) }));
                                 typed64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 2), (uint64)vgetq_lane_s32(typed[kk], 3) }));
@@ -818,7 +779,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid)
 							allele[kk] = vandq_u32(allele[kk], typed[kk]);
 						}
 
-						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+						if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 						{
 							REP(32) f1[kk] = vdupq_n_f64(0);
 							REP(32) f2[kk] = vdupq_n_f64(0);
@@ -832,7 +793,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid)
 						REAL* p2 = p;
 						for (int k = 0; k < K; ++k, p2 += KT)
 						{
-							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 							{
 								float64x2_t pp[32], qq = vdupq_n_f64(q[k]), ii = vdupq_n_f64(bufi[k]);
 
@@ -858,7 +819,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateQMetroNEO(int tid)
 							}
 						}
 
-						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						if constexpr (std::is_same_v<REAL, float> && fast_fp32)
 						{
 							REP(16) f1s[kk] = vdivq_f32(f1s[kk], f2s[kk]);
 							REP(16) f1s[kk] = vbslq_f32(typed[kk], f1s[kk], maskones);
@@ -932,8 +893,8 @@ TARGETNEO void BAYESIAN<REAL>::UpdateZAdmixNEO(int tid)
 		int tid = thread_counter.fetch_add(1);
 
 		//64 * K  * sizeof(double)
-		float64x2_t* bufkd = (float64x2_t*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
-		float32x4_t* bufks = (float32x4_t*)Align64((byte*)bufNK2 + (Max(N, 64) * K * sizeof(double) + 63) * tid);
+		float64x2_t* bufkd = (float64x2_t*)Align64((byte*)bufNK2 + (std::max(N, 64) * K * sizeof(double) + 63) * tid);
+		float32x4_t* bufks = (float32x4_t*)Align64((byte*)bufNK2 + (std::max(N, 64) * K * sizeof(double) + 63) * tid);
 
 		for (int lsize = structure_loc_size_min; lsize <= structure_loc_size_max; ++lsize)
 		{
@@ -978,7 +939,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateZAdmixNEO(int tid)
 
 				RNGNEO<double> rngd; RNGNEO<float > rngs;
 
-				if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+				if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 					new (&rngd) RNGNEO<double>(seed + m * L + l, RNG_SALT_UPDATEZ);
 				else
 					new (&rngs) RNGNEO<float >(seed + m * L + l, RNG_SALT_UPDATEZ);
@@ -1030,7 +991,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateZAdmixNEO(int tid)
 								allele64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { vgetq_lane_u32(allele[kk], 2), vgetq_lane_u32(allele[kk], 3)}));
 							}
 
-							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 							{
                                 typed64[0 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 0), (uint64)vgetq_lane_s32(typed[kk], 1) }));
                                 typed64[1 + (kk << 1)] = vld1q_u64(((uint64[]) { (uint64)vgetq_lane_s32(typed[kk], 2), (uint64)vgetq_lane_s32(typed[kk], 3) }));
@@ -1042,7 +1003,7 @@ TARGETNEO void BAYESIAN<REAL>::UpdateZAdmixNEO(int tid)
 						{
 							float64x2_t qd; float32x4_t qs;
 
-							if constexpr (sizeof(REAL) == 8)
+							if constexpr (std::is_same_v<REAL, double>)
 							{
 								qd = vdupq_n_f64(q[k]);
 								REP(32) bufkd[kk + (k << 5)] = vld1q_f64(((double []) { p2[allele2[0 + (kk << 1)]], p2[allele2[1 + (kk << 1)]] }));
@@ -1075,10 +1036,10 @@ TARGETNEO void BAYESIAN<REAL>::UpdateZAdmixNEO(int tid)
 						}
 
 						//draw cluster for each allele copy
-						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
-							rngd.Poly<64>(bufkd, K, k2);
+						if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
+							rngd.Poly(bufkd, K, k2);
 						else
-							rngs.Poly<64>(bufks, K, k2);
+							rngs.Poly(bufks, K, k2);
 
 						//Update Mi
 						REP(64) mi[k22[kk]] -= typed2[kk];
@@ -1218,8 +1179,8 @@ TARGETNEO void BAYESIAN<REAL>::RecordNEO(int tid)
 									vmaxq_u32(
 										vmaxq_u32(gtploidy[12], gtploidy[13]),
 										vmaxq_u32(gtploidy[14], gtploidy[15]))));
-
-						maxv = Max(Max(vgetq_lane_u32(maxv1, 0), vgetq_lane_u32(maxv1, 1)), Max(vgetq_lane_u32(maxv1, 2), vgetq_lane_u32(maxv1, 3)));
+						
+						maxv = _neo_reduce_max_epi32(maxv1);
 					}
 
 					uint32x4_t ai = vdupq_n_u32(0);
@@ -1253,7 +1214,7 @@ TARGETNEO void BAYESIAN<REAL>::RecordNEO(int tid)
 							}
 						}
 
-						if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+						if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 							REP(32) f2[kk] = vdupq_n_f64(0);
 						else
 							REP(16) f2s[kk] = vdupq_n_f32(0);
@@ -1262,7 +1223,7 @@ TARGETNEO void BAYESIAN<REAL>::RecordNEO(int tid)
 						{
 							REAL* p2 = p + Z[i] * KT;
 
-							if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+							if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 							{
 								REP(32) f2[kk] = vld1q_f64(((double []) { p2[allele2[0 + (kk << 1)]], p2[allele2[1 + (kk << 1)]] }));
 							}
@@ -1277,7 +1238,7 @@ TARGETNEO void BAYESIAN<REAL>::RecordNEO(int tid)
 							for (int k = 0; k < K; ++k, p2 += KT)
 							{
 								//disable fmadd
-								if constexpr (sizeof(REAL) == 8 || !fast_fp32)
+								if constexpr (std::is_same_v<REAL, double> || !fast_fp32)
 								{
 									float64x2_t pp[32], qq = vdupq_n_f64(q[k]);
 
@@ -1296,7 +1257,7 @@ TARGETNEO void BAYESIAN<REAL>::RecordNEO(int tid)
 							}
 						}
 
-						if constexpr (sizeof(REAL) == 4 && fast_fp32)
+						if constexpr (std::is_same_v<REAL, float> && fast_fp32)
 						{
 							REP(16)
 							{

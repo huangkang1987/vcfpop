@@ -1,6 +1,5 @@
 /* Filter Functions */
 
-#pragma once
 #include "vcfpop.h"
 
 template TARGET void ApplyFilter<double>();
@@ -9,9 +8,6 @@ template TARGET void SetVReg<double>(int rl, int i);
 template TARGET void SetVReg<float >(int rl, int i);
 template TARGET void AssignVInds<double>();
 template TARGET void AssignVInds<float >();
-
-#ifndef _PCOA
-#endif
 
 #define extern 
 extern bool diversity_filter;
@@ -48,35 +44,7 @@ TARGET void ApplyFilter()
 	//2. Apply diversity filter
 	if (diversity_filter)
 	{
-		if (f_pop_b)
-		{
-			if ("total" == f_pop_val || "Total" == f_pop_val)
-				cpop = total_pop;
-			else
-			{
-				bool find = false;
-				for (int i = 0; i < pop<REAL>.size; ++i)
-					if (pop<REAL>[i].name == f_pop_val)
-					{
-						find = true;
-						cpop = &pop<REAL>[i];
-					}
-
-				if (!find)
-				{
-					for (uint rl = 0; rl < reg<REAL>.size - 1; ++rl)
-						for (uint i = 0; i < reg<REAL>[rl].size; ++i)
-							if (reg<REAL>[rl][i].name == f_pop_val)
-							{
-								find = true;
-								cpop = &reg<REAL>[rl][i];
-							}
-					if (!find) Exit("\nError: Cannot find target population %s, check parameter -f_pop.\n", f_pop_val.c_str());
-				}
-			}
-		}
-		else
-			cpop = total_pop;
+		AssignPop<REAL>(f_pop_b, f_pop_val, "-f_pop");
 
 		//Temp use allele frequency and genotype count for diversity calculation
 		allele_freq_offset = new uint64[nloc];
@@ -92,12 +60,12 @@ TARGET void ApplyFilter()
 			genotype_count_offset[l] = GT;
 			KT += GetLoc(l).k;
 			GT += GetLoc(l).ngeno;
-			maxK = Max((int)GetLoc(l).k, maxK);
-			maxG = Max((int)GetLoc(l).ngeno, maxG);
+			maxK = std::max((int)GetLoc(l).k, maxK);
+			maxG = std::max((int)GetLoc(l).ngeno, maxG);
 		}
 
 		//Calculate freq for cpop and diversity estimation
-		cpop->AllocFreq();
+		cpop<REAL>->AllocFreq();
 
 		if (f_windowsize_b && abs(g_format_val) <= BCF)
 			new (&contig_diversity) TABLE<HASH, TABLE<HASH, pair<LOCN, double>>>(true, NULL);
@@ -116,16 +84,17 @@ TARGET void ApplyFilter()
 				for (uint w = 0; w < contig.size; ++w)
 					GetLoc(contig(w).first).flag_pass = true;
 				contig.~TABLE();
+				contig.bucket = NULL;
 			}
 			contig_diversity.~TABLE();//ok
+			contig_diversity.bucket = NULL;
 			new (&contig_diversity) TABLE<HASH, TABLE<HASH, pair<LOCN, double>>>;
 		}
-		cpop->UnAllocFreq();
+		cpop<REAL>->UnAllocFreq();
 
 		//Release temp allele frequency and genotype count
-		delete[] allele_freq_offset;
-		delete[] genotype_count_offset;
-		allele_freq_offset = genotype_count_offset = NULL;
+		DEL(allele_freq_offset);
+		DEL(genotype_count_offset);
 	}
 
 	CheckGenotypeId<REAL>();
@@ -163,7 +132,7 @@ TARGET void ApplyFilter()
 			GetLoc(l).flag_pass = pass_flag;
 		}
 	}
-	delete[] allele_table;
+	DEL(allele_table);
 	CheckGenotypeId<REAL>();
 
 	//3. Apply locus filter
@@ -176,8 +145,8 @@ TARGET void ApplyFilter()
 			nfilter++;
 			KT += GetLoc(l).k;
 			GT += GetLoc(l).ngeno;
-			maxK = Max((int)GetLoc(l).k, maxK);
-			maxG = Max((int)GetLoc(l).ngeno, maxG);
+			maxK = std::max((int)GetLoc(l).k, maxK);
+			maxG = std::max((int)GetLoc(l).ngeno, maxG);
 		}
 	}
 
@@ -202,10 +171,10 @@ TARGET void SetVReg(int rl, int i)
 	{
 		if (reg<REAL>[rl][i].npop == 0 || reg<REAL>[rl][i].nind == 0) return;
 		reg<REAL>[rl][i].id = nreg[rl];
-		reg<REAL>[rl][i].vpop = rl >= 1 ? aregs[rl - 1] + nreg[rl - 1] : apops + npop;
-		reg<REAL>[rl][i].inds = rinds + nind;
+		reg<REAL>[rl][i].vpop = rl >= 1 ? aregs<REAL>[rl - 1] + nreg[rl - 1] : apops<REAL> + npop;
+		reg<REAL>[rl][i].inds = rinds<REAL> + nind;
 		reg<REAL>[rl][i].ind0id = nind;
-		aregs[rl][nreg[rl]++] = &reg<REAL>[rl][i];
+		aregs<REAL>[rl][nreg[rl]++] = &reg<REAL>[rl][i];
 	}
 
 	if (rl > 0) for (uint j = 0; j < reg<REAL>[rl - 1].size; ++j)
@@ -218,17 +187,17 @@ TARGET void SetVReg(int rl, int i)
 	{
 		if (pop<REAL>[j].rid != i || pop<REAL>[j].nind == 0) continue;
 
-		apops[npop] = &pop<REAL>[j];
+		apops<REAL>[npop] = &pop<REAL>[j];
 		pop<REAL>[j].id = npop++;
 		pop<REAL>[j].rid = reg<REAL>[rl][i].id;
 		pop<REAL>[j].vpop = NULL;
-		pop<REAL>[j].inds = rinds + nind;
+		pop<REAL>[j].inds = rinds<REAL> + nind;
 		pop<REAL>[j].ind0id = nind;
 		nind += pop<REAL>[j].nind;
 	}
 }
 
-/* Sort individuals by population index to rinds array */
+/* Sort individuals by population index to rinds<REAL> array */
 template<typename REAL>
 TARGET void AssignVInds()
 {
@@ -246,15 +215,15 @@ TARGET void AssignVInds()
 	for (int j = 0; j < nind; ++j)
 	{
 		//default pop or input pop
-		int i = (ainds[j]->popid < 1 || ainds[j]->popid >= pop<REAL>.size) ? 0 : ainds[j]->popid;
+		int i = (ainds<REAL>[j]->popid < 1 || ainds<REAL>[j]->popid >= pop<REAL>.size) ? 0 : ainds<REAL>[j]->popid;
 		pop<REAL>[i].nind++;
 	}
 
 	//Allocate vreg
 	nregt = nregt2 = 0;
 	lreg = reg<REAL>.size;
-	aregs = new POP<REAL>**[reg<REAL>.size];
-	SetZero(aregs, reg<REAL>.size);
+	aregs<REAL> = new POP<REAL>**[reg<REAL>.size];
+	SetZero(aregs<REAL>, reg<REAL>.size);
 	SetZero(nreg, lreg);
 
 	//Add up nind and npop to regions at lay 0
@@ -300,7 +269,7 @@ TARGET void AssignVInds()
 	for (uint i = 0; i < pop<REAL>.size; ++i)
 		if (pop<REAL>[i].nind > 0)
 			npop++;
-	apops = new POP<REAL>* [npop];
+	apops<REAL> = new POP<REAL>* [npop];
 
 	//Contruct total pop
 	if (lreg == 0 && npop == 1)
@@ -308,44 +277,44 @@ TARGET void AssignVInds()
 		lreg = -1;
 		for (uint i = 0; i < pop<REAL>.size; ++i)
 			if (pop<REAL>[i].nind > 0)
-				total_pop = &pop<REAL>[i];
+				total_pop<REAL> = &pop<REAL>[i];
 		nregt2 = nregt = 0;
 	}
 	else
 	{
 		for (uint i = 0; i < reg<REAL>[lreg].size; ++i)
 			if (reg<REAL>[lreg][i].nind > 0)
-				total_pop = &reg<REAL>[lreg][i];
+				total_pop<REAL> = &reg<REAL>[lreg][i];
 	}
 
-	delete[] total_pop->name;
-	total_pop->name = new char[6];
-	sprintf(total_pop->name, "Total");
-	total_pop->rid = -1;
+	DEL(total_pop<REAL>->name);
+	total_pop<REAL>->name = new char[6];
+	sprintf(total_pop<REAL>->name, "Total");
+	total_pop<REAL>->rid = -1;
 
 	for (int rl = 0; rl <= lreg; ++rl)
 	{
-		aregs[rl] = new POP<REAL>* [nreg[rl]];
+		aregs<REAL>[rl] = new POP<REAL>* [nreg[rl]];
 		nreg[rl] = 0;
 	}
 
-	//Allocate rinds
-	rinds = new IND<REAL>* [nind];
+	//Allocate rinds<REAL>
+	rinds<REAL> = new IND<REAL>* [nind];
 
 	//Recursive arrange vpop, vreg and vind
 	if (lreg == -1)
 	{
-		apops[0] = total_pop;
-		total_pop->id = 0;
-		total_pop->rid = -1;
-		total_pop->vpop = NULL;
-		total_pop->inds = rinds;
-		total_pop->ind0id = 0;
+		apops<REAL>[0] = total_pop<REAL>;
+		total_pop<REAL>->id = 0;
+		total_pop<REAL>->rid = -1;
+		total_pop<REAL>->vpop = NULL;
+		total_pop<REAL>->inds = rinds<REAL>;
+		total_pop<REAL>->ind0id = 0;
 	}
 	else
 	{
 		nind = 0; npop = 0;
-		SetVReg<REAL>(lreg, total_pop->id);
+		SetVReg<REAL>(lreg, total_pop<REAL>->id);
 	}
 
 	//Set nind = 0
@@ -357,12 +326,12 @@ TARGET void AssignVInds()
 	for (int j = 0; j < nind; ++j)
 	{
 		//Default pop or input pop
-		IND<REAL>& i = *ainds[j];
+		IND<REAL>& i = *ainds<REAL>[j];
 		POP<REAL>& p = pop<REAL>[(i.popid < 1 || i.popid >= pop<REAL>.size) ? 0 : i.popid];
 		if (i.indid != p.ind0id + p.nind)
 			swap = true;
 		i.indid = p.ind0id + p.nind;
-		p.inds[p.nind++] = ainds[j];
+		p.inds[p.nind++] = ainds<REAL>[j];
 		i.popid = p.id;
 	}
 
@@ -381,7 +350,7 @@ TARGET void AssignVInds()
 		GENO_WRITER wg(l);
 
 		for (int i = 0; i < nind; ++i)
-			gtb[ainds[i]->indid] = (ushort)rg.Read();
+			gtb[ainds<REAL>[i]->indid] = (ushort)rg.Read();
 
 		for (int i = 0; i < nind; ++i)
 			wg.Write(gtb[i]);
@@ -389,13 +358,13 @@ TARGET void AssignVInds()
 		wg.FinishWrite();
 	}
 
-	delete[] gtbuf;
+	DEL(gtbuf);
 
 	if (ploidyinfer)
 	{
 		maxK = 0;
 		for (int64 l = 0; l < nloc; ++l)
-			maxK = Max((int)GetLoc(l).k, maxK);
+			maxK = std::max((int)GetLoc(l).k, maxK);
 
 		//swap allelic depth
 		uint* dpbuf = new uint[g_nthread_val * nind * maxK];
@@ -412,7 +381,7 @@ TARGET void AssignVInds()
 
 			for (int i = 0; i < nind; ++i)
 			{
-				uint* dpb2 = dpb + ainds[i]->indid * k2;
+				uint* dpb2 = dpb + ainds<REAL>[i]->indid * k2;
 
 				for (int k = 0; k < k2; ++k)
 					dpb2[k] = rd.Read();
@@ -422,10 +391,11 @@ TARGET void AssignVInds()
 				wd.Write(*dpb++);
 		}
 
-		delete[] dpbuf;
+		DEL(dpbuf);
 	}
 
-	delete[] ainds; ainds = rinds;
+	DEL(ainds<REAL>); 
+	ainds<REAL> = rinds<REAL>;
 }
 
 /* Marker individual filtered or not */
@@ -434,7 +404,7 @@ THREAD2(MarkerIndividual)
 	//Calculate offset
 	maxG = 0;
 	for (int64 l = 0; l < nloc; ++l)
-		maxG = Max((int)GetLoc(l).ngeno, maxG);
+		maxG = std::max((int)GetLoc(l).ngeno, maxG);
 
 	VLA_NEW(ploidytab, int, maxG * g_nthread_val);
 	VLA_NEW(nallelestab, int, maxG * g_nthread_val);
@@ -491,22 +461,22 @@ THREAD2(MarkerIndividual)
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 	for (int i = 0; i < nind; ++i)
 	{
-		if (ainds[i] && f_itype_b && (f_ntype_min > ntype[i] || ntype[i] > f_ntype_max))
-			ainds[i] = NULL;
+		if (ainds<REAL>[i] && f_itype_b && (f_ntype_min > ntype[i] || ntype[i] > f_ntype_max))
+			ainds<REAL>[i] = NULL;
 
-		if (ainds[i] && f_iploidy_b && (f_iploidy_min > minploidy || minploidy > f_iploidy_max))
-			ainds[i] = NULL;
+		if (ainds<REAL>[i] && f_iploidy_b && (f_iploidy_min > minploidy || minploidy > f_iploidy_max))
+			ainds<REAL>[i] = NULL;
 
-		if (ainds[i] && f_iploidy_b && (f_iploidy_min > maxploidy || maxploidy > f_iploidy_max))
-			ainds[i] = NULL;
+		if (ainds<REAL>[i] && f_iploidy_b && (f_iploidy_min > maxploidy || maxploidy > f_iploidy_max))
+			ainds<REAL>[i] = NULL;
 
 		PROGRESS_VALUE++;
 	}
 
-	delete[] ntype;
-	delete[] vt;
-	delete[] vmin;
-	delete[] vmax;
+	DEL(ntype);
+	DEL(vt);
+	DEL(vmin);
+	DEL(vmax);
 
 	VLA_DELETE(ploidytab);
 	VLA_DELETE(nallelestab);
@@ -597,7 +567,7 @@ THREAD2(RemoveIndividual)
 {
 	int nfind = 0;
 	for (int i = 0; i < nind; ++i)
-		if (ainds[i]) nfind++;
+		if (ainds<REAL>[i]) nfind++;
 
 	if (nfind == nind)
 	{
@@ -613,9 +583,9 @@ THREAD2(RemoveIndividual)
 
 	IND<REAL>** newind = new IND<REAL>*[nfind];
 	for (int i = 0, nid = 0; i < nind; ++i)
-		if (ainds[i])
+		if (ainds<REAL>[i])
 		{
-			newind[nid] = new(individual_memory->Alloc(sizeof(IND<REAL>))) IND<REAL>(*ainds[i]);
+			newind[nid] = new(individual_memory->Alloc(sizeof(IND<REAL>))) IND<REAL>(*ainds<REAL>[i]);
 			newind[nid]->indid = nid;
 			nid++;
 		}
@@ -635,8 +605,8 @@ THREAD2(RemoveIndividual)
 		ad_bucket.Replace(nad_bucket);
 	}
 
-	delete[] ainds; ainds = newind; nind = nfind;
-	delete[] oindividual_memory; 
+	DEL(ainds<REAL>); ainds<REAL> = newind; nind = nfind;
+	DEL(oindividual_memory);
 }
 
 /* Remove locus fail to pass filter */
@@ -659,12 +629,12 @@ THREAD2(RemoveLocus)
 		geno_bucket.Replace(ngeno_bucket);
 	}
 
-	delete[] locus_memory;  locus_memory = nlocus_memory;
-	delete[] slocus;        slocus = nslocus;
+	DEL(locus_memory);  locus_memory = nlocus_memory;
+	DEL(slocus);        slocus = nslocus;
 
 	if (uselocpos)
 	{
-		delete[] locus_pos; 
+		DEL(locus_pos);
 		locus_pos = nlocus_pos;
 	}
 

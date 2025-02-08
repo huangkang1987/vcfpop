@@ -314,12 +314,12 @@ TARGET void RemoveTempFiles(uint n)
 	{
 		fclose(TEMP_FILES[i]);
 		remove(TEMP_NAMES[i]);
-		delete[] TEMP_NAMES[i];
-		delete[] TEMP_BUFS[i];
+		DEL(TEMP_NAMES[i]);
+		DEL(TEMP_BUFS[i]);
 	}
-	delete[] TEMP_BUFS;
-	delete[] TEMP_NAMES;
-	delete[] TEMP_FILES;
+	DEL(TEMP_BUFS);
+	DEL(TEMP_NAMES);
+	DEL(TEMP_FILES);
 }
 
 /* Merge and close temp files */
@@ -338,13 +338,13 @@ TARGET void JoinTempFiles(uint n, byte flag[])
 		}
 		fclose(TEMP_FILES[i]);
 		remove(TEMP_NAMES[i]);
-		delete[] TEMP_NAMES[i];
-		delete[] TEMP_BUFS[i];
+		DEL(TEMP_NAMES[i]);
+		DEL(TEMP_BUFS[i]);
 	}
-	delete[] TEMP_BUFS;
-	delete[] TEMP_NAMES;
-	delete[] TEMP_FILES;
-	delete[] buf;
+	DEL(TEMP_BUFS);
+	DEL(TEMP_NAMES);
+	DEL(TEMP_FILES);
+	DEL(buf);
 }
 
 /* Move a file */

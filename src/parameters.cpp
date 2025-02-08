@@ -5,8 +5,9 @@
 struct indtab_node
 {
 	int level; //ind = 0, pop = 1, reg >= 2;
+	int index; //within its containter
 	string name;
-	map<string, indtab_node*> subunits;
+	umap<string, indtab_node*> subunits;
 
 	indtab_node(string _name, int _level)
 	{
@@ -20,7 +21,14 @@ struct indtab_node
 		buf[level].append(" ");
 		buf[level].append(name);
 		int count = 0;
-		for (auto kv : subunits)
+
+		vector<std::pair<string, indtab_node*>> vec(subunits.begin(), subunits.end());
+
+		std::sort(vec.begin(), vec.end(), [](const auto& a, const auto& b) {
+			return a.second->index < b.second->index; 
+		});
+
+		for (auto kv : vec)
 		{
 			buf[level].append(count++ == 0 ? ":" : ",");
 			buf[level].append(kv.first);
@@ -37,7 +45,8 @@ extern vector<string> argv;
 extern bool p_b;								extern string p_val;
 
 /* Global settings */
-extern bool g_decimal_b;						extern int g_decimal_val;							extern char g_decimal_str[16];
+extern bool g_decimal_b;						extern int g_decimal_val;
+extern char g_decimal_str[16];					extern char g_decimal_scientific_str[16];
 extern bool g_scientific_b;						extern int g_scientific_val;
 extern bool g_nthread_b;						extern int g_nthread_val;
 extern bool g_simd_b;							extern int g_simd_val;
@@ -94,6 +103,53 @@ extern bool f_iploidy_b;						extern int f_iploidy_min, f_iploidy_max;
 extern bool f_windowsize_b;						extern int f_windowsize_val;
 extern bool f_windowstat_b;						extern int f_windowstat_val;
 
+/* Sliding window */
+extern bool slide;
+extern bool slide_plot_b;						extern int slide_plot_val;
+extern bool slide_plot_columns_b;				extern int slide_plot_columns_val[N_MAX_SLIDEPLOT]; //values begins from 1
+extern bool slide_plot_styles_b;				extern int slide_plot_styles_val[N_MAX_SLIDEPLOT];
+extern bool slide_windowsize_b;					extern int slide_windowsize_val;
+extern bool slide_windowstep_b;					extern int slide_windowstep_val;
+extern bool slide_minvariants_b;				extern int slide_minvariants_val;
+extern bool slide_estimator_b;					extern byte slide_estimator_val[N_MAX_OPTION];
+extern bool slide_pop_b;						extern string slide_pop_val;
+
+/* LD decay */
+extern bool decay;
+extern bool decay_plot_b;						extern int decay_plot_val;
+extern bool decay_chromosome_b;					extern int decay_chromosome_val;
+extern bool decay_pair_b;						extern int decay_pair_val;
+extern bool decay_maxdist_b;					extern int64 decay_maxdist_val;
+extern bool decay_nintervals_b;					extern int decay_nintervals_val;
+extern bool decay_ratio_b;						extern double decay_ratio_val;
+extern bool decay_estimator_b;					extern byte decay_estimator_val[N_MAX_OPTION];
+extern bool decay_pop_b;						extern string decay_pop_val;
+
+/* LD block */
+extern bool block;
+extern bool block_plot_b;						extern int block_plot_val;
+extern bool block_size_b;						extern int64 block_size_val;
+extern bool block_maxd_b;						extern int64 block_maxd_val;
+extern bool block_ratio_b;						extern double block_ratio_val;
+extern bool block_estimator_b;					extern byte block_estimator_val[N_MAX_OPTION];
+extern bool block_pop_b;						extern string block_pop_val;
+
+/* Genome-wide association studies */
+extern bool gwas;
+extern bool gwas_plot_b;						extern int gwas_plot_val;
+extern bool gwas_input_b;						extern string gwas_input_val;
+extern bool gwas_pop_b;							extern string gwas_pop_val;
+extern bool gwas_restimator_b;					extern int gwas_restimator_val;
+extern bool gwas_imputeG_b;						extern int gwas_imputeG_val;
+extern bool gwas_imputeXY_b;					extern int gwas_imputeXY_val;
+extern bool gwas_nneighbor_b;					extern int gwas_nneighbor_val;
+extern bool gwas_nsvd_b;						extern int gwas_nsvd_val;
+extern bool gwas_batch_b;					extern int gwas_batch_val;
+extern bool gwas_intercept_b;					extern int gwas_intercept_val;
+extern bool gwas_slope_b;						extern int gwas_slope_val;
+extern bool gwas_dosage_b;						extern int gwas_dosage_val;
+extern bool gwas_test_b;						extern byte gwas_test_val[N_MAX_OPTION];
+
 /* Haplotype extraction */
 extern bool haplotype;
 extern bool haplotype_ptype_b;					extern double haplotype_ptype_min, haplotype_ptype_max;
@@ -108,6 +164,11 @@ extern bool convert;
 extern bool convert_format_b;					extern byte convert_format_val[N_MAX_OPTION];
 extern bool convert_mode_b;						extern int convert_mode_val;
 
+/* Genetic Diversity */
+extern bool diversity;
+extern bool diversity_level_b;					extern byte diversity_level_val[N_MAX_OPTION];
+extern bool diversity_model_b;					extern byte diversity_model_val[N_MAX_OPTION];
+
 /* Individual statistics */
 extern bool indstat;
 extern bool indstat_type_b;						extern byte indstat_type_val[N_MAX_OPTION];
@@ -115,11 +176,6 @@ extern bool indstat_model_b;					extern byte indstat_model_val[N_MAX_OPTION];
 extern bool indstat_estimator_b;				extern byte indstat_estimator_val[N_MAX_OPTION];
 extern bool indstat_ref_b;						extern byte indstat_ref_val[N_MAX_OPTION];
 extern bool indstat_locus_b;					extern byte indstat_locus_val[N_MAX_OPTION];
-
-/* Genetic Diversity */
-extern bool diversity;
-extern bool diversity_level_b;					extern byte diversity_level_val[N_MAX_OPTION];
-extern bool diversity_model_b;					extern byte diversity_model_val[N_MAX_OPTION];
 
 /* Genetic differentiation */
 extern bool fst;
@@ -148,17 +204,6 @@ extern bool amova_test_b;						extern int amova_test_val;
 extern bool amova_nperm_b;						extern int amova_nperm_val;
 extern bool amova_pseudo_b;						extern int amova_pseudo_val;
 extern bool amova_printss_b;					extern int amova_printss_val;
-
-/* Sliding window */
-extern bool slide;
-extern bool slide_plot_b;						extern int slide_plot_val;
-extern bool slide_plot_columns_b;				extern int slide_plot_columns_val[N_MAX_SLIDEPLOT]; //values begins from 1
-extern bool slide_plot_styles_b;				extern int slide_plot_styles_val[N_MAX_SLIDEPLOT];
-extern bool slide_windowsize_b;					extern int slide_windowsize_val;
-extern bool slide_windowstep_b;					extern int slide_windowstep_val;
-extern bool slide_minvariants_b;				extern int slide_minvariants_val;
-extern bool slide_estimator_b;					extern byte slide_estimator_val[N_MAX_OPTION];
-extern bool slide_pop_b;						extern string slide_pop_val;
 
 /* Population assignment */
 extern bool popas;
@@ -266,6 +311,54 @@ extern bool spa_coord_b;						extern string spa_coord_val;
 extern bool spa_truncate_b;						extern double spa_truncate_val, spa_truncate_val2;//n
 #undef extern
 
+string GetRInstallPath() 
+{
+#ifdef _WIN64
+	HKEY hKey;
+    string subKey = "SOFTWARE\\R-core\\R";
+    string Name = "InstallPath";
+    char installPath[1024];
+    DWORD pathSize = sizeof(installPath);
+
+    LONG hresult = RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey.c_str(), 0, KEY_READ, &hKey);
+    if (hresult != ERROR_SUCCESS) 
+		return "";
+
+    hresult = RegQueryValueExA(hKey, Name.c_str(), NULL, NULL, (LPBYTE)installPath, &pathSize);
+    RegCloseKey(hKey);
+
+	string result;
+    if (hresult == ERROR_SUCCESS)
+	{
+		result += installPath;
+		result += "\\bin\\Rscript.exe";
+		return result;
+	}
+    else 
+		return "";
+#else
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen("which Rscript", "r"), pclose);
+
+    if (!pipe) return "";
+    
+    char buffer[1024]; 
+    fgets(buffer, sizeof(buffer), pipe.get());
+	string result = buffer;
+
+	for (;;)
+	{
+		bool flag = false;
+		if (result.size() >= 1 && result.compare(result.size() - 1, 1, "\r") == 0)
+			flag = true;
+		if (result.size() >= 1 && result.compare(result.size() - 1, 1, "\n") == 0)
+			flag = true;
+		if (flag) result.erase(result.size() - 1);
+		else break;
+	}
+
+	return result;
+#endif
+}
 
 /* Replace path deliminator*/
 TARGET string ReplacePathDelim(string& str, bool ispath)
@@ -295,7 +388,6 @@ TARGET void SetDefaultParameters()
 	InitLock(GLOCK2);
 
 	CURDIR = GetCurDir();
-
 	diversity_filter = 0;
 	genotype_filter = 0;
 	individual_filter = 0;
@@ -337,11 +429,13 @@ TARGET void SetDefaultParameters()
 	f_windowsize_b = false;			f_windowsize_val = 0;
 	f_windowstat_b = false;			f_windowstat_val = 5;
 
-	g_decimal_b = false;			g_decimal_val = 5;				sprintf(g_decimal_str, "%%0.%df", 5);
+	g_decimal_b = false;			g_decimal_val = 5;				
+	sprintf(g_decimal_str, "%%0.%df", 5);				
+	sprintf(g_decimal_scientific_str, "%%0.%de", 5);
 	g_scientific_b = false;			g_scientific_val = 2;
 	g_nthread_b = false;			g_nthread_val = 2;
 #ifdef __aarch64__ 
-	g_simd_b = false;				g_simd_val = 1;
+	g_simd_b = false;				g_simd_val = 2;
 #else
 	g_simd_b = false;				g_simd_val = 3;
 #endif
@@ -362,9 +456,9 @@ TARGET void SetDefaultParameters()
 	g_indtext_b = false;			g_indtext_val = "";
 	g_indtab_b = false;				g_indtab_val = "";
 	g_delimiter_b = false;			g_delimiter_val = '\t';
-	g_linebreak_b = false;			g_linebreak_val = (char*)"\n";
+	g_linebreak_b = false;			g_linebreak_val = (char*)"\r\n";
 
-	g_rscript_b = false;			g_rscript_val = "";
+	g_rscript_b = false;			g_rscript_val = GetRInstallPath();
 	g_benchmark_b = false;			g_benchmark_val = 2;
 	g_replot_b = false;				g_replot_val = 2;
 	g_eval_b = false;				g_eval_val = 2;
@@ -426,6 +520,39 @@ TARGET void SetDefaultParameters()
 	slide_minvariants_b = false;	slide_minvariants_val = 10;
 	slide_estimator_b = false;		SetZero(slide_estimator_val, N_MAX_OPTION);	    slide_estimator_val[1] = 1;
 	slide_pop_b = false;			slide_pop_val = "total";
+
+	decay = false;
+	decay_plot_b = false;			decay_plot_val = 2;
+	decay_chromosome_b = false;		decay_chromosome_val = 2;
+	decay_pair_b = false;			decay_pair_val = 2;
+	decay_maxdist_b = false;		decay_maxdist_val = 500000;
+	decay_nintervals_b = false;		decay_nintervals_val = 500;
+	decay_ratio_b = false;			decay_ratio_val = 0.001;
+	decay_estimator_b = false;		SetZero(decay_estimator_val, N_MAX_OPTION);	    decay_estimator_val[2] = 1;
+	decay_pop_b = false;			decay_pop_val = "total";
+
+	block = false;
+	block_plot_b = false;			block_plot_val = 2;
+	block_size_b = false;			block_size_val = 1000000;
+	block_maxd_b = false;			block_maxd_val = 100;
+	block_ratio_b = false;			block_ratio_val = 0.001;
+	block_estimator_b = false;		SetZero(block_estimator_val, N_MAX_OPTION);	    block_estimator_val[2] = 1;
+	block_pop_b = false;			block_pop_val = "total";
+
+	gwas = false;
+	gwas_plot_b = false;			gwas_plot_val = 2;
+	gwas_input_b = false;			gwas_input_val = "";
+	gwas_pop_b = false;				gwas_pop_val = "total";
+	gwas_restimator_b = false;		gwas_restimator_val = 2;
+	gwas_imputeG_b = false;			gwas_imputeG_val = 9;
+	gwas_imputeXY_b = false;		gwas_imputeXY_val = 9;
+	gwas_nneighbor_b = false;		gwas_nneighbor_val = 5;
+	gwas_nsvd_b = false;			gwas_nsvd_val = 1;
+	gwas_batch_b = false;		gwas_batch_val = 1000;
+	gwas_intercept_b = false;		gwas_intercept_val = 2;
+	gwas_slope_b = false;			gwas_slope_val = 2;
+	gwas_dosage_b = false;			gwas_dosage_val = 2;
+	gwas_test_b = false;			SetZero(gwas_test_val, N_MAX_OPTION);			gwas_test_val[2] = 1;
 
 	popas = false;
 	popas_model_b = false;			SetZero(popas_model_val, N_MAX_OPTION);			popas_model_val[1] = 1;
@@ -524,6 +651,14 @@ TARGET void SetParameters(bool isparfile)
 			if (p_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
 			p_b = true;
 			p_val = ReplacePathDelim(argv[i], false);
+			if (FileExists(p_val.c_str()))
+			{
+				PARFILE = GetAbsPath(p_val);
+				CURDIR = GetParentPath(p_val);
+				SetCurDir(CURDIR);
+			}
+			else
+				Exit("\nError: cannot find parameter file %s.\n", p_val.c_str());
 		}
 		else if (!LwrLineCmp("-ad", argv[i]))
 		{
@@ -626,11 +761,13 @@ TARGET void SetParameters(bool isparfile)
 			{
 				GetParInteger(argv[i], g_decimal_b, g_decimal_val, 1, 15);
 				sprintf(g_decimal_str, g_scientific_val == 1 ? "%%0.%de" : "%%0.%df", g_decimal_val);
+				sprintf(g_decimal_scientific_str, "%%0.%de", g_decimal_val);
 			}
 			else if (!LwrLineCmp("-g_scientific=", argv[i]))
 			{
 				GetParString(argv[i], "yes|no", g_scientific_b, g_scientific_val);
 				sprintf(g_decimal_str, g_scientific_val == 1 ? "%%0.%de" : "%%0.%df", g_decimal_val);
+				sprintf(g_decimal_scientific_str, "%%0.%de", g_decimal_val);
 			}
 			else if (!LwrLineCmp("-g_nthread=", argv[i]))
 				GetParInteger(argv[i], g_nthread_b, g_nthread_val, 1, 4096);
@@ -642,7 +779,7 @@ TARGET void SetParameters(bool isparfile)
 				GetParString(argv[i], "none|sse|avx|avx512", g_simd_b, g_simd_val);
 #endif
 				SIMD_TYPE = g_simd_val;
-			}
+			}		
 			else if (!LwrLineCmp("-g_gpu=", argv[i]))
 			{
 				GetParString(argv[i], "none|cuda", g_gpu_b, g_gpu_val);
@@ -698,8 +835,7 @@ TARGET void SetParameters(bool isparfile)
 					for (int j = 0; j < g_input_col; ++j)
 					{
 						FILEINFO tf;
-						path tpath(row_files[j]);
-						tf.path = absolute(tpath).string();
+						tf.path = GetAbsPath(row_files[j]);
 						FILE_INFO[ii].push_back(tf);
 					}
 				}
@@ -716,9 +852,8 @@ TARGET void SetParameters(bool isparfile)
 				g_output_b = true;
 				g_output_val = ReplacePathDelim(argv[i], false);
 
-				path tpath(g_output_val);
-				OUTFILE = absolute(tpath).string();
-				OUTDIR = absolute(tpath).parent_path().string();
+				OUTFILE = GetAbsPath(g_output_val);
+				OUTDIR = GetParentPath(OUTFILE);
 				OUTDIR.push_back(PATH_DELIM);
 				if (!FileExists(OUTDIR.c_str()))
 					DirectoryCreate(OUTDIR.c_str());
@@ -772,25 +907,6 @@ TARGET void SetParameters(bool isparfile)
 			else
 				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
 		}
-		else if (!LwrLineCmp("-haplotype", argv[i]))
-		{
-			if (!LwrStrCmp("-haplotype", argv[i]))
-				GetParBool(argv[i], haplotype);
-			else if (!LwrLineCmp("-haplotype_ptype=", argv[i]))
-				GetRangeParDouble(argv[i], haplotype_ptype_b, haplotype_ptype_min, haplotype_ptype_max, 0.1, 1);
-			else if (!LwrLineCmp("-haplotype_length=", argv[i]))
-				GetRangeParLong(argv[i], haplotype_length_b, haplotype_length_min, haplotype_length_max, 1ll, 10000000000ll);
-			else if (!LwrLineCmp("-haplotype_variants=", argv[i]))
-				GetRangeParInteger(argv[i], haplotype_variants_b, haplotype_variants_min, haplotype_variants_max, 1, 1000000000);
-			else if (!LwrLineCmp("-haplotype_interval=", argv[i]))
-				GetParLong(argv[i], haplotype_interval_b, haplotype_interval_val, 0ll, 1000000000ll);
-			else if (!LwrLineCmp("-haplotype_alleles=", argv[i]))
-				GetRangeParInteger(argv[i], haplotype_alleles_b, haplotype_alleles_min, haplotype_alleles_max, 2, 65535);
-			else if (!LwrLineCmp("-haplotype_genotypes=", argv[i]))
-				GetRangeParInteger(argv[i], haplotype_genotypes_b, haplotype_genotypes_min, haplotype_genotypes_max, 2, 65535);
-			else
-				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
-		}
 		else if (!LwrLineCmp("-slide", argv[i]))
 		{
 			if (!LwrStrCmp("-slide", argv[i]))
@@ -818,6 +934,124 @@ TARGET void SetParameters(bool isparfile)
 			else
 				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
 		}
+		else if (!LwrLineCmp("-decay", argv[i]))
+		{
+			if (!LwrStrCmp("-decay", argv[i]))
+				GetParBool(argv[i], decay);
+			else if (!LwrLineCmp("-decay_plot=", argv[i]))
+				GetParString(argv[i], "yes|no", decay_plot_b, decay_plot_val);
+			else if (!LwrLineCmp("-decay_chromosome=", argv[i]))
+				GetParString(argv[i], "yes|no", decay_chromosome_b, decay_chromosome_val);
+			else if (!LwrLineCmp("-decay_pair=", argv[i]))
+				GetParString(argv[i], "yes|no", decay_pair_b, decay_pair_val);
+			else if (!LwrLineCmp("-decay_maxdist=", argv[i]))
+				GetParLong(argv[i], decay_maxdist_b, decay_maxdist_val, 10000, 10000000000);
+			else if (!LwrLineCmp("-decay_nintervals=", argv[i]))
+				GetParInteger(argv[i], decay_nintervals_b, decay_nintervals_val, 10, 10000);
+			else if (!LwrLineCmp("-decay_ratio=", argv[i]))
+				GetParDouble(argv[i], decay_ratio_b, decay_ratio_val, 0.000000001, 1);
+			else if (!LwrLineCmp("-decay_estimator=", argv[i]))
+			{
+				ReplaceStr(argv[i], "¡¯", "\'");
+				GetParStringMultiSel(argv[i], "r2|r2Delta|D'|Delta'", decay_estimator_b, decay_estimator_val);
+			}
+			else if (!LwrLineCmp("-decay_pop=", argv[i]))
+			{
+				if (decay_pop_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
+				decay_pop_b = true;
+				decay_pop_val = TrimParQuote(argv[i]);
+			}
+			else
+				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
+		}
+		else if (!LwrLineCmp("-block", argv[i]))
+		{
+			if (!LwrStrCmp("-block", argv[i]))
+				GetParBool(argv[i], block);
+			else if (!LwrLineCmp("-block_plot=", argv[i]))
+				GetParString(argv[i], "yes|no", block_plot_b, block_plot_val);
+			else if (!LwrLineCmp("-block_size=", argv[i]))
+				GetParLong(argv[i], block_size_b, block_size_val, 10000, 10000000000);
+			else if (!LwrLineCmp("-block_maxd=", argv[i]))
+				GetParLong(argv[i], block_maxd_b, block_maxd_val, 1, 10000000000);
+			else if (!LwrLineCmp("-block_ratio=", argv[i]))
+				GetParDouble(argv[i], block_ratio_b, block_ratio_val, 0.000000001, 1);
+			else if (!LwrLineCmp("-block_estimator=", argv[i]))
+			{
+				ReplaceStr(argv[i], "¡¯", "\'");
+				GetParStringMultiSel(argv[i], "r2|r2Delta|D'|Delta'", block_estimator_b, block_estimator_val);
+			}
+			else if (!LwrLineCmp("-block_pop=", argv[i]))
+			{
+				if (block_pop_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
+				block_pop_b = true;
+				block_pop_val = TrimParQuote(argv[i]);
+			}
+			else
+				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
+		}
+		else if (!LwrLineCmp("-gwas", argv[i]))
+		{
+			if (!LwrStrCmp("-gwas", argv[i]))
+				GetParBool(argv[i], gwas);
+			else if (!LwrLineCmp("-gwas_plot=", argv[i]))
+				GetParString(argv[i], "yes|no", gwas_plot_b, gwas_plot_val);
+			else if (!LwrLineCmp("-gwas_input=", argv[i]))
+			{
+				if (gwas_input_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
+				gwas_input_b = true;
+				gwas_input_val = ReplacePathDelim(argv[i], false);
+				if (!FileExists(gwas_input_val.c_str()))
+					Exit("\nError: GWAS input file is not found.\n");
+			}
+			else if (!LwrLineCmp("-gwas_pop=", argv[i]))
+			{
+				if (gwas_pop_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
+				gwas_pop_b = true;
+				gwas_pop_val = TrimParQuote(argv[i]);
+			}
+			else if (!LwrLineCmp("-gwas_restimator=", argv[i]))
+				GetParString(argv[i], "centerred|standardlized|Lynch1999|Wang2002|Thomas2010|Li1993|Queller1989|Huang2016A|Huang2016B|Milligan2003|Anderson2007|Huang2014|Huang2015|Ritland1996_modified|Loiselle1995_modified|Ritland1996|Loiselle1995|Weir1996|VanRaden2008", gwas_restimator_b, gwas_restimator_val);
+			else if (!LwrLineCmp("-gwas_imputeG=", argv[i]))
+				GetParString(argv[i], "mean|median|sample|norm|mvn|cmean|cmvn|knn|svd|discard", gwas_imputeG_b, gwas_imputeG_val);
+			else if (!LwrLineCmp("-gwas_imputeXY=", argv[i]))
+				GetParString(argv[i], "mean|median|sample|norm|mvn|cmean|cmvn|knn|svd|discard", gwas_imputeXY_b, gwas_imputeXY_val);
+			else if (!LwrLineCmp("-gwas_nneighbor=", argv[i]))
+				GetParInteger(argv[i], gwas_nneighbor_b, gwas_nneighbor_val, 1, 100);
+			else if (!LwrLineCmp("-gwas_nsvd=", argv[i]))
+				GetParInteger(argv[i], gwas_nsvd_b, gwas_nsvd_val, 1, 10);
+			else if (!LwrLineCmp("-gwas_batch=", argv[i]))
+				GetParInteger(argv[i], gwas_batch_b, gwas_batch_val, 100, 10000);
+			else if (!LwrLineCmp("-gwas_intercept=", argv[i]))
+				GetParString(argv[i], "yes|no", gwas_intercept_b, gwas_intercept_val);
+			else if (!LwrLineCmp("-gwas_slope=", argv[i]))
+				GetParString(argv[i], "yes|no", gwas_slope_b, gwas_slope_val);
+			else if (!LwrLineCmp("-gwas_dosage=", argv[i]))
+				GetParString(argv[i], "yes|no", gwas_dosage_b, gwas_dosage_val);
+			else if (!LwrLineCmp("-gwas_test=", argv[i]))
+				GetParStringMultiSel(argv[i], "Wald|LRT|Score", gwas_test_b, gwas_test_val);
+			else
+				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
+		}
+		else if (!LwrLineCmp("-haplotype", argv[i]))
+		{
+			if (!LwrStrCmp("-haplotype", argv[i]))
+				GetParBool(argv[i], haplotype);
+			else if (!LwrLineCmp("-haplotype_ptype=", argv[i]))
+				GetRangeParDouble(argv[i], haplotype_ptype_b, haplotype_ptype_min, haplotype_ptype_max, 0.1, 1);
+			else if (!LwrLineCmp("-haplotype_length=", argv[i]))
+				GetRangeParLong(argv[i], haplotype_length_b, haplotype_length_min, haplotype_length_max, 1ll, 10000000000ll);
+			else if (!LwrLineCmp("-haplotype_variants=", argv[i]))
+				GetRangeParInteger(argv[i], haplotype_variants_b, haplotype_variants_min, haplotype_variants_max, 1, 1000000000);
+			else if (!LwrLineCmp("-haplotype_interval=", argv[i]))
+				GetParLong(argv[i], haplotype_interval_b, haplotype_interval_val, 0ll, 1000000000ll);
+			else if (!LwrLineCmp("-haplotype_alleles=", argv[i]))
+				GetRangeParInteger(argv[i], haplotype_alleles_b, haplotype_alleles_min, haplotype_alleles_max, 2, 65535);
+			else if (!LwrLineCmp("-haplotype_genotypes=", argv[i]))
+				GetRangeParInteger(argv[i], haplotype_genotypes_b, haplotype_genotypes_min, haplotype_genotypes_max, 2, 65535);
+			else
+				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
+		}
 		else if (!LwrLineCmp("-convert", argv[i]))
 		{
 			if (!LwrStrCmp("-convert", argv[i]))
@@ -838,7 +1072,7 @@ TARGET void SetParameters(bool isparfile)
 			else if (!LwrLineCmp("-indstat_model=", argv[i]))
 				GetParStringMultiSel(argv[i], "rcs|prcs|ces|pes", indstat_model_b, indstat_model_val);
 			else if (!LwrLineCmp("-indstat_estimator=", argv[i]))
-				GetParStringMultiSel(argv[i], "Ritland1996|Loiselle1995|Weir1996", indstat_estimator_b, indstat_estimator_val);
+				GetParStringMultiSel(argv[i], "Ritland1996|Loiselle1995|Weir1996|VanRaden2008", indstat_estimator_b, indstat_estimator_val);
 			else if (!LwrLineCmp("-indstat_ref=", argv[i]))
 				GetParStringMultiSel(argv[i], "pop|reg|total", indstat_ref_b, indstat_ref_val);
 			else if (!LwrLineCmp("-indstat_locus=", argv[i]))
@@ -942,7 +1176,7 @@ TARGET void SetParameters(bool isparfile)
 			else if (!LwrLineCmp("-relatedness_fmt=", argv[i]))
 				GetParStringMultiSel(argv[i], "matrix|table", relatedness_fmt_b, relatedness_fmt_val);
 			else if (!LwrLineCmp("-relatedness_estimator=", argv[i]))
-				GetParStringMultiSel(argv[i], "Lynch1999|Wang2002|Thomas2010|Li1993|Queller1989|Huang2016A|Huang2016B|Milligan2003|Anderson2007|Huang2014|Huang2015|Ritland1996_modified|Loiselle1995_modified|Ritland1996|Loiselle1995|Weir1996", relatedness_estimator_b, relatedness_estimator_val);
+				GetParStringMultiSel(argv[i], "Lynch1999|Wang2002|Thomas2010|Li1993|Queller1989|Huang2016A|Huang2016B|Milligan2003|Anderson2007|Huang2014|Huang2015|Ritland1996_modified|Loiselle1995_modified|Ritland1996|Loiselle1995|Weir1996|VanRaden2008", relatedness_estimator_b, relatedness_estimator_val);
 			else
 				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
 		}
@@ -957,7 +1191,7 @@ TARGET void SetParameters(bool isparfile)
 			else if (!LwrLineCmp("-kinship_fmt=", argv[i]))
 				GetParStringMultiSel(argv[i], "matrix|table", kinship_fmt_b, kinship_fmt_val);
 			else if (!LwrLineCmp("-kinship_estimator=", argv[i]))
-				GetParStringMultiSel(argv[i], "Ritland1996|Loiselle1995|Weir1996", kinship_estimator_b, kinship_estimator_val);
+				GetParStringMultiSel(argv[i], "Ritland1996|Loiselle1995|Weir1996|VanRaden2008", kinship_estimator_b, kinship_estimator_val);
 			else
 				Exit("\nError: Unrecognized parameter: %s\n", argv[i].c_str());
 		}
@@ -1108,7 +1342,7 @@ TARGET void SetParameters(bool isparfile)
 
 	if (!isparfile && p_b)
 	{
-		string partext = ReadAllText(p_val);
+		string partext = ReadAllText(PARFILE);
 		partext = ReplaceStr(partext, "\r\n", "\n");
 		partext = ReplaceStr(partext, "\n", "#DELIM#", '"');
 		partext = ReplaceStr(partext, "\t", "#DELIM#", '"');
@@ -1126,7 +1360,7 @@ TARGET void SetParameters(bool isparfile)
 		SetParameters(true);
 		return;
 	}
-
+	
 	if ((	structure_plot_val == 1 || 
 			cluster_plot_val == 1 ||
 			pcoa_plot_val == 1 ||
@@ -1135,6 +1369,7 @@ TARGET void SetParameters(bool isparfile)
 			gdist_plot_val == 1 ||
 			fst_plot_val == 1 ||
 			popas_plot_val == 1 ||
+			gwas_plot_val == 1 ||
 			g_replot_val == 1) &&
 		!FileExists(g_rscript_val.c_str()))
 		Exit("\nError: Rscript binary executable is not found.\n");
@@ -1149,11 +1384,15 @@ TARGET void ReleaseParameters()
 	string().swap(g_indtext_val);
 	string().swap(g_indtab_val);
 	string().swap(g_input_val);
+	string().swap(gwas_input_val);
 	string().swap(g_rscript_val);
 	string().swap(g_output_val);
 	string().swap(g_tmpdir_val);
 	string().swap(f_pop_val);
 	string().swap(slide_pop_val);
+	string().swap(decay_pop_val);
+	string().swap(block_pop_val);
+	string().swap(gwas_pop_val);
 	string().swap(spa_coord_val);
 	string().swap(OUTDIR);
 	string().swap(EXEDIR);
@@ -1208,6 +1447,7 @@ TARGET void ConvertIndTable()
 				indtab_node* tnode = new indtab_node(grids[j], j);
 				nodes.push_back(tnode);
 				pnode->subunits[grids[j]] = tnode;
+				tnode->index = pnode->subunits.size();
 			}
 			pnode = pnode->subunits[grids[j]];
 		}
@@ -1235,7 +1475,7 @@ TARGET void ConvertIndTable()
 	g_indtext_val = "";
 	for (int i = 1; i <= pnode->level; ++i)
 		g_indtext_val.append(buf[i]);
-	delete[] buf;
+	DEL(buf);
 
 	for (int i = 0; i < nodes.size(); ++i)
 		delete nodes[i];

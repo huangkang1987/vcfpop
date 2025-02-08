@@ -413,28 +413,28 @@ struct IND
 	TARGET double GenoFreq(POP<REAL>* grp, int model, int64 loc, double e);
 
 	/* Calculate the individual kinship coefficient */
-	TARGET void Theta(POP<REAL>* grp, double& f_ritland, double& f_loiselle, double& f_weir, double& t_ritland, double& t_loiselle, double& t_weir, int64 loc = -1);
+	TARGET void Theta(POP<REAL>* grp, double& f_ritland, double& f_loiselle, double& f_weir, double& f_vanraden, double& t_ritland, double& t_loiselle, double& t_weir, double& t_vanraden, int64 loc = -1);
 
 	/* Write header row for individual statistics */
 	TARGET static void IndividualStatisticsHeader(FILE* fout);
 
 	/* Write result row for individual statistics */
-	TARGET void PrintIndividualStatistics(FILE* fout);
+	TARGET void WriteIndividualStatistics(FILE* fout);
 
 	/* Write header row for ploidy inference, test */
 	TARGET static void PloidyInferenceHeader(FILE* fout);
 
 	/* Write result row for ploidy inference, test */
-	TARGET void PrintPloidyInference(FILE* fout);
+	TARGET void WritePloidyInference(FILE* fout);
 
 	/* Calculate the likelihood for ploidy inference */
-	TARGET void PloidyInferlnL3(map<int64, SPF<REAL>>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2);
+	TARGET void PloidyInferlnL3(umap<int64, SPF<REAL>>& depth, int v, double f0, double f1, double f2, double& l0, double& l1, double& l2);
 
 	/* Calculate the likelihood for ploidy inference */
-	TARGET double PloidyInferlnL(map<int64, SPF<REAL>>& depth, int v, double f);
+	TARGET double PloidyInferlnL(umap<int64, SPF<REAL>>& depth, int v, double f);
 
 	/* Infer the ploidy level from allelic depth distribution */
-	TARGET void PloidyInference(int v, double& lnL, double& f, map<int64, SPF<REAL>>& depth);
+	TARGET void PloidyInference(int v, double& lnL, double& f, umap<int64, SPF<REAL>>& depth);
 
 	/* average genotypic frequency at a diallelic locus given m copies of A */
 	TARGET double AvgG(int v, int m, double f);
@@ -443,7 +443,7 @@ struct IND
 	TARGET static void AssignmentHeader(FILE* fout);
 
 	/* Write result row for population assignment */
-	TARGET void PrintAssignment(FILE* fout);
+	TARGET void WriteAssignment(FILE* fout);
 
 	/* Read and set genotype from bcf input */
 	TARGET void AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*& dpstr, char*& adstr, int vlen, int asize, int gqlen, int dplen, int adlen, uint*& depth, TABLE<HASH, uint>& gfid, GENOTYPE*& gtab, ushort*& gatab, GENO_WRITER& wt);
@@ -539,6 +539,14 @@ struct POP
 	TARGET bool IsSubpop(POP<REAL>* pop);
 };
 
+/* Check pop value */
+template<typename REAL>
+TARGET void CheckPop(string& pop_val, const char* parname);
+
+/* Assign cpop */
+template<typename REAL>
+TARGET void AssignPop(bool pop_b, string& pop_val, const char* parname);
+
 /* Initialize */
 template<typename REAL>
 TARGET void Initialize();
@@ -583,8 +591,8 @@ THREAD2H(GetLocusPESModel);
 /* Functions */
 
 /* Misc */
-extern void* cpop_;													//Current population
-#define cpop (*(POP<REAL>**)&cpop_)
+template<typename REAL>
+extern POP<REAL>* cpop;												//Current population
 extern ushort missing_array[N_MAX_PLOIDY];							//Allele array of the missing genotypes
 extern GENOTYPE missing_genotype[N_MAX_PLOIDY + 1];					//Missing genotype at different ploidy level
 extern HASH missing_hash[N_MAX_PLOIDY + 1];							//Hash of missing genotype
@@ -624,6 +632,6 @@ extern BUCKET ad_bucket;
 
 /* Reassign individuals and populations */
 extern bool reassigned;												//Is ploidy assigned, to distiguish diversity filter and diversity estimation
-extern void* rinds_;												//Rearranged individuals according to population source
-#define rinds (*(IND<REAL>***)&rinds_)
+template<typename REAL>
+extern IND<REAL>** rinds;											//Rearranged individuals according to population source
 #pragma pack(pop)

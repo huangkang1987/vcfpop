@@ -1,6 +1,4 @@
 # Draw heatmap for genetic distance results of vcfpop
-options(warn = -1)
-options(echo = FALSE)
 
 UseLibrary <- function(lib) 
 {
@@ -14,8 +12,8 @@ UseLibrary <- function(lib)
   }
 }
 
-UseLibrary("ggplot2")
-UseLibrary("cowplot")
+suppressWarnings(suppressMessages(UseLibrary("ggplot2")))
+suppressWarnings(suppressMessages(UseLibrary("cowplot")))
 
 # set path here
 file <- paste(commandArgs(trailingOnly = TRUE), '.gdist.txt', sep = '')
@@ -151,4 +149,4 @@ for (i in 1:length(figw))
 }  
 figfile <- paste(substr(file, 0, nchar(file) - 4), ".pdf", sep = '')
 ggsave(figfile, plot = tfig, width = twidth, height = theight, limitsize = FALSE)
-cat(paste('\n', basename(figfile), '\n', sep='')
+cat(paste('\n', basename(figfile), '\n', sep=''))

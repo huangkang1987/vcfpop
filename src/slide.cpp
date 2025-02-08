@@ -1,7 +1,7 @@
 /* Sliding Window Functions */
 
-#pragma once
 #include "vcfpop.h"
+
 #define slide_table
 
 template struct WINDOW<double>;
@@ -30,8 +30,8 @@ template TARGET void SWINDOW<double>::Settle1();
 template TARGET void SWINDOW<float >::Settle1();
 //template TARGET void SWINDOW<double>::Settle2(int pst2, int st2);
 //template TARGET void SWINDOW<float >::Settle2(int pst2, int st2);
-template TARGET double SWINDOW<double>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int>& freq2);
-template TARGET double SWINDOW<float >::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int>& freq2);
+template TARGET double SWINDOW<double>::SettleTajimaD(TABLE<HASH, int>& freq1, umap<int, int>& freq2);
+template TARGET double SWINDOW<float >::SettleTajimaD(TABLE<HASH, int>& freq1, umap<int, int>& freq2);
 template TARGET bool SWINDOW<double>::Settle(int i, int newid);
 template TARGET bool SWINDOW<float >::Settle(int i, int newid);
 template TARGET void SWINDOW<double>::GetWindowId(int64 l, int& st, int& ed);
@@ -40,11 +40,14 @@ template TARGET void SWINDOW<float >::GetWindowId(int64 l, int& st, int& ed);
 template TARGET void CalcSlide<double>();
 template TARGET void CalcSlide<float >();
 
+template<> WINDOW<double> window<double>;
+template<> WINDOW<float > window<float >;
+
 #define extern 
-template<> extern WINDOW<double> window<double>;
-template<> extern WINDOW<float > window<float >;
-extern vector<char*> chroms;
-extern map<HASH, CHROM_PROP> chrom_sted;
+template<typename REAL> 
+extern WINDOW<REAL> window;
+extern vector<char*> slide_chromas;
+extern umap<HASH, CHROM_PROP> slide_chrom_sted;
 #undef extern 
 
 #ifndef _WINDOW
@@ -53,53 +56,29 @@ template<typename REAL>
 TARGET void WINDOW<REAL>::InitWindow()
 {
 	// assign cpop
-	if (slide_pop_b && ("total" == slide_pop_val || "Total" == slide_pop_val) || !slide_pop_b)
-		cpop = total_pop;
-	else if (slide_pop_b)
-	{
-		bool find = false;
-		for (int i = 0; !find && i < pop<REAL>.size; ++i)
-			if (pop<REAL>[i].name == slide_pop_val)
-			{
-				find = true;
-				cpop = &pop<REAL>[i];
-			}
-
-		if (!find)
-		{
-			for (uint rl = 0; !find && rl < reg<REAL>.size - 1; ++rl)
-				for (uint i = 0; !find && i < reg<REAL>[rl].size; ++i)
-					if (reg<REAL>[rl][i].name == slide_pop_val)
-					{
-						find = true;
-						cpop = &reg<REAL>[rl][i];
-					}
-		}
-
-		if (!find) Exit("\nError: Cannot find target population %s, check parameter -slide_pop.\n", slide_pop_val.c_str());
-	}
+	AssignPop<REAL>(slide_pop_b, slide_pop_val, "-slide_pop");
 
 	// assign grps
 	int64 nind2 = 0;
 	{
 		ngrps = 0;
 		for (int i = 0; i < npop; ++i)
-			if (apops[i]->nind > 0 && cpop->IsSubpop(apops[i]))
+			if (apops<REAL>[i]->nind > 0 && cpop<REAL>->IsSubpop(apops<REAL>[i]))
 				ngrps++;
 
 		grps = new POP<REAL>*[ngrps];
 		int nc = 0;
 		for (int i = 0; i < npop; ++i)
-			if (apops[i]->nind > 0 && cpop->IsSubpop(apops[i]))
+			if (apops<REAL>[i]->nind > 0 && cpop<REAL>->IsSubpop(apops<REAL>[i]))
 			{
-				grps[nc++] = apops[i];
-				nind2 += apops[i]->nind;
+				grps[nc++] = apops<REAL>[i];
+				nind2 += apops<REAL>[i]->nind;
 			}
 	}
 
 	//////////////////////////////////////////////////////////////////////
 
-	//Calculate freq for cpop and diversity estimation
+	//Calculate freq for cpop<REAL> and diversity estimation
 
 	RunThreads(&SlideFreqThread<REAL>, NULL, NULL, nloc * nind2 * (ngrps ? 2 : 1), nloc * nind2 * (ngrps ? 2 : 1),
 		"\nPreparing allele frequency:\n", 1, true);
@@ -136,7 +115,7 @@ TARGET void WINDOW<REAL>::InitWindow()
 	window_size = slide_windowsize_val;
 	window_step = slide_windowstep_val;
 
-	int nhaplo = cpop->nhaplotypes;
+	int nhaplo = cpop<REAL>->nhaplotypes;
 	if (nhaplo == 0) Exit("\nError: no individuals are genotyped.\n");
 
 	slide_a1 = new double[nhaplo + 1];
@@ -149,43 +128,47 @@ TARGET void WINDOW<REAL>::InitWindow()
 	for (int i = 2; i <= nhaplo; ++i)
 	{
 		int i1 = i - 1, n = i;
+		slide_a1[i] = slide_a1[i - 1] + 1.0 / (i1);
+		slide_a2[i] = slide_a2[i - 1] + 1.0 / (i1 * i1);
+
+		/*
 		double a1 = slide_a1[i] = slide_a1[i - 1] + 1.0 / (i1);
 		double a2 = slide_a2[i] = slide_a2[i - 1] + 1.0 / (i1 * i1);
 		double b1 = (n + 1.0) / (3.0 * (n - 1.0));
 		double b2 = 2.0 * (n * n + n + 3.0) / (9.0 * n * (n - 1.0));
 		double c1 = slide_c1[i] = b1 - 1.0 / a1;
 		double c2 = slide_c2[i] = b2 - (n + 2.0) / (a1 * n) + a2 / (a1 * a1);
+		*/
 	}
 
-	CHROM_PROP def_prop { 0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
-
 	// add chromosomes
+	CHROM_PROP def_prop{ 0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		char* chr = GetLoc(l).GetChrom();
 		HASH ha = HashString(chr, (int)strlen(chr));
-		
-		if (chrom_sted.find(ha) == chrom_sted.end())
+
+		if (slide_chrom_sted.find(ha) == slide_chrom_sted.end())
 		{
-			chrom_sted[ha] = def_prop;
-			chroms.push_back(chr);
+			slide_chrom_sted[ha] = def_prop;
+			slide_chromas.push_back(chr);
 		}
 
-		CHROM_PROP& prop = chrom_sted[ha];
+		CHROM_PROP& prop = slide_chrom_sted[ha];
 
-		prop.min = Min(GetLocPos(l), prop.min);
-		prop.max = Max(GetLocPos(l), prop.max);
+		prop.min = std::min((uint64)GetLocPos(l), prop.min);
+		prop.max = std::max((uint64)GetLocPos(l), prop.max);
 	}
 
 	// calculate st and ed window for each chromosome
 	window_count = 0;
-	for (int i = 0; i < chroms.size(); ++i)
+	for (int i = 0; i < slide_chromas.size(); ++i)
 	{
-		char* chr = chroms[i];
+		char* chr = slide_chromas[i];
 		HASH ha = HashString(chr, (int)strlen(chr));
-		CHROM_PROP& prop = chrom_sted[ha];
+		CHROM_PROP& prop = slide_chrom_sted[ha];
 
-		int nwindow = Max(0, 1 + (prop.max - window_size + window_step) / window_step);
+		int nwindow = std::max(0, 1 + (int)((prop.max - window_size + window_step) / window_step));
 		prop.st = window_count;
 		window_count += nwindow;
 		prop.ed = window_count - 1;
@@ -250,13 +233,13 @@ TARGET void WINDOW<REAL>::InitWindow()
 		NEW(pi_sum);
 	}
 
-	// 4 Watterson¡¯s thetaw
+	// 4 Watterson's thetaw
 	if (cthetaw)
 	{
 		NEW(thetaw_sum);
 	}
 
-	// 5 Tajima¡¯s D
+	// 5 Tajima's D
 	if (ctajimad)
 	{
 		NEW(d_sum);
@@ -284,13 +267,11 @@ TARGET void WINDOW<REAL>::InitWindow()
 
 #ifdef slide_table
 		nhaplo_freq1 = new TABLE<HASH, int>[window_count];
-		SetZero(nhaplo_freq1, window_count);
 #else
-		nhaplo_freq2 = new map  <int,  int>[window_count];
-		SetZero(nhaplo_freq2, window_count);
+		nhaplo_freq2 = new umap  <int, int>[window_count];
 #endif
 	}
-	
+
 	// 6 r2
 	if (cr2)
 	{
@@ -362,31 +343,27 @@ TARGET void WINDOW<REAL>::InitWindow()
 template<typename REAL>
 TARGET void WINDOW<REAL>::UnInitWindow()
 {
-#define DEL(x) delete[] (x); (x) = NULL
+	vector<char*>().swap(slide_chromas);
+	umap<HASH, CHROM_PROP>().swap(slide_chrom_sted);
 
-	vector<char*>().swap(chroms);
-	map<HASH, CHROM_PROP>().swap(chrom_sted);
-
-	cpop->UnAllocFreq();
+	cpop<REAL>->UnAllocFreq();
 	for (int i = 0; i < ngrps; ++i)
 		grps[i]->UnAllocFreq();
 
-	delete[] allele_freq_offset;
-	delete[] genotype_count_offset;
+	DEL(allele_freq_offset);
+	DEL(genotype_count_offset);
 
-	allele_freq_offset = genotype_count_offset = NULL;
-
-	delete[] slide_a1;
-	delete[] slide_a2;
-	delete[] slide_c1;
-	delete[] slide_c2;
-	delete[] grps;
+	DEL(slide_a1);
+	DEL(slide_a2);
+	DEL(slide_c1);
+	DEL(slide_c2);
+	DEL(grps);
 	ngrps = 0;
 
 	for (int i = 0; i < window_count; ++i) UnInitLock(lock[i]);
-	delete[] K;
-	delete[] C;
-	delete[] lock;
+	DEL(K);
+	DEL(C);
+	DEL(lock);
 
 	// 1 Fst
 	if (cNei1973)
@@ -437,22 +414,22 @@ TARGET void WINDOW<REAL>::UnInitWindow()
 		DEL(pi_sum);
 	}
 
-	// 4 Watterson¡¯s thetaw
+	// 4 Watterson's thetaw
 	if (cthetaw)
 	{
 		DEL(thetaw_sum);
 	}
 
-	// 5 Tajima¡¯s D
+	// 5 Tajima's D
 	if (ctajimad)
 	{
 		DEL(d_sum);
 		DEL(vd_sum);
 		DEL(N);
 #ifdef slide_table
-		delete[] nhaplo_freq1;
+		DEL(nhaplo_freq1);
 #else
-		delete[] nhaplo_freq2;
+		DEL(nhaplo_freq2);
 #endif
 	}
 
@@ -520,8 +497,6 @@ TARGET void WINDOW<REAL>::UnInitWindow()
 	{
 		DEL(I_sum);
 	}
-
-#undef DEL
 }
 
 /* Write result file */
@@ -562,11 +537,11 @@ TARGET void WINDOW<REAL>::Write()
 	if (cpi)
 		fprintf(FRES, "%cpi", g_delimiter_val);
 
-	// 4 Watterson¡¯s thetaw
+	// 4 Watterson's thetaw
 	if (cthetaw)
 		fprintf(FRES, "%cthetaw", g_delimiter_val);
 
-	// 5 Tajima¡¯s D
+	// 5 Tajima's D
 	if (ctajimad)
 		fprintf(FRES, "%cTajimaD", g_delimiter_val);
 
@@ -612,10 +587,10 @@ TARGET void WINDOW<REAL>::Write()
 
 	fprintf(FRES, "%s", g_linebreak_val);
 
-	for (char* chr : chroms)
+	for (char* chr : slide_chromas)
 	{
 		HASH ha = HashString(chr, (int)strlen(chr));
-		CHROM_PROP& prop = chrom_sted[ha];
+		CHROM_PROP& prop = slide_chrom_sted[ha];
 
 		for (int i = prop.st; i <= prop.ed; ++i)
 		{
@@ -628,7 +603,7 @@ TARGET void WINDOW<REAL>::Write()
 			fprintf(FRES, "%s", chr);
 			fprintf(FRES, "%c%lld", g_delimiter_val, pos_st + 1);
 			fprintf(FRES, "%c%lld", g_delimiter_val, pos_ed + 1);
-			fprintf(FRES, "%c%d",   g_delimiter_val, K[i]);
+			fprintf(FRES, "%c%d", g_delimiter_val, K[i]);
 
 			double invK = 1.0 / K[i];
 
@@ -683,14 +658,14 @@ TARGET void WINDOW<REAL>::Write()
 				WriteReal(FRES, pi_sum[i]);
 			}
 
-			// 4 Watterson¡¯s thetaw
+			// 4 Watterson's thetaw
 			if (cthetaw)
 			{
 				fprintf(FRES, "%c", g_delimiter_val);
 				WriteReal(FRES, thetaw_sum[i]);
 			}
 
-			// 5 Tajima¡¯s D
+			// 5 Tajima's D
 			if (ctajimad)
 			{
 				fprintf(FRES, "%c", g_delimiter_val);
@@ -778,7 +753,7 @@ TARGET void WINDOW<REAL>::GetWindowId(int64 l, int& st, int& ed)
 {
 	char* chr = GetLoc(l).GetChrom();
 	HASH ha = HashString(chr, (int)strlen(chr));
-	CHROM_PROP& prop = chrom_sted[ha];
+	CHROM_PROP& prop = slide_chrom_sted[ha];
 
 	if (prop.st == -1)
 	{
@@ -786,8 +761,8 @@ TARGET void WINDOW<REAL>::GetWindowId(int64 l, int& st, int& ed)
 		return;
 	}
 
-	st = prop.st + Max((int)GetLocPos(l) - (int)window_size + (int)window_step - 1, 0) / window_step;
-	ed = Min(prop.st + ((int)GetLocPos(l) - 1) / (int)window_step, prop.ed);
+	st = prop.st + std::max((int)GetLocPos(l) - (int)window_size + (int)window_step - 1, 0) / window_step;
+	ed = std::min(prop.st + ((int)GetLocPos(l) - 1) / (int)window_step, prop.ed);
 }
 #endif
 
@@ -818,11 +793,11 @@ TARGET void SWINDOW<REAL>::CalcLocus(int64 l, double* buf)
 		ped = ed;
 	}
 
-//////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////
 
 	_C++;
-	REAL* fre = cpop->GetFreq(l);
-	ushort* gcount = cpop->GetGenoCount(l);
+	REAL* fre = cpop<REAL>->GetFreq(l);
+	ushort* gcount = cpop<REAL>->GetGenoCount(l);
 
 	double ho = 0, how = 0;
 	double he = 0, ae = 0, I = 0;
@@ -841,7 +816,7 @@ TARGET void SWINDOW<REAL>::CalcLocus(int64 l, double* buf)
 		nhaplo += v * c;
 
 		ho += gt.HIndex() * c * v * (v - 1);
-		how +=              c * v * (v - 1);
+		how += c * v * (v - 1);
 
 		n += c;
 	}
@@ -849,7 +824,7 @@ TARGET void SWINDOW<REAL>::CalcLocus(int64 l, double* buf)
 	int k = n == 0 ? 0 : (ushort)CountK(fre, k1);
 
 	//set statistics to nan if k <= 2 to avoid involved in further average
-	
+
 	if (k < 2) return;
 
 	ho = ho / how;
@@ -874,18 +849,18 @@ TARGET void SWINDOW<REAL>::CalcLocus(int64 l, double* buf)
 	ae = 1 / a2;
 
 	//////////////////////////////////////////////////////////////////////////////////
-	
+
 	_K++;
 
 	// 1 Fst
 	if (ngrps >= 2)
 	{
-		if (cNei1973)			FST<REAL>::Fst_Nei1973(grps, ngrps, NULL, buf, l, &_Fst_Nei1973_sum1, &_Fst_Nei1973_sum2); 
-		if (cWeir1984)			FST<REAL>::Fst_Weir1984(grps, ngrps, NULL, l, &_Fst_Weir1984_sum1, &_Fst_Weir1984_sum2); 
-		if (cHudson1992)		FST<REAL>::Fst_Hudson1992(grps, ngrps, NULL, buf, l, &_Fst_Hudson1992_sum1, &_Fst_Hudson1992_sum2); 
-		if (cHedrick2005)		FST<REAL>::Fst_Hedrick2005(grps, ngrps, NULL, buf, l, &_Fst_Hedrick2005_sum1, &_Fst_Hedrick2005_sum2); 
-		if (cJost2008)			FST<REAL>::Fst_Jost2008(grps, ngrps, NULL, buf, l, &_Fst_Jost2008_sum1, &_Fst_Jost2008_sum2); 
-		if (cHuang2021_aneu)	FST<REAL>::Fst_Huang2021_aneu(grps, ngrps, 2, true, true, NULL, buf, l, &_Fst_Huang2021_aneu_sum1, &_Fst_Huang2021_aneu_sum2); 
+		if (cNei1973)			FST<REAL>::Fst_Nei1973(grps, ngrps, NULL, buf, l, &_Fst_Nei1973_sum1, &_Fst_Nei1973_sum2);
+		if (cWeir1984)			FST<REAL>::Fst_Weir1984(grps, ngrps, NULL, l, &_Fst_Weir1984_sum1, &_Fst_Weir1984_sum2);
+		if (cHudson1992)		FST<REAL>::Fst_Hudson1992(grps, ngrps, NULL, buf, l, &_Fst_Hudson1992_sum1, &_Fst_Hudson1992_sum2);
+		if (cHedrick2005)		FST<REAL>::Fst_Hedrick2005(grps, ngrps, NULL, buf, l, &_Fst_Hedrick2005_sum1, &_Fst_Hedrick2005_sum2);
+		if (cJost2008)			FST<REAL>::Fst_Jost2008(grps, ngrps, NULL, buf, l, &_Fst_Jost2008_sum1, &_Fst_Jost2008_sum2);
+		if (cHuang2021_aneu)	FST<REAL>::Fst_Huang2021_aneu(grps, ngrps, 2, true, true, NULL, buf, l, &_Fst_Huang2021_aneu_sum1, &_Fst_Huang2021_aneu_sum2);
 	}
 
 	// 2 Absolute divergence
@@ -896,11 +871,11 @@ TARGET void SWINDOW<REAL>::CalcLocus(int64 l, double* buf)
 	if (cpi)
 		_pi_sum += nhaplo / (nhaplo - 1) * he;
 
-	// 4 Watterson¡¯s thetaw
+	// 4 Watterson's thetaw
 	if (cthetaw)
 		_thetaw_sum += 1.0 / slide_a1[nhaplo];
 
-	// 5 Tajima¡¯s D
+	// 5 Tajima's D
 	if (ctajimad)
 	{
 		_d_sum += nhaplo / (nhaplo - 1) * he - 1.0 / slide_a1[nhaplo];
@@ -919,7 +894,7 @@ TARGET void SWINDOW<REAL>::CalcLocus(int64 l, double* buf)
 		//_vard1_sum += ((nhaplo + 1) / (3 * (nhaplo - 1)) - 1.0 / slide_a1[nhaplo]) / slide_a1[nhaplo];
 	}
 
-	// 5 Tajima¡¯s D  6 r2  7 D'  8 r2Delta  9 Delta'
+	// 5 Tajima's D  6 r2  7 D'  8 r2Delta  9 Delta'
 	//if (clocipair)
 		//CalcLociPair(l, nhaplo, buf);
 
@@ -969,9 +944,9 @@ TARGET void SWINDOW<REAL>::CalcLociPair(int64 l1, int nhaplo1, double* buf)
 
 	int k1 = GetLoc(l1).k;
 
-	REAL* fre1 = cpop->GetFreq(l1);
-	ushort* gcount1 = cpop->GetGenoCount(l1);
-	LOCSTAT1& stat11 = cpop->loc_stat1[l1];
+	REAL* fre1 = cpop<REAL>->GetFreq(l1);
+	ushort* gcount1 = cpop<REAL>->GetGenoCount(l1);
+	LOCSTAT1& stat11 = cpop<REAL>->loc_stat1[l1];
 	GENOTYPE* gtab1 = GetLoc(l1).GetGtab();
 	int ngeno1 = GetLoc(l1).ngeno;
 
@@ -996,9 +971,9 @@ TARGET void SWINDOW<REAL>::CalcLociPair(int64 l1, int nhaplo1, double* buf)
 		pst2 = st2;
 
 		int k2 = GetLoc(l2).k;
-		REAL* fre2 = cpop->GetFreq(l2);
-		ushort* gcount2 = cpop->GetGenoCount(l2);
-		LOCSTAT1& stat12 = cpop->loc_stat1[l2];
+		REAL* fre2 = cpop<REAL>->GetFreq(l2);
+		ushort* gcount2 = cpop<REAL>->GetGenoCount(l2);
+		LOCSTAT1& stat12 = cpop<REAL>->loc_stat1[l2];
 		GENOTYPE* gtab2 = GetLoc(l2).GetGtab();
 		int ngeno2 = GetLoc(l2).ngeno;
 
@@ -1028,8 +1003,8 @@ TARGET void SWINDOW<REAL>::CalcLociPair(int64 l1, int nhaplo1, double* buf)
 			SetZero(mAB, maxK * maxK + maxK * 2);
 			int nhaplo = 0;
 
-			GENO_READER rt1(cpop->ind0id, l1), rt2(cpop->ind0id, l2);
-			for (int i = 0; i < cpop->nind; ++i)
+			GENO_READER rt1(cpop<REAL>->ind0id, l1), rt2(cpop<REAL>->ind0id, l2);
+			for (int i = 0; i < cpop<REAL>->nind; ++i)
 			{
 				GENOTYPE& g1 = gtab1[rt1.Read()], &g2 = gtab2[rt2.Read()];
 				if (g1.Nalleles() == 0 || g2.Nalleles() == 0) continue;
@@ -1075,8 +1050,8 @@ TARGET void SWINDOW<REAL>::CalcLociPair(int64 l1, int nhaplo1, double* buf)
 
 			int sv2 = 0, nhaplo = 0, ntAABB = 0;
 
-			GENO_READER rt1(cpop->ind0id, l1), rt2(cpop->ind0id, l2);
-			for (int i = 0; i < cpop->nind; ++i)
+			GENO_READER rt1(cpop<REAL>->ind0id, l1), rt2(cpop<REAL>->ind0id, l2);
+			for (int i = 0; i < cpop<REAL>->nind; ++i)
 			{
 				GENOTYPE& g1 = gtab1[rt1.Read()], & g2 = gtab2[rt2.Read()];
 				if (g1.Nalleles() == 0 || g2.Nalleles() == 0) continue;
@@ -1181,7 +1156,7 @@ TARGET void SWINDOW<REAL>::InitSWindow()
 	_dxy_sum = 0;
 	_pi_sum = 0;
 	_thetaw_sum = 0;
-	_d_sum = 0; 
+	_d_sum = 0;
 #ifdef slide_table
 	new (&_nhaplo_freq1) TABLE<HASH, int>(true, NULL);
 #endif
@@ -1239,9 +1214,9 @@ TARGET void SWINDOW<REAL>::InitSWindow()
 	grps = window<REAL>.grps;
 	ngrps = window<REAL>.ngrps;
 
-	window_id	= new int[swindow_count];
-	K			= new int[swindow_count];
-	C			= new int[swindow_count];
+	window_id = new int[swindow_count];
+	K = new int[swindow_count];
+	C = new int[swindow_count];
 	SetVal(window_id, -1, swindow_count);
 	SetZero(K, swindow_count);
 	SetZero(C, swindow_count);
@@ -1297,13 +1272,13 @@ TARGET void SWINDOW<REAL>::InitSWindow()
 		NEW(pi_sum);
 	}
 
-	// 4 Watterson¡¯s thetaw
+	// 4 Watterson's thetaw
 	if (cthetaw)
 	{
 		NEW(thetaw_sum);
 	}
 
-	// 5 Tajima¡¯s D
+	// 5 Tajima's D
 	if (ctajimad)
 	{
 		NEW(d_sum);
@@ -1312,9 +1287,9 @@ TARGET void SWINDOW<REAL>::InitSWindow()
 		for (int i = 0; i < swindow_count; ++i)
 			new (&nhaplo_freq1[i]) TABLE<HASH, int>(true, NULL);
 #else
-		nhaplo_freq2 = new map<int, int>[swindow_count];
+		nhaplo_freq2 = new umap<int, int>[swindow_count];
 		for (int i = 0; i < swindow_count; ++i)
-			new (&nhaplo_freq2[i]) map<int, int>();
+			new (&nhaplo_freq2[i]) umap<int, int>();
 #endif
 	}
 
@@ -1389,11 +1364,9 @@ TARGET void SWINDOW<REAL>::InitSWindow()
 template<typename REAL>
 TARGET void SWINDOW<REAL>::UnInitSWindow()
 {
-#define DEL(x) delete[] (x); (x) = NULL
-
-	delete[] window_id;
-	delete[] K;
-	delete[] C;
+	DEL(window_id);
+	DEL(K);
+	DEL(C);
 
 	// 1 Fst
 	if (cNei1973)
@@ -1444,24 +1417,20 @@ TARGET void SWINDOW<REAL>::UnInitSWindow()
 		DEL(pi_sum);
 	}
 
-	// 4 Watterson¡¯s thetaw
+	// 4 Watterson's thetaw
 	if (cthetaw)
 	{
 		DEL(thetaw_sum);
 	}
 
-	// 5 Tajima¡¯s D
+	// 5 Tajima's D
 	if (ctajimad)
 	{
 		DEL(d_sum);
 #ifdef slide_table
-		for (int i = 0; i < swindow_count; ++i)
-			nhaplo_freq1[i].~TABLE();
-		delete[] nhaplo_freq1;
+		DEL(nhaplo_freq1);
 #else
-		for (int i = 0; i < swindow_count; ++i)
-			map<int, int>().swap(nhaplo_freq2[i]);
-		delete[] nhaplo_freq2;
+		DEL(nhaplo_freq2);
 #endif
 	}
 
@@ -1531,7 +1500,6 @@ TARGET void SWINDOW<REAL>::UnInitSWindow()
 	}
 
 	//SetZero(this, 1);
-#undef DEL
 }
 
 /* When a new locus has a different range, distributed current results to SWINDOW */
@@ -1603,13 +1571,13 @@ TARGET void SWINDOW<REAL>::Settle1()
 			ADD(pi_sum);
 		}
 
-		// 4 Watterson¡¯s thetaw
+		// 4 Watterson's thetaw
 		if (cthetaw)
 		{
 			ADD(thetaw_sum);
 		}
 
-		// 5 Tajima¡¯s D
+		// 5 Tajima's D
 		if (ctajimad)
 		{
 			ADD(d_sum);
@@ -1634,7 +1602,7 @@ TARGET void SWINDOW<REAL>::Settle1()
 			for (auto entry : _nhaplo_freq2)
 			{
 				int nhaplo = entry.first;
-				int count  = entry.second;
+				int count = entry.second;
 
 				for (int jj = pst; jj <= ped; ++jj)
 				{
@@ -1720,7 +1688,7 @@ TARGET void SWINDOW<REAL>::Settle1()
 	}
 	else
 	{
-	// add to SWINDOW (0 to edid) and (stid to swindow_count - 1)
+		// add to SWINDOW (0 to edid) and (stid to swindow_count - 1)
 #define ADD(x) Add((x), _ ## x, edid + 1); Add((x) + stid, _ ## x, _len); _ ## x = 0
 #define ADD2(x,y) Add((x), y, edid + 1); Add((x) + stid, y, _len); y = 0
 
@@ -1778,13 +1746,13 @@ TARGET void SWINDOW<REAL>::Settle1()
 			ADD(pi_sum);
 		}
 
-		// 4 Watterson¡¯s thetaw
+		// 4 Watterson's thetaw
 		if (cthetaw)
 		{
 			ADD(thetaw_sum);
 		}
 
-		// 5 Tajima¡¯s D
+		// 5 Tajima's D
 		if (ctajimad)
 		{
 			ADD(d_sum);
@@ -1793,7 +1761,7 @@ TARGET void SWINDOW<REAL>::Settle1()
 			{
 				TABLE_ENTRY<HASH, int>& entry = _nhaplo_freq1.GetEntry(i);
 				HASH nhaplo = entry.key;
-				int  count  = entry.val;
+				int  count = entry.val;
 
 				for (int jj = pst; jj <= ped; ++jj)
 				{
@@ -1809,7 +1777,7 @@ TARGET void SWINDOW<REAL>::Settle1()
 			for (auto entry : _nhaplo_freq2)
 			{
 				int nhaplo = entry.first;
-				int count  = entry.second;
+				int count = entry.second;
 
 				for (int jj = pst; jj <= ped; ++jj)
 				{
@@ -1895,7 +1863,7 @@ TARGET void SWINDOW<REAL>::Settle1()
 	}
 }
 
-/* When the new loci pair has a different range, distributed current results to SWINDOW 
+/* When the new loci pair has a different range, distributed current results to SWINDOW
 template<typename REAL>
 TARGET void SWINDOW<REAL>::Settle2(int pst2, int st2)
 {
@@ -1911,7 +1879,7 @@ TARGET void SWINDOW<REAL>::Settle2(int pst2, int st2)
 		int _st =  (edid + 1) % swindow_count == stid ? 0 : stid;
 		int _len = (edid + 1) % swindow_count == stid ? swindow_count : edid + 1 - stid;
 
-		// 5 Tajima¡¯s D
+		// 5 Tajima's D
 		if (ctajimad)
 		{
 			ADD2(vard_sum, _vard2_sum);
@@ -1953,7 +1921,7 @@ TARGET void SWINDOW<REAL>::Settle2(int pst2, int st2)
 
 		int _len = swindow_count - stid;
 
-		// 5 Tajima¡¯s D
+		// 5 Tajima's D
 		if (ctajimad)
 		{
 			ADD2(vard_sum, _vard2_sum);
@@ -1994,7 +1962,7 @@ TARGET void SWINDOW<REAL>::Settle2(int pst2, int st2)
 
 /* Settle Tajima D denominator */
 template<typename REAL>
-TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int>& freq2)
+TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, umap<int, int>& freq2)
 {
 	double re = 0;
 
@@ -2003,7 +1971,7 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int
 	{
 		TABLE_ENTRY<HASH, int>& entry1 = freq1.GetEntry(i);
 		HASH nhaplo1 = entry1.key;
-		int  count1  = entry1.val;
+		int  count1 = entry1.val;
 		double a1A = slide_a1[nhaplo1];
 		double a2A = slide_a2[nhaplo1];
 		double c1A = slide_c1[nhaplo1];
@@ -2035,7 +2003,7 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int
 	for (auto entry1 = freq2.begin(); entry1 != freq2.end(); ++entry1)
 	{
 		int nhaplo1 = entry1->first;
-		int count1  = entry1->second;
+		int count1 = entry1->second;
 		double a1A = slide_a1[nhaplo1];
 		double a2A = slide_a2[nhaplo1];
 		double c1A = slide_c1[nhaplo1];
@@ -2051,7 +2019,7 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int
 			}
 			else
 			{
-				int count2  = entry2->second;
+				int count2 = entry2->second;
 				double a1B = slide_a1[nhaplo2];
 				double a2B = slide_a2[nhaplo2];
 				double c2B = slide_c2[nhaplo2];
@@ -2070,15 +2038,15 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, map<int, int
 template<typename REAL>
 TARGET bool SWINDOW<REAL>::Settle(int i, int newid)
 {
-	#define ADD(x) if (isadd) AtomicAddFloat(window<REAL>.x[owid], (REAL)x[i]); x[i] = 0
+#define ADD(x) if (isadd) AtomicAddFloat(window<REAL>.x[owid], (REAL)x[i]); x[i] = 0
 
 	if (window_id[i] == newid) return false;
 
 	int owid = window_id[i];  window_id[i] = newid;
 	bool isadd = owid != -1 && K[i] >= 1;
 
-	atomic<int>& wC = *(atomic<int>*)&window<REAL>.C[owid];
-	atomic<int>& wK = *(atomic<int>*)&window<REAL>.K[owid];
+	atomic<int>& wC = *(atomic<int>*) & window<REAL>.C[owid];
+	atomic<int>& wK = *(atomic<int>*) & window<REAL>.K[owid];
 
 	if (isadd) wK += K[i]; K[i] = 0;
 
@@ -2131,13 +2099,13 @@ TARGET bool SWINDOW<REAL>::Settle(int i, int newid)
 		ADD(pi_sum);
 	}
 
-	// 4 Watterson¡¯s thetaw
+	// 4 Watterson's thetaw
 	if (cthetaw)
 	{
 		ADD(thetaw_sum);
 	}
 
-	// 5 Tajima¡¯s D
+	// 5 Tajima's D
 	if (ctajimad)
 	{
 		ADD(d_sum);
@@ -2168,7 +2136,7 @@ TARGET bool SWINDOW<REAL>::Settle(int i, int newid)
 				{
 					TABLE_ENTRY<HASH, int>& entry = freq1.GetEntry(j);
 					HASH nhaplo = entry.key;
-					int  count  = entry.val;
+					int  count = entry.val;
 
 					if (!freq2.ContainsKey(nhaplo))
 						freq2[nhaplo] = count;
@@ -2182,6 +2150,7 @@ TARGET bool SWINDOW<REAL>::Settle(int i, int newid)
 				{
 					window<REAL>.vd_sum[owid] = SettleTajimaD(freq2, freqo);
 					freq2.~TABLE();
+					freq2.bucket = NULL;
 				}
 #else
 				auto& freq1 = nhaplo_freq2[i];
@@ -2189,7 +2158,7 @@ TARGET bool SWINDOW<REAL>::Settle(int i, int newid)
 				auto& freqo = window<REAL>.nhaplo_freq1[owid];
 
 				if (*(int*)&freq2 == NULL)
-					new (&freq2) map<int, int>();
+					new (&freq2) umap<int, int>();
 
 				for (auto entry : freq1)
 				{
@@ -2207,7 +2176,7 @@ TARGET bool SWINDOW<REAL>::Settle(int i, int newid)
 				if (issettle)
 				{
 					window<REAL>.vd_sum[owid] = SettleTajimaD(freqo, freq2);
-					map<int, int>().swap(freq2);
+					umap<int, int>().swap(freq2);
 					*(int*)&freq2 = NULL;
 				}
 #endif
@@ -2291,7 +2260,7 @@ TARGET void SWINDOW<REAL>::GetWindowId(int64 l, int& st, int& ed)
 {
 	char* chr = GetLoc(l).GetChrom();
 	HASH ha = HashString(chr, (int)strlen(chr));
-	CHROM_PROP& prop = chrom_sted[ha];
+	CHROM_PROP& prop = slide_chrom_sted[ha];
 
 	if (prop.st == -1)
 	{
@@ -2299,8 +2268,8 @@ TARGET void SWINDOW<REAL>::GetWindowId(int64 l, int& st, int& ed)
 		return;
 	}
 
-	st = prop.st + Max((int)GetLocPos(l) - (int)window_size + (int)window_step - 1, 0) / window_step;
-	ed = Min(prop.st + ((int)GetLocPos(l) - 1) / (int)window_step, prop.ed);
+	st = prop.st + std::max((int)GetLocPos(l) - (int)window_size + (int)window_step - 1, 0) / window_step;
+	ed = std::min(prop.st + ((int)GetLocPos(l) - 1) / (int)window_step, prop.ed);
 }
 #endif
 
@@ -2378,17 +2347,17 @@ THREAD2(UpdateUnphaseGenotypes)
 		PROGRESS_VALUE += 2;
 	}
 
-	delete[] Gitab;
-	delete[] Gtmap;
-	delete[] slocus; slocus = nslocus;
-	delete[] omemory; locus_memory = nmemory;
-	delete[] tmemory;
+	DEL(Gitab);
+	DEL(Gtmap);
+	DEL(slocus); slocus = nslocus;
+	DEL(omemory); locus_memory = nmemory;
+	DEL(tmemory);
 
 	GT = 0; maxG = 0;
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		GT += slocus[l].ngeno;
-		maxG = Max(maxG, slocus[l].ngeno);
+		maxG = std::max(maxG, (int)slocus[l].ngeno);
 	}
 	geno_bucket.Replace(nbucket);
 }
@@ -2407,15 +2376,13 @@ TARGET void CalcSlide()
 
 	window<REAL>.InitWindow();
 
-	RunThreads(&SlidingWindowThread<REAL>, NULL, NULL, nloc, nloc,"\nCalculating sliding window:\n", g_nthread_val, true);
+	RunThreads(&SlidingWindowThread<REAL>, NULL, NULL, nloc, nloc, "\nCalculating sliding window:\n", g_nthread_val, true);
 
 	window<REAL>.Write();
 
 	window<REAL>.UnInitWindow();
 
 	CloseResFile();
-
-	if (usephase) RunThreads(&UpdateUnphaseGenotypes<REAL>, NULL, NULL, nloc * 3, nloc * 3, "\nUnphasing genotypes:\n", 1, true);
 
 	EvaluationEnd("Sliding window estimation");
 
@@ -2448,7 +2415,7 @@ THREAD2(SlidingWindowThread)
 		swins.Settle(i, -1);
 
 	swins.UnInitSWindow();
-	delete[] buf;
+	DEL(buf);
 }
 
 /* Prepare allele frequency and individual ploidy */
@@ -2456,7 +2423,7 @@ THREAD2(SlidePrepare)
 {
 	int* Ploidy = new int[maxG * g_nthread_val];
 	int* Nalleles = new int[maxG * g_nthread_val];
-	POP<REAL>* spop = (*(POP<REAL>**)&window<REAL>.cpop_);
+	POP<REAL>* spop = window<REAL>.cpop_;
 	IND<REAL>** inds = spop->inds;
 
 	int n = spop->nind;
@@ -2501,8 +2468,8 @@ THREAD2(SlidePrepare)
 			{
 				byte v = (byte)ploidy[gid];
 				vt[j] += v;
-				vmin[j] = Min(vmin[j], v);
-				vmax[j] = Max(vmax[j], v);
+				vmin[j] = std::min(vmin[j], v);
+				vmax[j] = std::max(vmax[j], v);
 			}
 		}
 
@@ -2532,8 +2499,8 @@ THREAD2(SlidePrepare)
 		for (int j = 0; j < n; ++j)
 		{
 			Vt[j] += vt[j];
-			Vmin[j] = Min(Vmin[j], vmin[j]);
-			Vmax[j] = Max(Vmax[j], vmax[j]);
+			Vmin[j] = std::min(Vmin[j], vmin[j]);
+			Vmax[j] = std::max(Vmax[j], vmax[j]);
 		}
 	}
 
@@ -2544,17 +2511,17 @@ THREAD2(SlidePrepare)
 		inds[i]->vmin = Vmin[i] == 100 ? 0 : (byte)Vmin[i];
 		inds[i]->vmax = Vmax[i];
 
-		minploidy = Min(minploidy, inds[i]->vmin);
-		maxploidy = Max(maxploidy, inds[i]->vmax);
-		maxvt = Max(maxvt, inds[i]->vt);
+		minploidy = std::min(minploidy, inds[i]->vmin);
+		maxploidy = std::max(maxploidy, inds[i]->vmax);
+		maxvt = std::max(maxvt, inds[i]->vt);
 		sumvt += inds[i]->vt;
 	}
 
-	delete[] Vt;
-	delete[] Vmin;
-	delete[] Vmax;
-	delete[] Ploidy;
-	delete[] Nalleles;
+	DEL(Vt);
+	DEL(Vmin);
+	DEL(Vmax);
+	DEL(Ploidy);
+	DEL(Nalleles);
 
 	POP<REAL>** grps = window<REAL>.grps;
 	int ngrps = window<REAL>.ngrps;
@@ -2584,8 +2551,8 @@ THREAD2(SlidePrepare)
 /* Calculate allele frequencies for each population and region */
 THREAD2(SlideFreqThread)
 {
-	if (allele_freq_offset)      delete[] allele_freq_offset;
-	if (genotype_count_offset)   delete[] genotype_count_offset;
+	DEL(allele_freq_offset);
+	DEL(genotype_count_offset);
 
 	//Allocate new offset
 	allele_freq_offset = new uint64[nloc];
@@ -2601,15 +2568,15 @@ THREAD2(SlideFreqThread)
 		genotype_count_offset[l] = GT;
 		KT += GetLoc(l).k;
 		GT += GetLoc(l).ngeno;
-		maxK = Max((int)GetLoc(l).k, maxK);
-		maxG = Max((int)GetLoc(l).ngeno, maxG);
+		maxK = std::max((int)GetLoc(l).k, maxK);
+		maxG = std::max((int)GetLoc(l).ngeno, maxG);
 	}
 
 	/////////////////////////////////////////////////////////////
-	
+
 	POP<REAL>** grps = window<REAL>.grps;
 	int ngrps = window<REAL>.ngrps;
-	POP<REAL>* spop = (*(POP<REAL>**) & window<REAL>.cpop_);
+	POP<REAL>* spop = window<REAL>.cpop_;
 
 	//Allocate memory for allele frequency and genotype count for each population and region
 	spop->AllocFreq();
