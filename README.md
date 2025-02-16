@@ -21,8 +21,7 @@ The functions of VCFPOP consist of:
 17.	Hierarchical clustering; 
 18.	Bayesian clustering. 
 
-v 1.08b
-x64 executables (for Windows, Ubuntu and Mac OS X), user manual, source code and example files
+v 1.08b 64bit executables (for Windows, Ubuntu and Mac OS X), user manual, source code and example files
 https://github.com/huangkang1987/vcfpop/blob/main/archive/vcfpop%20v1.08b.zip
 
 Bug report and suggestions
