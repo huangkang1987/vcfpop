@@ -61,6 +61,7 @@ TARGET void WINDOW<REAL>::InitWindow()
 	// assign grps
 	int64 nind2 = 0;
 	{
+		cpop_ = cpop<REAL>;
 		ngrps = 0;
 		for (int i = 0; i < npop; ++i)
 			if (apops<REAL>[i]->nind > 0 && cpop<REAL>->IsSubpop(apops<REAL>[i]))
@@ -120,14 +121,13 @@ TARGET void WINDOW<REAL>::InitWindow()
 
 	slide_a1 = new double[nhaplo + 1];
 	slide_a2 = new double[nhaplo + 1];
-	slide_c1 = new double[nhaplo + 1];
-	slide_c2 = new double[nhaplo + 1];
 
 	slide_a1[0] = slide_a1[1] = slide_a2[0] = slide_a2[1] = 0;
 
 	for (int i = 2; i <= nhaplo; ++i)
 	{
 		int i1 = i - 1, n = i;
+
 		slide_a1[i] = slide_a1[i - 1] + 1.0 / (i1);
 		slide_a2[i] = slide_a2[i - 1] + 1.0 / (i1 * i1);
 
@@ -142,7 +142,7 @@ TARGET void WINDOW<REAL>::InitWindow()
 	}
 
 	// add chromosomes
-	CHROM_PROP def_prop{ 0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
+	CHROM_PROP def_prop{ 0xFFFFFFFFFFFFFFFF, 0, 0xFFFFFFFFFFFFFFFF, 0 };;
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		char* chr = GetLoc(l).GetChrom();
@@ -355,8 +355,6 @@ TARGET void WINDOW<REAL>::UnInitWindow()
 
 	DEL(slide_a1);
 	DEL(slide_a2);
-	DEL(slide_c1);
-	DEL(slide_c2);
 	DEL(grps);
 	ngrps = 0;
 
@@ -1208,8 +1206,6 @@ TARGET void SWINDOW<REAL>::InitSWindow()
 
 	slide_a1 = window<REAL>.slide_a1;
 	slide_a2 = window<REAL>.slide_a2;
-	slide_c1 = window<REAL>.slide_c1;
-	slide_c2 = window<REAL>.slide_c2;
 	cpop_ = window<REAL>.cpop_;
 	grps = window<REAL>.grps;
 	ngrps = window<REAL>.ngrps;
@@ -1974,28 +1970,23 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, umap<int, in
 		int  count1 = entry1.val;
 		double a1A = slide_a1[nhaplo1];
 		double a2A = slide_a2[nhaplo1];
-		double c1A = slide_c1[nhaplo1];
-		double c2A = slide_c2[nhaplo1];
+		double c1A = (nhaplo1 + 1.0) / (3.0 * (nhaplo1 - 1.0)) - 1.0 / a1A;
+		double c2A = 2.0 * (nhaplo1 * nhaplo1 + nhaplo1 + 3.0) / (9.0 * nhaplo1 * (nhaplo1 - 1.0)) - (nhaplo1 + 2.0) / (a1A * nhaplo1) + a2A / (a1A * a1A);
+		
+		re += count1 * (double)(count1 - 1) * 0.5 * c2A / (a2A + a1A * a1A);
+		re += count1 * c1A / a1A;
 
-		for (int j = i; j < freq1.size; ++j)
+		for (int j = i + 1; j < freq1.size; ++j)
 		{
 			TABLE_ENTRY<HASH, int>& entry2 = freq1.GetEntry(j);
 			HASH nhaplo2 = entry2.key;
 
-			if (nhaplo1 == nhaplo2)
-			{
-				re += count1 * (double)(count1 - 1) * 0.5 * c2A / (a2A + a1A * a1A);
-				re += count1 * c1A / a1A;
-			}
-			else
-			{
-				int count2 = entry2.val;
-				double a1B = slide_a1[nhaplo2];
-				double a2B = slide_a2[nhaplo2];
-				double c2B = slide_c2[nhaplo2];
+			int count2 = entry2.val;
+			double a1B = slide_a1[nhaplo2];
+			double a2B = slide_a2[nhaplo2];
+			double c2B = 2.0 * (nhaplo2 * nhaplo2 + nhaplo2 + 3.0) / (9.0 * nhaplo2 * (nhaplo2 - 1.0)) - (nhaplo2 + 2.0) / (a1B * nhaplo2) + a2B / (a1B * a1B);
 
-				re += 2 * count1 * (double)count2 * sqrt(c2A * c2B) / (sqrt(a2A * a2B) + a1A * a1B);
-			}
+			re += 2 * count1 * (double)count2 * sqrt(c2A * c2B) / (sqrt(a2A * a2B) + a1A * a1B);
 		}
 	}
 	freq1.Clear();
@@ -2006,8 +1997,6 @@ TARGET double SWINDOW<REAL>::SettleTajimaD(TABLE<HASH, int>& freq1, umap<int, in
 		int count1 = entry1->second;
 		double a1A = slide_a1[nhaplo1];
 		double a2A = slide_a2[nhaplo1];
-		double c1A = slide_c1[nhaplo1];
-		double c2A = slide_c2[nhaplo1];
 
 		for (auto entry2 = entry1; entry2 != freq2.end(); ++entry2)
 		{

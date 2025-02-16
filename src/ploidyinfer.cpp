@@ -118,7 +118,7 @@ TARGET void IND<REAL>::WritePloidyInference(FILE* fout)
 	uint adb[16];
 	uint* ad2 = adb;
 	uint bins[101] = { 0 };
-	char filename[4096];
+	char filename[PATH_LEN];
 	sprintf(filename, "used2-%s.txt", name);
 	FILE* f1 = fopen(filename, "wb");
 	fprintf(f1, "dA\tdB\r\n");

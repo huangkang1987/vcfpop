@@ -42,6 +42,7 @@
 #define ARMA_DONT_USE_WRAPPER
 #define ARMA_NO_DEBUG
 #define ARMA_WARN_LEVEL 0
+#define ARMA_DONT_PRINT_ERRORS
 #include <armadillo>
 
 /* armadillo provide these functions */

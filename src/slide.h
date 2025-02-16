@@ -9,8 +9,8 @@ template<typename REAL> struct WINDOW;
 
 struct CHROM_PROP
 {
-	uint64 max; 
 	uint64 min;
+	uint64 max; 
 	uint64 st;
 	uint64 ed;
 };
@@ -25,8 +25,6 @@ struct SWINDOW
 
 	double* slide_a1;
 	double* slide_a2;
-	double* slide_c1;
-	double* slide_c2;
 	POP<REAL>* cpop_;
 	POP<REAL>** grps;
 	int ngrps;
@@ -211,8 +209,6 @@ struct WINDOW
 
 	double* slide_a1;
 	double* slide_a2;
-	double* slide_c1;
-	double* slide_c2;
 	POP<REAL>* cpop_;
 	POP<REAL>** grps;
 	int ngrps;

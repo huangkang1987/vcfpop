@@ -35,7 +35,8 @@ TARGET void BLOCK_PAIR<REAL>::Write(FILE* fout)
 		if (block_estimator_val[1])
 		{
 			this->r2A /= this->r2B;
-			this->r2A2 = sqrt((this->r2A2 / this->r2B - this->r2A * this->r2A) / (1 - this->r2B2 / (this->r2B * this->r2B)) * this->r2B2 / (this->r2B * this->r2B));
+			double val = std::max(0.0, (this->r2A2 / this->r2B - this->r2A * this->r2A) / (1 - this->r2B2 / (this->r2B * this->r2B)) * this->r2B2 / (this->r2B * this->r2B));
+			this->r2A2 = sqrt(val);   //sqrt(s^2 V2/V1^2)
 			//this->r2B = this->r2A / this->r2A2;
 			//this->r2B2 = MinusLogPNormal(this->r2B);
 		}
@@ -43,7 +44,8 @@ TARGET void BLOCK_PAIR<REAL>::Write(FILE* fout)
 		if (block_estimator_val[2])
 		{
 			this->r2DeltaA /= this->r2DeltaB;
-			this->r2DeltaA2 = sqrt((this->r2DeltaA2 / this->r2DeltaB - this->r2DeltaA * this->r2DeltaA) / (1 - this->r2DeltaB2 / (this->r2DeltaB * this->r2DeltaB)) * this->r2DeltaB2 / (this->r2DeltaB * this->r2DeltaB));
+			double val = std::max(0.0, (this->r2DeltaA2 / this->r2DeltaB - this->r2DeltaA * this->r2DeltaA) / (1 - this->r2DeltaB2 / (this->r2DeltaB * this->r2DeltaB)) * this->r2DeltaB2 / (this->r2DeltaB * this->r2DeltaB));
+			this->r2DeltaA2 = sqrt(val);
 			//this->r2DeltaB = this->r2DeltaA / this->r2DeltaA2; 
 			//this->r2DeltaB2 = MinusLogPNormal(this->r2DeltaB);
 		}
@@ -51,7 +53,8 @@ TARGET void BLOCK_PAIR<REAL>::Write(FILE* fout)
 		if (block_estimator_val[3])
 		{
 			this->DpA /= this->DpB;
-			this->DpA2 = sqrt((this->DpA2 / this->DpB - this->DpA * this->DpA) / (1 - this->DpB2 / (this->DpB * this->DpB)) * this->DpB2 / (this->DpB * this->DpB));
+			double val = std::max(0.0, (this->DpA2 / this->DpB - this->DpA * this->DpA) / (1 - this->DpB2 / (this->DpB * this->DpB)) * this->DpB2 / (this->DpB * this->DpB));
+			this->DpA2 = sqrt(val);
 			//this->DpB = this->DpA / this->DpA2;
 			//this->DpB2 = MinusLogPNormal(this->DpB);
 		}
@@ -59,7 +62,8 @@ TARGET void BLOCK_PAIR<REAL>::Write(FILE* fout)
 		if (block_estimator_val[4])
 		{
 			this->DeltapA /= this->DeltapB;
-			this->DeltapA2 = sqrt((this->DeltapA2 / this->DeltapB - this->DeltapA * this->DeltapA) / (1 - this->DeltapB2 / (this->DeltapB * this->DeltapB)) * this->DeltapB2 / (this->DeltapB * this->DeltapB));
+			double val = std::max(0.0,  (this->DeltapA2 / this->DeltapB - this->DeltapA * this->DeltapA) / (1 - this->DeltapB2 / (this->DeltapB * this->DeltapB)) * this->DeltapB2 / (this->DeltapB * this->DeltapB));
+			this->DeltapA2 = sqrt(val);
 			//this->DeltapB = this->DeltapA / this->DeltapA2;
 			//this->DeltapB2 = MinusLogPNormal(this->DeltapB);
 		}
@@ -162,7 +166,7 @@ TARGET void CalcBlock()
 		"\nPreparing allele frequency:\n", 1, true);
 
 	// add chromosomes
-	CHROM_PROP def_prop{ 0, 0xFFFFFFFF, 0, 0xFFFFFFFF };
+	CHROM_PROP def_prop{ 0xFFFFFFFFFFFFFFFF, 0, 0xFFFFFFFFFFFFFFFF, 0 };
 	for (int64 l = 0; l < nloc; ++l)
 	{
 		char* chr = GetLoc(l).GetChrom();
@@ -298,23 +302,27 @@ THREAD2(BlockThread)
 		BLOCK_PAIR<REAL>& pair = block_pairs<REAL>[pairid];
 		BLOCK_SINGLE<REAL>& block1 = *block_pairs<REAL>[pairid].block1;
 		BLOCK_SINGLE<REAL>& block2 = *block_pairs<REAL>[pairid].block2;
-
-		for (uint l1 = block1.loc_st; l1 <= block1.loc_ed; ++l1)
+		
+		if (block1.loc_st != -1) 
 		{
-			DECAY<REAL> decay[block_maxnloc2];
-			RNG<double> rng(g_seed_val + l1, RNG_SALT_LDBLOCK);
-
-			for (uint l2 = block2.loc_st, nloc2 = 0; l2 <= block2.loc_ed; ++l2)
+			for (uint l1 = block1.loc_st; l1 <= block1.loc_ed; ++l1)
 			{
-				if (block_ratio_val == 1 || rng.Uniform() < block_ratio_val)
-					loc2[nloc2++] = l2;
+				DECAY<REAL> decay[block_maxnloc2];
+				RNG<double> rng(g_seed_val + l1, RNG_SALT_LDBLOCK);
 
-				if (nloc2 == block_maxnloc2 || l2 == block2.loc_ed && nloc2)
+				if (block2.loc_st == -1) continue;
+				for (uint l2 = block2.loc_st, nloc2 = 0; l2 <= block2.loc_ed; ++l2)
 				{
-					decay[0].CalcLD(l1, loc2, buf, nloc2, genopair);
-					for (int j = 0; j < nloc2; ++j)
-						pair.AddDecay(decay[j]);
-					nloc2 = 0;
+					if (block_ratio_val == 1 || rng.Uniform() < block_ratio_val)
+						loc2[nloc2++] = l2;
+
+					if (nloc2 == block_maxnloc2 || l2 == block2.loc_ed && nloc2)
+					{
+						decay[0].CalcLD(l1, loc2, buf, nloc2, genopair);
+						for (int j = 0; j < nloc2; ++j)
+							pair.AddDecay(decay[j]);
+						nloc2 = 0;
+					}
 				}
 			}
 		}

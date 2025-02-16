@@ -117,6 +117,9 @@ TARGET vector<string> SplitStr(const string& str, const string& delim);
 /* Convert to lower case characters */
 TARGET void StrLwr(char* str);
 
+/* Convert to lower case characters */
+TARGET string StrLwr(string& str);
+
 /* Read an allele from spagedi files*/
 TARGET int ReadIntegerSpagedi(char*& str, int maxdigit);
 

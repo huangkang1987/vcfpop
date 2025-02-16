@@ -265,7 +265,8 @@ TARGET void GWAS<REAL>::ScoreTest(CPOINT& xx_ml0, int resid, GWAS_NULL_MODEL<REA
 	//The distribution of P under H0 is uniform so I use Hessian estimator for V
 	rmat V = GetV_Hessian2(r, sig, mXIG);
 	score[resid].lnL0_ML = xx_ml0.lnL;
-	score[resid].LM = trace(G.t() * V * G);
+	score[resid].LM = trace(G.t() * solve(-V, G, solve_opts::force_sym));
+
 	//score[resid].df = kXIG - kXI;
 	score[resid].mlogP = MinusLogPChi2(score[resid].LM, degrees_of_freedom[resid]);
 	score[resid].P = exp(-score[resid].mlogP);
@@ -333,13 +334,13 @@ template<typename REAL>
 TARGET void GWAS<REAL>::WaldTest(CPOINT& xx_reml, int resid)
 {
 	lnL_reml_profile1(fabs(xx_reml.real_space[0]), NULL, NULL, false);
-	iE01 = inv_sympd(mE01);
+	iE01 = InvSym(mE01);
 	rmat betaG = iEF01.rows(kXI, kXIG - 1);
 
 	// Wald test
 	wald[resid].lnL_REML = xx_reml.lnL;
 	//wald[resid].df = kXIG - kXI;
-	wald[resid].W = trace(betaG.t() * inv_sympd(iE01.submat(kXI, kXI, kXIG - 1, kXIG - 1) * sig2_from_r) * betaG);  
+	wald[resid].W = trace(betaG.t() * solve(iE01.submat(kXI, kXI, kXIG - 1, kXIG - 1) * sig2_from_r, betaG, solve_opts::force_sym));  
 	wald[resid].mlogP = MinusLogPChi2(wald[resid].W, degrees_of_freedom[resid]);
 	wald[resid].P = exp(-wald[resid].mlogP);
 }
@@ -352,11 +353,11 @@ TARGET void GWAS<REAL>::Prepare()
 
 	if (GWAS_DEBUG)
 	{
-		//Read from ped file, gwas_debug
+		//Read from ped file, GWAS_DEBUG
 		FILE* f1 = fopen("C:\\Desktop\\gwas\\gemma_clone\\clone.ped", "rb");
 		FILE* f2 = fopen("C:\\Desktop\\gwas\\gemma_clone\\clone.env", "rb");
 
-		// Allocate memory, gwas_debug
+		// Allocate memory, GWAS_DEBUG
 		nploidy = 1;
 		ploidy[0] = 2;
 		ploidyidx[2] = 0;
@@ -371,7 +372,7 @@ TARGET void GWAS<REAL>::Prepare()
 		oY = zeros<rmat>(n, 1);  //
 		oX = zeros<rmat>(n, kX);  //
 
-		// Read data, gwas_debug
+		// Read data, GWAS_DEBUG
 		noffset = new int64[m + 1];
 		Gb = new byte[n * m * 2];
 		char buf[100];
@@ -389,7 +390,7 @@ TARGET void GWAS<REAL>::Prepare()
 			fscanf(f1, "%s", buf); // Sex
 			fscanf(f1, sizeof(REAL) == 8 ? "%lf" : "%f", &oY(i)); // Phenotype
 
-			// Read Genotype, gwas_debug
+			// Read Genotype, GWAS_DEBUG
 			for (int64 l = 0; l < m; ++l)
 			{
 				char c1;
@@ -417,7 +418,7 @@ TARGET void GWAS<REAL>::Prepare()
 			}
 		}
 
-		// count alleles, gwas_debug
+		// count alleles, GWAS_DEBUG
 		int coffset = 0;
 		vector<byte> valleles;
 		for (int64 l = 0; l < m; ++l)
@@ -440,7 +441,7 @@ TARGET void GWAS<REAL>::Prepare()
 		}
 		noffset[m] = coffset;
 
-		// create genotype matrix, gwas_debug
+		// create genotype matrix, GWAS_DEBUG
 		oG = zeros<rmat>(n, noffset[m]);
 
 		// read genotypes
@@ -476,7 +477,7 @@ TARGET void GWAS<REAL>::Prepare()
 		fclose(f1);
 		fclose(f2);
 
-		// fill missing, gwas_debug
+		// fill missing, GWAS_DEBUG
 		int64 nbatch = (m + gwas_batch_val - 1) / gwas_batch_val;
 #pragma omp parallel  for num_threads(g_nthread_val)  schedule(dynamic, 1)
 		for (int64 batch = 0; batch < nbatch; ++batch)
@@ -490,7 +491,7 @@ TARGET void GWAS<REAL>::Prepare()
 			Imputation<REAL>(0, gwas_imputeG_val, tG, lst, led, noffset, false, *(rmat*)NULL);
 		}
 
-		// estimate relatedness, gwas_debug
+		// estimate relatedness, GWAS_DEBUG
 		if (gwas_restimator_val == 1 || gwas_restimator_val == 2)
 		{
 			rrow mW = zeros<rrow>(1, noffset[m]);
@@ -516,7 +517,7 @@ TARGET void GWAS<REAL>::Prepare()
 		GWAS_coltype.push_back("Ind");		GWAS_coltype.push_back("Normal");
 		GWAS_colname.push_back("Ind");		GWAS_colname.push_back("Phenotype");
 
-		// Convert proportion into dosage, debug
+		// Convert proportion into dosage, DEBUG
 		if (gwas_dosage_val == 1)
 			oG = oG * 2;
 	}
@@ -560,6 +561,11 @@ TARGET void GWAS<REAL>::Prepare()
 		{
 			vector<string> row;
 			if (!ReadCsvLine(row, file)) break;
+
+			bool allblank = std::all_of(row.begin(), row.end(), 
+				[](const string& str) { return str.size() == 0; });
+
+			if (allblank) continue;
 
 			if (row.size() != GWAS_coltype.size())
 				Exit("Error: #cols are wrong in row %d of GWAS input file.", nr);
@@ -917,9 +923,10 @@ TARGET void GWAS<REAL>::CalcLocus(int64 _l)
 					xx_ml0 = null_model->xx_ml0;
 				else
 				{
-					xx_ml0 = CPOINT::GradientDescent(Param, GWAS::lnL_ml_profile2, 2);
-					xx_ml0 = BestPoint(xx_ml0, CPOINT::GradientDescent(Param, GWAS::lnL_ml_profile1, 1));
-					
+					xx_ml0 = CPOINT::LineSearch(Param, GWAS::lnL_ml_profile1);
+					//xx_ml0 = CPOINT::DownHillSimplex(Param, GWAS::lnL_ml_profile1, 1, 1e-4, 1);
+					//xx_ml0 = CPOINT::GradientDescent(Param, GWAS::lnL_ml_profile2, 2);
+
 					if (gwas_imputeG_val != 10)
 					{
 						lnL_ml_profile1(fabs(xx_ml0.real_space[0]), NULL, NULL, false);
@@ -941,39 +948,20 @@ TARGET void GWAS<REAL>::CalcLocus(int64 _l)
 			// LRT test
 			if (gwas_test_val[2])
 			{
-				xx_ml = CPOINT::GradientDescent(Param, GWAS::lnL_ml_profile2, 2);
-				xx_ml = BestPoint(xx_ml, CPOINT::GradientDescent(Param, GWAS::lnL_ml_profile1, 1, false, xx_ml.unc_space));
-				
-				if (xx_ml.lnL < xx_ml0.lnL)
-				{	
-					xx_ml = BestPoint(xx_ml, CPOINT::GradientDescent(Param, GWAS::lnL_ml_profile1, 1));
-					LRTTest(xx_ml, xx_ml0, resid);
-				}
-				else
-				{
-					LRTTest(xx_ml, xx_ml0, resid);
-					if (lrt[resid].P < 0.01)
-					{
-						xx_ml = BestPoint(xx_ml, CPOINT::GradientDescent(Param, GWAS::lnL_ml_profile1, 1));
-						if (lrt[resid].lnL_ML != xx_ml.lnL)
-							LRTTest(xx_ml, xx_ml0, resid);
-					}
-				}
+				xx_ml = CPOINT::LineSearch(Param, GWAS::lnL_ml_profile1);
+				//xx_ml = CPOINT::DownHillSimplex(Param, GWAS::lnL_ml_profile1, 1, 1e-4, 1);
+				//xx_ml = CPOINT::GradientDescent(Param, GWAS::lnL_ml_profile2, 2);
+				LRTTest(xx_ml, xx_ml0, resid);
 			}
             
 			// Wald test
 			if (gwas_test_val[1])
 			{
-				xx_reml = CPOINT::GradientDescent(Param, GWAS::lnL_reml_profile2, 2);
-				xx_reml = BestPoint(xx_reml, CPOINT::GradientDescent(Param, GWAS::lnL_reml_profile1, 1, false, xx_reml.unc_space));
-				WaldTest(xx_reml, resid);
+				xx_reml = CPOINT::LineSearch(Param, GWAS::lnL_reml_profile1);
+				//xx_reml = CPOINT::DownHillSimplex(Param, GWAS::lnL_reml_profile1, 1, 1e-4, 1);
+				//xx_reml = CPOINT::GradientDescent(Param, GWAS::lnL_reml_profile2, 2);
 
-				if (wald[resid].P < 0.01)
-				{
-					xx_reml = BestPoint(xx_reml, CPOINT::GradientDescent(Param, GWAS::lnL_reml_profile1, 1));
-					if (wald[resid].lnL_REML != xx_reml.lnL)
-						WaldTest(xx_reml, resid);
-				}
+				WaldTest(xx_reml, resid);
 			}			
             
 			tmem.nref--;
@@ -1160,7 +1148,7 @@ TARGET double GWAS<REAL>::lnL_reml_profile1(double r, rmat* G, rmat* H, bool iss
 	if (G)
 	{
 		SetVar12(r2);
-		iE01 = inv_sympd(mE01);
+		iE01 = InvSym(mE01);
 		iEF01 = iE01 * mF01;
 	}
 	else
@@ -1171,11 +1159,13 @@ TARGET double GWAS<REAL>::lnL_reml_profile1(double r, rmat* G, rmat* H, bool iss
 
 	double ldVr = LogProd(cVr.memptr(), n);
 	double sig2 = sig2_from_r = trace(mJ01 - mF01.t() * iEF01) / nk;
+	sig2 = std::max(1e-8, sig2);
 	double f = -0.5 * (nk * 1.83787706640934548 + nk * log(sig2) + ldVr + real(log_det(mE01)) + nk);
 
 	if (G)
 	{
-		rmat iJ = inv_sympd(mJ01 - mF01.t() * iEF01);
+		rmat iJs = mJ01 - mF01.t() * iEF01;
+		rmat iJ = InvSym(iJs);
 		rmat iS = iJ * (-mJ12 + 2 * iEF01.t() * mF12 - iEF01.t() * mE12 * iEF01);
 		G[0] = -0.5 * (sum(cr) - trace(iE01 * mE12) + nk * iS);
 
@@ -1209,7 +1199,7 @@ TARGET double GWAS<REAL>::lnL_ml_profile1(double r, rmat* G, rmat* H, bool issqu
 	if (G)
 	{
 		SetVar12(r2);
-		iE01 = inv_sympd(mE01);
+		iE01 = InvSym(mE01);
 		iEF01 = iE01 * mF01;
 	}
 	else
@@ -1220,11 +1210,13 @@ TARGET double GWAS<REAL>::lnL_ml_profile1(double r, rmat* G, rmat* H, bool issqu
 
 	double ldVr = LogProd(cVr.memptr(), n);
 	double sig2 = sig2_from_r = trace(mJ01 - mF01.t() * iEF01) / n;
+	sig2 = std::max(1e-8, sig2);
 	double f = -0.5 * (n * 1.83787706640934548 + n * log(sig2) + ldVr + n);
 
 	if (G)
 	{
-		rmat iJ = inv_sympd(mJ01 - mF01.t() * iEF01);
+		rmat iJs = mJ01 - mF01.t() * iEF01;
+		rmat iJ = InvSym(iJs);
 		rmat iS = iJ * (-mJ12 + 2 * iEF01.t() * mF12 - iEF01.t() * mE12 * iEF01);
 		G[0] = -0.5 * (sum(cr) + n * iS);
 
@@ -1258,7 +1250,7 @@ TARGET double GWAS<REAL>::lnL_reml_profile2(double r, double sig, rmat* G, rmat*
 	if (G)
 	{
 		SetVar12(r2);
-		iE01 = inv_sympd(mE01);
+		iE01 = InvSym(mE01);
 		iEF01 = iE01 * mF01;
 	}
 	else
@@ -1272,7 +1264,8 @@ TARGET double GWAS<REAL>::lnL_reml_profile2(double r, double sig, rmat* G, rmat*
 		sig2 = sig2_from_r = trace(mJ01 - mF01.t() * iEF01) / nk;
 		sig = sqrt(sig2);
 	}
-
+	
+	sig2 = std::max(1e-8, sig2);
 	double ldVr = LogProd(cVr.memptr(), n);
 	double f = -0.5 * (nk * 1.83787706640934548 + nk * log(sig2) + ldVr + real(log_det(mE01)) + trace(mJ01) / sig2 - trace(mF01.t() * iEF01) / sig2);
 
@@ -1320,7 +1313,7 @@ TARGET double GWAS<REAL>::lnL_ml_profile2(double r, double sig, rmat* G, rmat* H
 	if (G)
 	{
 		SetVar12(r2);
-		iE01 = inv_sympd(mE01);
+		iE01 = InvSym(mE01);
 		iEF01 = iE01 * mF01;
 	}
 	else
@@ -1334,7 +1327,8 @@ TARGET double GWAS<REAL>::lnL_ml_profile2(double r, double sig, rmat* G, rmat* H
 		sig2 = sig2_from_r = trace(mJ01 - mF01.t() * iEF01) / n;
 		sig = sqrt(sig2);
 	}
-
+	
+	sig2 = std::max(1e-8, sig2);
 	double ldVr = LogProd(cVr.memptr(), n);
 	double f = -0.5 * (n * 1.83787706640934548 + n * log(sig2) + ldVr + trace(mJ01) / sig2 - trace(mF01.t() * iEF01) / sig2);
 
@@ -1400,7 +1394,8 @@ TARGET rmat GWAS<REAL>::GetV_OPG2(double r, double sig, rmat& beta, rmat& X)
 {
 	double r2 = r * r;
 	rmat G = (X.each_col() % ((mY - X * beta) / (sig + (sig * r2) * cR)));
-	return inv_sympd(G.t() * G);
+	rmat GtG = G.t() * G;
+	return InvSym(GtG);
 }
 
 /* Variance-covariance matrix by Hessian estimator */
@@ -1408,8 +1403,7 @@ template<typename REAL>
 TARGET rmat GWAS<REAL>::GetV_Hessian2(double r, double sig, rmat& X)
 {
 	double sig2 = sig * sig, r2 = r * r;
-	rmat H = X.t() * (X.each_col() % (-1 / (sig2 + sig2 * r2 * cR)));
-	return inv_sympd(-H);
+	return X.t() * (X.each_col() % (-1 / (sig2 + sig2 * r2 * cR)));
 }
 
 #ifdef _xxx
@@ -1476,7 +1470,7 @@ TARGET double GWAS<REAL>::lnL_reml_profile3(double sig, double tau, rmat& G, rma
 	rmat mF01 = mQ * mW01 * mPt, mF02 = mQ * mW02 * mPt, mF12 = mQ * mW12 * mPt, mF03 = mQ * mW03 * mPt, mF13 = mQ * mW13 * mPt, mF23 = mQ * mW23 * mPt;
 
 	// 6. Assign
-	rmat mA = inv_sympd(mE01);
+	rmat mA = InvSym(mE01);
 	rmat mF01tA = mF01.t() * mA, mF02tA = mF02.t() * mA, mF12tA = mF12.t() * mA;
 	rmat mE02A = mE02 * mA, mE12A = mE12 * mA, mE03A = mE03 * mA, mE13A = mE13 * mA, mE23A = mE23 * mA;
 	rmat mE02A02A = mE02A * mE02A, mE02A12A = mE02A * mE12A, mE12A12A = mE12A * mE12A;
@@ -1585,7 +1579,7 @@ TARGET double GWAS<REAL>::lnL_ml_profile3(double sig, double tau, rmat& G, rmat&
 	rmat mF01 = mQt.t() * mW01 * mPt, mF02 = mQt.t() * mW02 * mPt, mF12 = mQt.t() * mW12 * mPt, mF03 = mQt.t() * mW03 * mPt, mF13 = mQt.t() * mW13 * mPt, mF23 = mQt.t() * mW23 * mPt;
 
 	// 6. Assign
-	rmat mA = inv_sympd(mE01);
+	rmat mA = InvSym(mE01);
 	rmat mF01tA = mF01.t() * mA, mF02tA = mF02.t() * mA, mF12tA = mF12.t() * mA;
 	rmat mE02A = mE02 * mA, mE12A = mE12 * mA, mE03A = mE03 * mA, mE13A = mE13 * mA, mE23A = mE23 * mA;
 	rmat mE02A02A = mE02A * mE02A, mE02A12A = mE02A * mE12A, mE12A12A = mE12A * mE12A;
@@ -1643,7 +1637,7 @@ TARGET rmat GWAS<REAL>::GetV_OPG3(double sig, double tau, rmat& ma, rmat& mX)
 {
 	double sig2 = sig * sig, tau2 = tau * tau;
 	rmat G = mX.each_col() % ((mY - mX * ma) / (tau2 * cR + sig2));
-	return inv_sympd(G.t() * G);
+	return - G.t() * G;
 }
 
 /* Variance-covariance matrix by Hessian estimator */
@@ -1651,8 +1645,7 @@ template<typename REAL>
 TARGET rmat GWAS<REAL>::GetV_Hessian3(double sig, double tau, rmat& ma, rmat& mX)
 {
 	double sig2 = sig * sig, tau2 = tau * tau;
-	rmat H = -(mX.t() * (mX.each_col() % (1 / (tau2 * cR + sig2))));
-	return inv_sympd(-H);
+	return -(mX.t() * (mX.each_col() % (1 / (tau2 * cR + sig2))));
 }
 #endif
 
@@ -1850,7 +1843,10 @@ TARGET void RemoveDupCol(rmat &mX)
 	{
 		rmat mQ, mR;
 		qr(mQ, mR, mX);
-		mX = mX.cols(find(abs(mR.diag()) > (REAL)1e-10));
+		if constexpr (std::is_same_v<float, REAL>)
+			mX = mX.cols(find(abs(mR.diag()) > 1e-7f));
+		else
+			mX = mX.cols(find(abs(mR.diag()) > 1e-10));
 	}
 }
 
@@ -2226,7 +2222,12 @@ TARGET void Imputation(int stage, int method, rmat& G, int64 lst, int64 led, int
 		}
 
 		rmat U, V; rcol S;
-		Svd(Gi, U, S, V);
+		
+		for (int ii = 0; ii < 10 && U.n_elem == 0; ++ii)
+			Svd(Gi, U, S, V);
+		
+		if (U.n_elem == 0)
+			Exit("Error: fail to perfrom SVD decomposition.");
 
 		int nsvd = std::min(gwas_nsvd_val, (int)S.n_elem);
 		Gi = U.cols(0, nsvd - 1) * diagmat(S.rows(0, nsvd - 1)) * V.cols(0, nsvd - 1).t();

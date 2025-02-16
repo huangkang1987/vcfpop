@@ -44,7 +44,7 @@ header <- line
 while (TRUE) 
 {
   line = readLines(fid, n = 1)
-  if (length(line) == 0) 
+  if (nchar(line) < 10) 
     break
   table[length(table) + 1] <- line
 }

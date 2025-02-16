@@ -19,7 +19,7 @@ LIBZ       = $(shell brew --prefix zlib)/lib/libz.a
 LIBOBLAS   = -framework Accelerate
 
 vcfpop: $(OBJ)
-	$(CC) $(INCLUDE) $(OBJ) $(LIB) -m64 -fopenmp -march=native -DNDEBUG -DENABLE_RELATEDNESS -pthread $(LIBZ) $(LIBOBLAS) -lm -ldl -o vcfpop
+	$(CC) $(INCLUDE) $(OBJ) $(LIB) -m64 -fopenmp -march=native -DNDEBUG -DENABLE_RELATEDNESS -pthread $(LIBZ) $(LIBOBLAS) -lm -ldl -lgfortran -o vcfpop
 
 structureCUDA.o : structureCUDA.cpp $(HEADER) 
 	$(CC) $(INCLUDE) $(FLAGS) -c structureCUDA.cpp

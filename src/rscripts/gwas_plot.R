@@ -38,23 +38,14 @@ Yp <- grep("\\.n$", col)
 
 # tests performed
 Waldp <- grep("^Wald\\.", col) + 3
-Scorep <- grep("^LRT\\.", col) + 3
-LRTp <- grep("^Score\\.", col) + 3
+Scorep <- grep("^Score\\.", col) + 3
+LRTp <- grep("^LRT\\.", col) + 3
 
 # number of rows and columns in the plotting panel
 nrow <- max(length(Waldp), length(LRTp), length(Scorep))
 ncol <- ifelse(length(Waldp ) > 0, 1, 0) + 
         ifelse(length(LRTp  ) > 0, 1, 0) + 
         ifelse(length(Scorep) > 0, 1, 0)
-
-# debug
-for (i in 1:23)
-{
-  interval <- nrow(df) / 23;
-  st <- floor((i - 1) * interval) + 1
-  ed <- floor(i * interval)
-  df$Chrom[st:ed] <- sprintf("%d", i)
-}
 
 # configure CHR
 ChrSort <- mixedsort(unique(df$Chrom))
@@ -79,18 +70,8 @@ for (i in 1:length(Yp))
   Yname <- strsplit(col[Yp[i]], "\\.")[[1]][1]
   if (length(Waldp) > 0)
   {
-    df2$P <- df[,Waldp[i]]
+    df2$P <- pmax(df[,Waldp[i]],1e-10)
     title <- paste(Yname, ": Wald test", sep = "")
-    manhattan(df2, main = title, 
-              genomewideline = -log10(5e-8), 
-              col = c("blue", "orange"), chrlabs = ChrSort,
-              annotatePval = 5e-8, annotateTop = F, 
-              cex = 0.3, cex.main = 1.2, cex.lab = 1.5, cex.axis = 1.5)
-  }
-  if (length(LRTp) > 0)
-  {
-    df2$P <- df[,LRTp[i]]
-    title <- paste(Yname, ": LRT test", sep = "")
     manhattan(df2, main = title, 
               genomewideline = -log10(5e-8), 
               col = c("blue", "orange"), chrlabs = ChrSort,
@@ -99,8 +80,18 @@ for (i in 1:length(Yp))
   }
   if (length(Scorep) > 0)
   {
-    df2$P <- df[,Scorep[i]]
+    df2$P <- pmax(df[,Scorep[i]],1e-10)
     title <- paste(Yname, ": Score test", sep = "")
+    manhattan(df2, main = title, 
+              genomewideline = -log10(5e-8), 
+              col = c("blue", "orange"), chrlabs = ChrSort,
+              annotatePval = 5e-8, annotateTop = F, 
+              cex = 0.3, cex.main = 1.2, cex.lab = 1.5, cex.axis = 1.5)
+  }
+  if (length(LRTp) > 0)
+  {
+    df2$P <- pmax(df[,LRTp[i]],1e-10)
+    title <- paste(Yname, ": LRT test", sep = "")
     manhattan(df2, main = title, 
               genomewideline = -log10(5e-8), 
               col = c("blue", "orange"), chrlabs = ChrSort,

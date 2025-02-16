@@ -7,8 +7,8 @@ struct OFFSET;
 struct LOADLINE;
 struct FILEINFO;
 
-#define VERSION						("1.08")
-#define DATE						("2025-02-01")
+#define VERSION						("1.08b")
+#define DATE						("2025-02-15")
 
 #define N_FUNC						(21)						//Number of main options
 #define N_MAX_OPTION				(35)						//Maximum options

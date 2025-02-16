@@ -61,25 +61,37 @@ TARGET void DECAY_INTERVAL<REAL>::AddDecay(DECAY<REAL>& ld)
 {
 	npair++;
 
-	r2A			+= ld.r2A;
-	r2A2		+= ld.r2A * ld.r2A / ld.r2B;
-	r2B			+= ld.r2B;
-	r2B2		+= ld.r2B * ld.r2B;
-
-	r2DeltaA	+= ld.r2DeltaA;
-	r2DeltaA2	+= ld.r2DeltaA * ld.r2DeltaA / ld.r2DeltaB;
-	r2DeltaB	+= ld.r2DeltaB;
-	r2DeltaB2	+= ld.r2DeltaB * ld.r2DeltaB;
-
-	DpA			+= ld.DpA;
-	DpA2		+= ld.DpA * ld.DpA / ld.DpB;
-	DpB			+= ld.DpB;
-	DpB2		+= ld.DpB * ld.DpB;
-
-	DeltapA		+= ld.DeltapA;
-	DeltapA2	+= ld.DeltapA * ld.DeltapA / ld.DeltapB;
-	DeltapB		+= ld.DeltapB;
-	DeltapB2	+= ld.DeltapB * ld.DeltapB;
+	if (ld.r2B != 0)
+	{
+		r2A			+= ld.r2A;                   // Sum(Ai)
+		r2A2		+= ld.r2A * ld.r2A / ld.r2B; // Sum(Ai Ai / Bi)
+		r2B			+= ld.r2B;                   // V1
+		r2B2		+= ld.r2B * ld.r2B;          // V2
+	}
+	
+	if (ld.r2DeltaB != 0)
+	{
+		r2DeltaA	+= ld.r2DeltaA;
+		r2DeltaA2	+= ld.r2DeltaA * ld.r2DeltaA / ld.r2DeltaB;
+		r2DeltaB	+= ld.r2DeltaB;
+		r2DeltaB2	+= ld.r2DeltaB * ld.r2DeltaB;
+	}
+	
+	if (ld.DpB != 0)
+	{
+		DpA			+= ld.DpA;
+		DpA2		+= ld.DpA * ld.DpA / ld.DpB;
+		DpB			+= ld.DpB;
+		DpB2		+= ld.DpB * ld.DpB;
+	}
+	
+	if (ld.DeltapB != 0)
+	{
+		DeltapA		+= ld.DeltapA;
+		DeltapA2	+= ld.DeltapA * ld.DeltapA / ld.DeltapB;
+		DeltapB		+= ld.DeltapB;
+		DeltapB2	+= ld.DeltapB * ld.DeltapB;
+	}
 }
 
 /* Write table header */
@@ -104,34 +116,38 @@ TARGET void DECAY_INTERVAL<REAL>::Write(FILE* fout, char* chrom, int id)
 
 	if (npair)
 	{
-		if (block_estimator_val[1])
+		if (decay_estimator_val[1])
 		{
 			r2A /= r2B;
-			r2A2 = sqrt((r2A2 / r2B - r2A * r2A) / (1 - r2B2 / (r2B * r2B)) * r2B2 / (r2B * r2B));
+			double val = std::max(0.0, (r2A2 / r2B - r2A * r2A) / (1 - r2B2 / (r2B * r2B)) * r2B2 / (r2B * r2B));
+			r2A2 = sqrt(val);   //sqrt(s^2 V2/V1^2)
 			//r2B = r2A / r2A2;
 			//r2B2 = MinusLogPNormal(r2B);
 		}
 
-		if (block_estimator_val[2])
+		if (decay_estimator_val[2])
 		{
 			r2DeltaA /= r2DeltaB;
-			r2DeltaA2 = sqrt((r2DeltaA2 / r2DeltaB - r2DeltaA * r2DeltaA) / (1 - r2DeltaB2 / (r2DeltaB * r2DeltaB)) * r2DeltaB2 / (r2DeltaB * r2DeltaB));
-			//r2DeltaB = r2DeltaA / r2DeltaA2;
+			double val = std::max(0.0, (r2DeltaA2 / r2DeltaB - r2DeltaA * r2DeltaA) / (1 - r2DeltaB2 / (r2DeltaB * r2DeltaB)) * r2DeltaB2 / (r2DeltaB * r2DeltaB));
+			r2DeltaA2 = sqrt(val);
+			//r2DeltaB = r2DeltaA / r2DeltaA2; 
 			//r2DeltaB2 = MinusLogPNormal(r2DeltaB);
 		}
 
-		if (block_estimator_val[3])
+		if (decay_estimator_val[3])
 		{
 			DpA /= DpB;
-			DpA2 = sqrt((DpA2 / DpB - DpA * DpA) / (1 - DpB2 / (DpB * DpB)) * DpB2 / (DpB * DpB));
+			double val = std::max(0.0, (DpA2 / DpB - DpA * DpA) / (1 - DpB2 / (DpB * DpB)) * DpB2 / (DpB * DpB));
+			DpA2 = sqrt(val);
 			//DpB = DpA / DpA2;
 			//DpB2 = MinusLogPNormal(DpB);
 		}
 
-		if (block_estimator_val[4])
+		if (decay_estimator_val[4])
 		{
 			DeltapA /= DeltapB;
-			DeltapA2 = sqrt((DeltapA2 / DeltapB - DeltapA * DeltapA) / (1 - DeltapB2 / (DeltapB * DeltapB)) * DeltapB2 / (DeltapB * DeltapB));
+			double val = std::max(0.0,  (DeltapA2 / DeltapB - DeltapA * DeltapA) / (1 - DeltapB2 / (DeltapB * DeltapB)) * DeltapB2 / (DeltapB * DeltapB));
+			DeltapA2 = sqrt(val);
 			//DeltapB = DeltapA / DeltapA2;
 			//DeltapB2 = MinusLogPNormal(DeltapB);
 		}

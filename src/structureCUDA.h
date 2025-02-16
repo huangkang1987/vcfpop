@@ -39,9 +39,9 @@ TARGETCUDA void ShowDevicesCUDA();
 
 TARGETCUDA void ResetDeviceCUDA();
 
-TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* VT, int64 m, int64 n);
+TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* V, int64 m, int64 n);
 
-TARGETCUDA void Svd32CUDA(float* A, float* U, float* S, float* VT, int64 m, int64 n);
+TARGETCUDA void Svd32CUDA(float* A, float* U, float* S, float* V, int64 m, int64 n);
 
 TARGETCUDA void Eig64CUDA(double* A, double* U, double* V, int64 n);
 

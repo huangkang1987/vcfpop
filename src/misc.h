@@ -135,6 +135,18 @@ TARGET int CountK(REAL* fre, int k2)
 	return re;
 }
 
+/* Supress LAPACK Warning */
+extern "C" void xerbla_(char* msg, int* info, int len);
+
+/* Supress LAPACK Warning */
+extern "C" void xerbla(char* msg, int* info, int len);
+
+/* Supress LAPACK Warning */
+extern "C" void LAPACKE_xerbla(char* msg, int info);
+
+/* Supress LAPACK Warning */
+extern "C" void F77_xerbla(const char* msg, int* info);
+
 /* Set a bit in a variable */
 TARGET void SetBit(byte& b, int pos, bool val);
 
@@ -178,7 +190,7 @@ TARGET double GetElapse(timepoint& begin);
 TARGET void EvaluationBegin();
 
 /* Record time when evaluation is finished and append results to the evaluation file */
-TARGET void EvaluationEnd(const char* text);
+TARGET void EvaluationEnd(string text);
 
 /* Return memory usage */
 TARGET int64 GetMemoryUsage();
@@ -247,10 +259,18 @@ struct CPOINT
 
 	/* Sort points */
 	TARGET void static Order(CPOINT* xx, int dim);
-
-	/* Gradient descent algorithm, need G and H */
+	
+	/* Gradient descent algorithm, need G but not H */
 	template<typename REAL>
 	TARGET CPOINT static GradientDescent(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), int dim, bool IsMinimize = false, double* Init = NULL);
+	
+	// 1-D line search, do not need G and H */
+	template<typename REAL>
+	TARGET CPOINT static LineSearch(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), double* Range = NULL);
+
+	// Newton's method, need Gradient matrix and Hessian matrix
+	template<typename REAL>
+	TARGET CPOINT static Newton(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), int dim, double* Init = NULL);
 
 	/* Downhill Simplex algorithm, do not need G and H*/
 	template<typename REAL>
@@ -1016,5 +1036,5 @@ TARGET T Align(T addr, int nalign)
 
 /* Calculate task in multiple threads */
 TARGET void RunThreads(void (*Func) (int), void (*GuardFunc1) (int), void (*GuardFunc2) (int),
-	int64 ntot, int64 nct, const char* info, int nthreads, bool isfirst, int nprogress = g_progress_val);
+	int64 ntot, int64 nct, string info, int nthreads, bool isfirst, int nprogress = g_progress_val);
 

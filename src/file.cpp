@@ -3,13 +3,13 @@
 #include "vcfpop.h"
 
 /* Map a file into memory */
-TARGET byte* FileMapping::MapingReadOnlyFile(char* filename)
+TARGET byte* FileMapping::MapingReadOnlyFile(string filename)
 {
 #ifdef _WIN64
-	hFile = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+	hFile = CreateFileA(filename.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 
 	if (hFile == INVALID_HANDLE_VALUE)
-		Exit("fail to map file %s into memory.", filename);
+		Exit("fail to map file %s into memory.", filename.c_str());
 
 	DWORD size_low, size_high;
 	size_low = GetFileSize(hFile, &size_high);
@@ -17,7 +17,7 @@ TARGET byte* FileMapping::MapingReadOnlyFile(char* filename)
 	hMapFile = CreateFileMapping(hFile, NULL, PAGE_READONLY, size_high, size_low, NULL);
 
 	if (hMapFile == INVALID_HANDLE_VALUE)
-		Exit("fail to map file %s into memory.", filename);
+		Exit("fail to map file %s into memory.", filename.c_str());
 
 	addr = (byte*)MapViewOfFile(hMapFile, FILE_MAP_READ, 0, 0, 0);
 
@@ -25,15 +25,15 @@ TARGET byte* FileMapping::MapingReadOnlyFile(char* filename)
 #else
 	size = GetFileLen(filename);
 
-	hFile = open(filename, O_RDONLY);
+	hFile = open(filename.c_str(), O_RDONLY);
 
 	if (hFile == -1)
-		Exit("fail to map file %s into memory.", filename);
+		Exit("fail to map file %s into memory.", filename.c_str());
 
 	addr = (byte*)mmap(NULL, size, PROT_READ, MAP_SHARED, hFile, 0);
 
 	if (addr == MAP_FAILED)
-		Exit("fail to map file %s into memory.", filename);
+		Exit("fail to map file %s into memory.", filename.c_str());
 
 	return addr;
 #endif
@@ -53,9 +53,9 @@ TARGET void FileMapping::UnMapingReadOnlyFile()
 }
 
 /* Get file size */
-TARGET int64 GetFileLen(char* file)
+TARGET int64 GetFileLen(string file)
 {
-	FILE* f1 = fopen(file, "rb");
+	FILE* f1 = fopen(file.c_str(), "rb");
 	fseeko64(f1, 0, SEEK_END);
 	int64 re = ftello64(f1);
 	fclose(f1);
@@ -266,21 +266,20 @@ TARGET FILE* FOpen(char* buf, const char* type, const char* fmt ...)
 }
 
 /* Open result file and write parameters */
-TARGET void OpenResFile(const char* _spec, const char* title)
+TARGET void OpenResFile(string spec, string title)
 {
-	char* spec = (char*)_spec;
 	time_t time1;
 	time(&time1);
 	FRES_TIME = localtime(&time1);
-	FRES = FOpen(FRES_NAME, "wb", "%s.%s.txt", g_output_val.c_str(), spec + 1);
+	FRES = FOpen(FRES_NAME, "wb", "%s.%s.txt", g_output_val.c_str(), spec.c_str() + 1);
 	setvbuf(FRES, FRES_BUF, _IOFBF, LINE_BUFFER);
-	const char* prefix = title[0] == '#' ? "#" : "";
+	string prefix = title[0] == '#' ? "#" : "";
 
-	fprintf(FRES, "%s%s calculated by vcfpop v%s%s", prefix, title, VERSION, g_linebreak_val);
-	fprintf(FRES, "%s  Input: %s%s", prefix, g_input_val.c_str(), g_linebreak_val);
-	fprintf(FRES, "%s  Output: %s%s", prefix, g_output_val.c_str(), g_linebreak_val);
-	fprintf(FRES, "%s  Time: %04d-%02d-%02d %02d:%02d:%02d%s", prefix, FRES_TIME->tm_year + 1900, FRES_TIME->tm_mon + 1, FRES_TIME->tm_mday, FRES_TIME->tm_hour, FRES_TIME->tm_min, FRES_TIME->tm_sec, g_linebreak_val);
-	WriteParameters(FRES, spec, (char*)prefix);
+	fprintf(FRES, "%s%s calculated by vcfpop v%s%s", prefix.c_str(), title.c_str(), VERSION, g_linebreak_val);
+	fprintf(FRES, "%s  Input: %s%s", prefix.c_str(), g_input_val.c_str(), g_linebreak_val);
+	fprintf(FRES, "%s  Output: %s%s", prefix.c_str(), g_output_val.c_str(), g_linebreak_val);
+	fprintf(FRES, "%s  Time: %04d-%02d-%02d %02d:%02d:%02d%s", prefix.c_str(), FRES_TIME->tm_year + 1900, FRES_TIME->tm_mon + 1, FRES_TIME->tm_mday, FRES_TIME->tm_hour, FRES_TIME->tm_min, FRES_TIME->tm_sec, g_linebreak_val);
+	WriteParameters(FRES, spec, prefix);
 }
 
 /* Close result file and write parameters */
@@ -290,7 +289,7 @@ TARGET void CloseResFile()
 }
 
 /* Open temp files */
-TARGET void OpenTempFiles(uint n, const char* spec, byte flag[])
+TARGET void OpenTempFiles(uint n, string spec, byte flag[])
 {
 	TEMP_NAMES = new char*[n];
 	TEMP_FILES = new FILE*[n];
@@ -302,7 +301,7 @@ TARGET void OpenTempFiles(uint n, const char* spec, byte flag[])
 		TEMP_BUFS[i] = new char[LINE_BUFFER];
 		TEMP_NAMES[i] = new char[PATH_LEN];
 		TEMP_FILES[i] = FOpen(TEMP_NAMES[i], "wb+", "%svcfpop_%04d_%02d_%02d_%02d_%02d_%02d%s%d%s",
-			g_tmpdir_val.c_str(), FRES_TIME->tm_year + 1900, FRES_TIME->tm_mon + 1, FRES_TIME->tm_mday, FRES_TIME->tm_hour, FRES_TIME->tm_min, FRES_TIME->tm_sec, spec, i + 1, ".tmp");
+			g_tmpdir_val.c_str(), FRES_TIME->tm_year + 1900, FRES_TIME->tm_mon + 1, FRES_TIME->tm_mday, FRES_TIME->tm_hour, FRES_TIME->tm_min, FRES_TIME->tm_sec, spec.c_str(), i + 1, ".tmp");
 		setvbuf(TEMP_FILES[i], TEMP_BUFS[i], _IOFBF, LINE_BUFFER);
 	}
 }
@@ -348,25 +347,25 @@ TARGET void JoinTempFiles(uint n, byte flag[])
 }
 
 /* Move a file */
-void FileMove(const char* src, const char* dst)
+void FileMove(string src, string dst)
 {
 	rename(src, dst);
 }
 
 /* Does file exists */
-bool FileExists(const char* file)
+bool FileExists(string file)
 {
 	return exists(file);
 }
 
 /* Delete a file */
-void FileDelete(const char* file)
+void FileDelete(string file)
 {
 	remove(file);
 }
 
 /* Create a directory */
-void DirectoryCreate(const char* path)
+void DirectoryCreate(string path)
 {
 	create_directory(path);
 }

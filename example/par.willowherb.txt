@@ -1,0 +1,437 @@
+-g_output=willowherb\out
+-g_decimal=6
+-g_eval=yes
+-g_nthread=8
+-g_gpu=none
+-g_seed=1
+-g_progress=80
+-g_replot=no
+
+-g_missingploidy=2,4,6
+-g_input=data.willowherb.vcf.gz
+-g_format=vcf
+
+-xhaplotype
+-haplotype_variants=[2,3]
+-haplotype_alleles=[2,999]
+
+-f
+-f_type=snp
+-f_ptype=[0.3,1]
+-f_bmaf=[0.05,0.5]
+
+-convert
+-convert_format=polyrelatedness
+
+-diversity
+-diversity_level=pop
+
+-indstat
+-indstat_ref=pop
+-indstat_model=prcs
+-indstat_locus=all
+-indstat_type=hidx,lnpg,f,theta
+-indstat_estimator=Ritland1996
+
+-fst
+-fst_plot=yes
+-fst_estimator=Nei1973
+-fst_level=popXtot,pop
+-fst_locus=all
+-fst_fmt=matrix
+
+-gdist
+-gdist_plot=yes
+-gdist_level=ind
+-gdist_estimator=Euclidean
+-gdist_fmt=matrix
+
+-amova
+-amova_method=homoploid
+-amova_mutation=iam
+-amova_test=yes
+-amova_nperm=999
+
+-popas
+-popas_plot=yes
+-popas_model=prcs
+-popas_level=pop
+-popas_error=0.05
+
+-relatedness
+-relatedness_plot=yes
+-relatedness_range=pop
+-relatedness_fmt=matrix
+-relatedness_estimator=Ritland1996_modified
+
+-kinship
+-kinship_plot=yes
+-kinship_range=pop
+-kinship_fmt=matrix
+-kinship_estimator=Ritland1996
+
+-pcoa
+-pcoa_plot=yes
+-pcoa_level=ind
+-pcoa_estimator=Euclidean
+
+-cluster
+-cluster_plot=yes
+-cluster_method=NEAREST
+-cluster_estimator=Euclidean
+-cluster_level=pop
+
+-structure
+-structure_plot=yes
+-structure_admix=no
+-structure_locpriori=no
+-structure_f=no
+
+-structure_metrofreq=10
+-structure_krange=[2,5]
+-structure_nburnin=1000
+-structure_nreps=10000
+-structure_nthinning=20
+-structure_nruns=1
+-structure_nstream=4
+
+-decay
+-decay_plot=yes
+-decay_chromosome=yes
+-decay_pair=yes
+-decay_estimator=D',r2Delta
+-decay_pop=total
+
+-block
+-block_plot=yes
+-block_estimator=r2,r2Delta
+-block_size=100000
+-block_pop=total
+
+-slide
+-slide_plot=yes
+-slide_plot_columns=1,2,3,4
+-slide_plot_styles=bar,dot,heat,line
+-slide_windowsize=1000000
+-slide_windowstep=100000
+-slide_pop=total
+-slide_estimator=Nei1973,dxy,TajimaD,thetaw
+
+-gwas
+-gwas_plot=yes
+-gwas_input=data.willowherb.gwas.csv
+-gwas_test=Wald,LRT,Score
+-gwas_imputeG=svd
+-gwas_imputeXY=svd
+-gwas_dosage=yes
+
+
+-g_indtab="W2471	MX	Hexaploids
+W2472	MX	Hexaploids
+W2473	MX	Hexaploids
+W2474	MX	Hexaploids
+W2475	MX	Hexaploids
+W2476	MX	Hexaploids
+W2477	MX	Hexaploids
+W2478	MX	Hexaploids
+W2479	MX	Hexaploids
+W2480	MX	Hexaploids
+W3831	SMZ	Tetraploids
+W3832	SMZ	Tetraploids
+W3833	SMZ	Tetraploids
+W3834	SMZ	Tetraploids
+W3835	SMZ	Tetraploids
+W3836	SMZ	Tetraploids
+W3837	SMZ	Tetraploids
+W3838	SMZ	Tetraploids
+W3839	SMZ	Tetraploids
+W3840	SMZ	Tetraploids
+W3881	SFG	Diploids
+W3882	SFG	Diploids
+W3883	SFG	Diploids
+W3884	SFG	Diploids
+W3885	SFG	Diploids
+W3886	SFG	Diploids
+W3887	SFG	Diploids
+W3888	SFG	Diploids
+W3889	SFG	Diploids
+W3890	SFG	Diploids
+W3841	TTZ	Tetraploids
+W3842	TTZ	Tetraploids
+W3843	TTZ	Tetraploids
+W3844	TTZ	Tetraploids
+W3845	TTZ	Tetraploids
+W3846	TTZ	Tetraploids
+W3847	TTZ	Tetraploids
+W3848	TTZ	Tetraploids
+W3849	TTZ	Tetraploids
+W5411	SHB	Diploids
+W5412	SHB	Diploids
+W5413	SHB	Diploids
+W5414	SHB	Diploids
+W5415	SHB	Diploids
+W5416	SHB	Diploids
+W5417	SHB	Diploids
+W5418	SHB	Diploids
+W5419	SHB	Diploids
+W5420	SHB	Diploids
+W5441	WLS	Tetraploids
+W5442	WLS	Tetraploids
+W5443	WLS	Tetraploids
+W5444	WLS	Tetraploids
+W5445	WLS	Tetraploids
+W5446	WLS	Tetraploids
+W5447	WLS	Tetraploids
+W5448	WLS	Tetraploids
+W5449	WLS	Tetraploids
+W5450	WLS	Tetraploids
+W5471	CL	Tetraploids
+W5472	CL	Tetraploids
+W5473	CL	Tetraploids
+W5474	CL	Tetraploids
+W5475	CL	Tetraploids
+W5476	CL	Tetraploids
+W5477	CL	Tetraploids
+W5478	CL	Tetraploids
+W5479	CL	Tetraploids
+W5480	CL	Tetraploids
+W5501	YC	Tetraploids
+W5502	YC	Tetraploids
+W5503	YC	Tetraploids
+W5504	YC	Tetraploids
+W5505	YC	Tetraploids
+W5506	YC	Tetraploids
+W5507	YC	Tetraploids
+W5508	YC	Tetraploids
+W5509	YC	Tetraploids
+W5510	YC	Tetraploids
+W5521	AT	Hexaploids
+W5522	AT	Hexaploids
+W5523	AT	Hexaploids
+W5524	AT	Hexaploids
+W5525	AT	Hexaploids
+W5526	AT	Hexaploids
+W5527	AT	Hexaploids
+W5528	AT	Hexaploids
+W5529	AT	Hexaploids
+W5530	AT	Hexaploids
+W5381	LLG	Hexaploids
+W5382	LLG	Hexaploids
+W5383	LLG	Hexaploids
+W5384	LLG	Hexaploids
+W5385	LLG	Hexaploids
+W5386	LLG	Hexaploids
+W5387	LLG	Hexaploids
+W5388	LLG	Hexaploids
+W5389	LLG	Hexaploids
+W5390	LLG	Hexaploids
+W5201	GC	Hexaploids
+W5202	GC	Hexaploids
+W5204	GC	Hexaploids
+W5205	GC	Hexaploids
+W5206	GC	Hexaploids
+W5207	GC	Hexaploids
+W5208	GC	Hexaploids
+W5209	GC	Hexaploids
+W5210	GC	Hexaploids
+W5971	HZ	Diploids
+W5972	HZ	Diploids
+W5973	HZ	Diploids
+W5974	HZ	Diploids
+W5975	HZ	Diploids
+W5976	HZ	Diploids
+W5977	HZ	Diploids
+W5978	HZ	Diploids
+W5979	HZ	Diploids
+W5980	HZ	Diploids
+W5231	MY	Tetraploids
+W5232	MY	Tetraploids
+W5233	MY	Tetraploids
+W5234	MY	Tetraploids
+W5235	MY	Tetraploids
+W5236	MY	Tetraploids
+W5237	MY	Tetraploids
+W5238	MY	Tetraploids
+W5239	MY	Tetraploids
+W5240	MY	Tetraploids
+W5151	QL	Diploids
+W5152	QL	Diploids
+W5153	QL	Diploids
+W5154	QL	Diploids
+W5155	QL	Diploids
+W5156	QL	Diploids
+W5157	QL	Diploids
+W5158	QL	Diploids
+W5159	QL	Diploids
+W5160	QL	Diploids
+W5271	HZX	Hexaploids
+W5272	HZX	Hexaploids
+W5274	HZX	Hexaploids
+W5275	HZX	Hexaploids
+W5276	HZX	Hexaploids
+W5277	HZX	Hexaploids
+W5278	HZX	Hexaploids
+W5279	HZX	Hexaploids
+W5280	HZX	Hexaploids
+W5183	QSA	Tetraploids
+W5184	QSA	Tetraploids
+W5185	QSA	Tetraploids
+W5186	QSA	Tetraploids
+W5187	QSA	Tetraploids
+W5188	QSA	Tetraploids
+W5189	QSA	Tetraploids
+W5291	PQG	Tetraploids
+W5292	PQG	Tetraploids
+W5293	PQG	Tetraploids
+W5294	PQG	Tetraploids
+W5295	PQG	Tetraploids
+W5296	PQG	Tetraploids
+W5297	PQG	Tetraploids
+W5298	PQG	Tetraploids
+W5299	PQG	Tetraploids
+W5300	PQG	Tetraploids
+W5101	HYX	Hexaploids
+W5102	HYX	Hexaploids
+W5103	HYX	Hexaploids
+W5104	HYX	Hexaploids
+W5105	HYX	Hexaploids
+W5106	HYX	Hexaploids
+W5107	HYX	Hexaploids
+W5108	HYX	Hexaploids
+W5109	HYX	Hexaploids
+W5110	HYX	Hexaploids
+W5311	LYS	Tetraploids
+W5312	LYS	Tetraploids
+W5313	LYS	Tetraploids
+W5314	LYS	Tetraploids
+W5315	LYS	Tetraploids
+W5316	LYS	Tetraploids
+W5317	LYS	Tetraploids
+W5318	LYS	Tetraploids
+W5319	LYS	Tetraploids
+W5320	LYS	Tetraploids
+W5341	WTS	Tetraploids
+W5342	WTS	Tetraploids
+W5343	WTS	Tetraploids
+W5344	WTS	Tetraploids
+W5345	WTS	Tetraploids
+W5346	WTS	Tetraploids
+W5347	WTS	Tetraploids
+W5348	WTS	Tetraploids
+W5349	WTS	Tetraploids
+W5350	WTS	Tetraploids
+W5991	FYK	Tetraploids
+W5992	FYK	Tetraploids
+W5993	FYK	Tetraploids
+W5994	FYK	Tetraploids
+W5995	FYK	Tetraploids
+W5996	FYK	Tetraploids
+W5997	FYK	Tetraploids
+W5998	FYK	Tetraploids
+W5999	FYK	Tetraploids
+W6000	FYK	Tetraploids
+W5791	AB	Hexaploids
+W5792	AB	Hexaploids
+W5793	AB	Hexaploids
+W5794	AB	Hexaploids
+W5795	AB	Hexaploids
+W5796	AB	Hexaploids
+W5797	AB	Hexaploids
+W5798	AB	Hexaploids
+W5799	AB	Hexaploids
+W5800	AB	Hexaploids
+W5771	DF	Tetraploids
+W5772	DF	Tetraploids
+W5773	DF	Tetraploids
+W5774	DF	Tetraploids
+W5775	DF	Tetraploids
+W5776	DF	Tetraploids
+W5777	DF	Tetraploids
+W5778	DF	Tetraploids
+W5779	DF	Tetraploids
+W5780	DF	Tetraploids
+W5741	DG	Diploids
+W5742	DG	Diploids
+W5743	DG	Diploids
+W5744	DG	Diploids
+W5745	DG	Diploids
+W5746	DG	Diploids
+W5747	DG	Diploids
+W5748	DG	Diploids
+W5749	DG	Diploids
+W5750	DG	Diploids
+W5561	LJS	Tetraploids
+W5562	LJS	Tetraploids
+W5563	LJS	Tetraploids
+W5564	LJS	Tetraploids
+W5565	LJS	Tetraploids
+W5566	LJS	Tetraploids
+W5567	LJS	Tetraploids
+W5568	LJS	Tetraploids
+W5569	LJS	Tetraploids
+W5570	LJS	Tetraploids
+W5651	BX	Diploids
+W5652	BX	Diploids
+W5653	BX	Diploids
+W5654	BX	Diploids
+W5655	BX	Diploids
+W5656	BX	Diploids
+W5658	BX	Diploids
+W5659	BX	Diploids
+W5660	BX	Diploids
+W5681	DLT	Tetraploids
+W5682	DLT	Tetraploids
+W5683	DLT	Tetraploids
+W5684	DLT	Tetraploids
+W5685	DLT	Tetraploids
+W5686	DLT	Tetraploids
+W5687	DLT	Tetraploids
+W5689	DLT	Tetraploids
+W5690	DLT	Tetraploids
+W5711	JD	Tetraploids
+W5712	JD	Tetraploids
+W5713	JD	Tetraploids
+W5714	JD	Tetraploids
+W5715	JD	Tetraploids
+W5716	JD	Tetraploids
+W5717	JD	Tetraploids
+W5718	JD	Tetraploids
+W5719	JD	Tetraploids
+W5720	JD	Tetraploids
+W5621	ZG	Diploids
+W5622	ZG	Diploids
+W5623	ZG	Diploids
+W5625	ZG	Diploids
+W5626	ZG	Diploids
+W5627	ZG	Diploids
+W5628	ZG	Diploids
+W5629	ZG	Diploids
+W5630	ZG	Diploids
+W4684	BEJ	Diploids
+W4685	BEJ	Diploids
+W4686	BEJ	Diploids
+W4687	BEJ	Diploids
+W4688	BEJ	Diploids
+W4690	BEJ	Diploids
+W4651	YXQ	Diploids
+W4652	YXQ	Diploids
+W4654	YXQ	Diploids
+W4656	YXQ	Diploids
+W4657	YXQ	Diploids
+W4658	YXQ	Diploids
+W4659	YXQ	Diploids
+W4660	YXQ	Diploids
+W4701	ET	Diploids
+W4702	ET	Diploids
+W4703	ET	Diploids
+W4708	ET	Diploids
+W5591	DQ	Tetraploids
+W5592	DQ	Tetraploids
+W5593	DQ	Tetraploids
+W5594	DQ	Tetraploids
+W5595	DQ	Tetraploids
+W5596	DQ	Tetraploids
+W5597	DQ	Tetraploids
+W5598	DQ	Tetraploids
+W5599	DQ	Tetraploids
+W5600	DQ	Tetraploids"

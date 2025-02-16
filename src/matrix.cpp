@@ -2,6 +2,12 @@
 
 #include "vcfpop.h"
 
+template TARGET Mat<double> Inv<double>(Mat<double>& A);
+template TARGET Mat<float > Inv<float >(Mat<float >& A);
+
+template TARGET Mat<double> InvSym<double>(Mat<double>& A);
+template TARGET Mat<float > InvSym<float >(Mat<float >& A);
+
 template TARGET void Evd<double>(Mat<double>& A, Mat<double>& U, Col<double>& V);
 template TARGET void Evd<float >(Mat<float >& A, Mat<float >& U, Col<float >& V);
 
@@ -16,6 +22,34 @@ template TARGET void EigCUDA<float >(Mat<float >& A, Mat<float >& U, Col<float >
 
 template TARGET void MatrixMulCUDA<double>(Mat<double>& A, Mat<double>& B, Mat<double>& res, bool Atrans, bool Btrans);
 template TARGET void MatrixMulCUDA<float >(Mat<float >& A, Mat<float >& B, Mat<float >& res, bool Atrans, bool Btrans);
+
+/* Inverse of a matrix */
+template<typename REAL>
+TARGET rmat Inv(rmat& A)
+{
+	try
+	{
+		return inv(A, inv_opts::allow_approx);
+	}
+	catch (...)
+	{
+		return pinv(A);
+	}
+}
+
+/* Inverse of a symmetric matrix */
+template<typename REAL>
+TARGET rmat InvSym(rmat& A)
+{
+	try
+	{
+		return inv_sympd(A, inv_opts::allow_approx);
+	}
+	catch (...)
+	{
+		return pinv(A);
+	}
+}
 
 /* econ EVD decomposition, eigen values are in descending order */
 template<typename REAL>
@@ -38,8 +72,8 @@ TARGET void Svd(rmat& A, rmat& U, rcol& S, rmat& V)
 	if (g_gpu_val == 1)
 		svd_econ(U, S, V, A, "both", "dc");
 	else
-		SvdCUDA(A, U, S, V);
-		
+		SvdCUDA(A, U, S, V); 
+	
 	//svd(U, S, V, Gi, "dc");//10.536
 	//svd_econ(U, S, V, Gi, "both", "dc");//6.164
 	//SvdCUDA(Gi, U, S, V);		//5.744
@@ -51,20 +85,34 @@ template<typename REAL>
 TARGET void SvdCUDA(rmat& A, rmat& U, rcol& S, rmat& V)
 {
 	int64 m = A.n_rows, n = A.n_cols, mn = std::min(m, n);
-
-	U = zeros<rmat>(m, mn);
-	S = zeros<rcol>(mn);
-	V = zeros<rmat>(mn, n);
-
-	if (std::is_same_v<REAL, double>)
+	if (m < n)
 	{
-		Svd64CUDA((double*)A.memptr(), (double*)U.memptr(), (double*)S.memptr(), (double*)V.memptr(), m, n);
-		inplace_trans(V);
+		rmat At = A.t();
+		rmat& Ut = U;
+		V = zeros<rmat>(n, mn);
+		S = zeros<rcol>(mn);
+		Ut = zeros<rmat>(mn, m);
+		
+		if (std::is_same_v<REAL, double>)
+			Svd64CUDA((double*)At.memptr(), (double*)V.memptr(), (double*)S.memptr(), (double*)Ut.memptr(), n, m);
+		else
+			Svd32CUDA((float*)At.memptr(), (float*)V.memptr(), (float*)S.memptr(), (float*)Ut.memptr(), n, m);
+		
+		inplace_trans(Ut);
 	}
 	else
 	{
-		Svd32CUDA((float*)A.memptr(), (float*)U.memptr(), (float*)S.memptr(), (float*)V.memptr(), m, n);
-		inplace_trans(V);
+		rmat& Vt = V;
+		U = zeros<rmat>(m, mn);
+		S = zeros<rcol>(mn);
+		Vt = zeros<rmat>(mn, n);
+
+		if (std::is_same_v<REAL, double>)
+			Svd64CUDA((double*)A.memptr(), (double*)U.memptr(), (double*)S.memptr(), (double*)Vt.memptr(), m, n);
+		else
+			Svd32CUDA((float*)A.memptr(), (float*)U.memptr(), (float*)S.memptr(), (float*)Vt.memptr(), m, n);
+
+		inplace_trans(Vt);
 	}
 }
 

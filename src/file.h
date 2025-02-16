@@ -16,14 +16,14 @@ struct FileMapping
 #endif
 
 	/* Map a file into memory */
-	TARGET byte* MapingReadOnlyFile(char* filename);
+	TARGET byte* MapingReadOnlyFile(string filename);
 
 	/* Unmap a file in memory */
 	TARGET void UnMapingReadOnlyFile();
 };
 
 /* Get file size */
-TARGET int64 GetFileLen(char* file);
+TARGET int64 GetFileLen(string file);
 
 /* Read a T from file */
 template<typename T>
@@ -105,13 +105,13 @@ TARGET int FClose(FILE* file);
 TARGET FILE* FOpen(char* buf, const char* type, const char* fmt ...);
 
 /* Open result file and write parameters */
-TARGET void OpenResFile(const char* _spec, const char* title);
+TARGET void OpenResFile(string spec, string title);
 
 /* Close result file and write parameters */
 TARGET void CloseResFile();
 
 /* Open temp files */
-TARGET void OpenTempFiles(uint n, const char* spec, byte flag[] = NULL);
+TARGET void OpenTempFiles(uint n, string spec, byte flag[] = NULL);
 
 /* Close and Remove temp files */
 TARGET void RemoveTempFiles(uint n);
@@ -120,13 +120,13 @@ TARGET void RemoveTempFiles(uint n);
 TARGET void JoinTempFiles(uint n, byte flag[] = NULL);
 
 /* Move a file */
-void FileMove(const char* src, const char* dst);
+void FileMove(string src, string dst);
 
 /* Does file exists */
-bool FileExists(const char* file);
+bool FileExists(string file);
 
 /* Delete a file */
-void FileDelete(const char* file);
+void FileDelete(string file);
 
 /* Create a directory */
-void DirectoryCreate(const char* path);
+void DirectoryCreate(string path);

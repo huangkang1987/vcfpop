@@ -1,11 +1,11 @@
 /*
-	 vcfpop v1.08
+	 vcfpop v1.08b
 	 -- Perform population genetics analyses based on NGS data for haploids, diploids and polyploids.
 
 	 Author      Huang Kang
 	 Affiliation Northwest University
 	 Email       huangkang@nwu.edu.cn
-	 Update      2025/02/01
+	 Update      2025/02/15
  */
 
 #include "vcfpop.h"
@@ -15,6 +15,7 @@ TARGET int main(int _argc, char** _argv)
 {
 	//disable openblas warning
 	fclose(stderr);
+	//FILE* file = freopen("error_log.txt", "w", stderr);
 
 	//disable multiple-thread mode of openblas
 	openblas_set_num_threads(1);
@@ -123,6 +124,7 @@ TARGET int main(int _argc, char** _argv)
 				thread.join();
 	}
 
+	//fclose(errfile);
 	printf("\n\nCalculations finished in %0.3lf seconds.\n", GetElapse(begin));
 	
 	return 0;

@@ -22,8 +22,10 @@ LIBZ       = $(shell find /usr/local/lib /usr/lib -name "libz.a" 2>/dev/null | h
 
 LIBOBLAS   = $(shell find /usr/local/lib /usr/lib -name "libopenblas.a" 2>/dev/null | head -n 1)
 
+LIBGFOR    = $(shell find /usr/local/lib /usr/lib -name "libgfortran.a" 2>/dev/null | head -n 1)
+
 vcfpop: $(OBJ)
-	$(CC) $(INCLUDE) $(OBJ) $(LIB) -m64 -march=x86-64 -fopenmp -pthread $(LIBZ) $(LIBOBLAS) -lm -ldl -lcudart_static -o vcfpop
+	$(CC) $(INCLUDE) $(OBJ) $(LIB) -m64 -march=x86-64 -fopenmp -pthread $(LIBZ) $(LIBOBLAS) $(LIBGFOR) -lcudart_static -lm -ldl -lrt -o vcfpop
 
 structureCUDA.o : structureCUDA.cpp $(HEADER) 
 	$(NVCC) $(INCLUDE) $(FLAGSCUDA) -c structureCUDA.cpp -x cu

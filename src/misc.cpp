@@ -8,10 +8,42 @@ template TARGET void BUCKET::FilterIndividualAD<double>(BUCKET* obucket, int nfi
 template TARGET void BUCKET::FilterIndividualAD<float >(BUCKET* obucket, int nfilter, bool progress, int nthread);
 template TARGET CPOINT CPOINT::GradientDescent<double>(void* Param, double (*func)(void* Param, CPOINT&, Mat<double>&, Mat<double>&), int dim, bool IsMinimize, double* Init);
 template TARGET CPOINT CPOINT::GradientDescent<float >(void* Param, double (*func)(void* Param, CPOINT&, Mat<float >&, Mat<float >&), int dim, bool IsMinimize, double* Init);
+template TARGET CPOINT CPOINT::LineSearch<double>(void* Param, double (*func)(void* Param, CPOINT&, Mat<double>&, Mat<double>&), double* Range);
+template TARGET CPOINT CPOINT::LineSearch<float >(void* Param, double (*func)(void* Param, CPOINT&, Mat<float >&, Mat<float >&), double* Range);
+template TARGET CPOINT CPOINT::Newton<double>(void* Param, double (*func)(void* Param, CPOINT&, Mat<double>&, Mat<double>&), int dim, double* Init);
+template TARGET CPOINT CPOINT::Newton<float >(void* Param, double (*func)(void* Param, CPOINT&, Mat<float >&, Mat<float >&), int dim, double* Init);
 template TARGET CPOINT CPOINT::DownHillSimplex<double>(void* Param, double (*func)(void* Param, CPOINT&, Mat<double>&, Mat<double>&), int dim, double sep, int nrep, bool IsMinimize);
 template TARGET CPOINT CPOINT::DownHillSimplex<float >(void* Param, double (*func)(void* Param, CPOINT&, Mat<float >&, Mat<float >&), int dim, double sep, int nrep, bool IsMinimize);
 
 #pragma pack(push, 1)
+
+/* Supress LAPACK Warning */
+extern "C" void xerbla_(char* msg, int* info, int len)
+{
+	fprintf(stderr, "[LAPACKE Error] %s (Code: %d)\n", msg, *info);
+	fflush(stderr);
+}
+
+/* Supress LAPACK Warning */
+extern "C" void xerbla(char* msg, int* info, int len)
+{
+	fprintf(stderr, "[LAPACKE Error] %s (Code: %d)\n", msg, *info);
+	fflush(stderr);
+}
+
+/* Supress LAPACK Warning */
+extern "C" void LAPACKE_xerbla(char* msg, int info)
+{
+	fprintf(stderr, "[LAPACKE Error] %s (Code: %d)\n", msg, info);
+	fflush(stderr);
+}
+
+/* Supress LAPACK Warning */
+extern "C" void F77_xerbla(const char* msg, int* info)
+{
+	fprintf(stderr, "[LAPACKE Error] %s (Code: %d)\n", msg, *info);
+	fflush(stderr);
+}
 
 /* Set a bit in a variable */
 TARGET void SetBit(byte& b, int pos, bool val)
@@ -87,12 +119,12 @@ TARGET void ClearTempFiles(string& dir)
         {
 			try
 			{
-                fs::remove(entry.path());
-                std::cout << "Deleted: " << entry.path() << std::endl;
+                if (fs::remove(entry.path()))
+					std::cout << "Deleted: " << entry.path() << std::endl;
             }
-			catch (const fs::filesystem_error& e)
+			catch (...)
 			{
-				//std::cerr << "Error: " << e.what() << std::endl;
+
 			}
         }
     }
@@ -143,12 +175,12 @@ TARGET void EvaluationBegin()
 }
 
 /* Record time when evaluation is finished and append results to the evaluation file */
-TARGET void EvaluationEnd(const char* text)
+TARGET void EvaluationEnd(string text)
 {
 	if (g_eval_val != 1) return;
 	double duration = GetElapse(EVAL_BEGIN);
 	FILE* f1 = fopen((g_output_val + ".eval.txt").c_str(), "ab");
-	fprintf(f1, "%s%c%0.3lf s\n", text, g_delimiter_val, duration);
+	fprintf(f1, "%s%c%0.3lf s\n", text.c_str(), g_delimiter_val, duration);
 	fclose(f1);
 }
 
@@ -228,7 +260,7 @@ TARGET void EvaluationStat()
 /* Call an R script */
 TARGET void RunRscript(string script)
 {
-	if (!FileExists(g_rscript_val.c_str()))
+	if (!FileExists(g_rscript_val))
 		Exit("\nError: Rscript binary executable is not found.\n");
 
 	if (!FileExists((EXEDIR + "rscripts" + PATH_DELIM + script).c_str()))
@@ -406,6 +438,145 @@ TARGET void CPOINT::Order(CPOINT* xx, int dim)
 				Swap(xx[i], xx[j]);
 }
 
+// 1-D line search, do not need G and H */
+template<typename REAL>
+TARGET CPOINT CPOINT::LineSearch(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), double* Range)
+{
+	CPOINT re1 = { 0 }, re2 = { 0 }, re3 = { 0 }, re4 = { 0 };
+	SetZero(&re1, 1); SetZero(&re2, 1); SetZero(&re3, 1); SetZero(&re4, 1); 
+	int dim = 1;
+	re1.dim = dim; re2.dim = dim; re3.dim = dim; re4.dim = dim;
+	 
+	int niter = 0, iter_max = 100 * dim;
+	constexpr REAL grad_err_tol = 1E-08;
+	constexpr REAL rel_sol_change_tol = 1E-08;
+	constexpr REAL small_number = std::is_same_v<REAL, float> ? 1e-5 : 1e-8;
+	rmat &G0 = *(rmat*)NULL, &H0 = *(rmat*)NULL;
+
+	Mat<double> x1(re1.unc_space, dim, 1, false, true);
+	Mat<double> x2(re2.unc_space, dim, 1, false, true);
+	Mat<double> x3(re3.unc_space, dim, 1, false, true);
+	Mat<double> x4(re4.unc_space, dim, 1, false, true);
+
+	//Step 1: set init interval
+	int neval = 0;
+	if (Range)
+	{
+		re1.unc_space[0] = Range[0];
+		re4.unc_space[0] = Range[1];
+		re1.lnL = func(Param, re1, G0, H0);
+		re4.lnL = func(Param, re4, G0, H0);
+		neval += 2;
+	}
+	else
+	{
+		// extend from 1
+		re1.unc_space[0] = 0.0001;
+		re1.lnL = func(Param, re1, G0, H0);
+		neval ++;
+
+		re2.unc_space[0] = 0.001;
+		re2.lnL = func(Param, re2, G0, H0);
+		neval ++;
+
+		if (re1.lnL > re2.lnL)
+		{
+			re4 = re2; re2 = re1;
+			for (double step = 0.00001; step > 5e-8; step /= 10)
+			{
+				re1.unc_space[0] = step;
+				re1.lnL = func(Param, re1, G0, H0);
+				neval ++;
+				if (re2.lnL > re1.lnL) break;
+				re4 = re2; re2 = re1;
+			}
+			if (re1.unc_space[0] < 5e-7)
+			{
+				re1.neval = neval;
+				return re1;
+			}
+		}
+		else
+		{
+			for (double step = 0.01; step < 5e10; step *= 10)
+			{
+				re4.unc_space[0] = step;
+				re4.lnL = func(Param, re4, G0, H0);
+				neval ++;
+				if (re2.lnL > re4.lnL) break;
+				re1 = re2; re2 = re4;
+			}
+			if (re4.unc_space[0] > 5e9)
+			{
+				re4.neval = neval;
+				return re4;
+			}
+		}
+	}
+
+	
+	//Step 2: iteratively adjust interval
+	while (niter < iter_max && abs(re4.unc_space[0] - re1.unc_space[0]) > 1e-6)
+	{
+		niter++;
+		x2 = x1 + (x4 - x1) * 0.381966011;
+		x3 = x1 + (x4 - x1) * 0.618033989;
+
+		re2.lnL = func(Param, re2, G0, H0);
+		re3.lnL = func(Param, re3, G0, H0);
+		neval += 2;
+
+		if (re2.lnL > re3.lnL)
+			re4 = re3;
+		else
+			re1 = re2;
+	}
+
+	re2.neval = neval;
+	return re2;
+}
+
+// Newton's method, need Gradient matrix and Hessian matrix
+template<typename REAL>
+TARGET CPOINT CPOINT::Newton(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), int dim, double* Init)
+{
+	CPOINT re0 = { 0 };
+	SetZero(&re0, 1); 
+	re0.dim = dim;
+	 
+	int niter = 0, iter_max = 100 * dim;
+	constexpr REAL grad_err_tol = 1E-08;
+	constexpr REAL rel_sol_change_tol = 1E-08;
+	constexpr REAL small_number = std::is_same_v<REAL, float> ? 1e-5 : 1e-8;
+
+	Mat<double> x0(re0.unc_space, dim, 1, false, true);
+	SetVal(re0.unc_space, 1.0, dim);
+	rmat G0, H0, dx;
+
+	if (Init) SetVal(re0.unc_space, Init, dim);
+	
+	double f0 = 0, f1 = 0;
+	REAL grad_err0 = 0, rel_sol_change0 = 0;
+
+	while (niter < iter_max)
+	{
+		niter++;
+		re0.lnL = func(Param, re0, G0, H0);
+		re0.neval++;
+
+		dx = -solve(H0, G0, solve_opts::force_sym);
+		grad_err0 = norm(G0);
+		rel_sol_change0 = norm(dx / (abs(x0) + small_number), 1);
+
+		if (grad_err0 < grad_err_tol && rel_sol_change0 < rel_sol_change_tol)
+			break;
+
+		x0 = x0 + dx;
+	}
+
+	return re0;
+}
+
 // Gradient descent algorithm, need Gradient matrix but not Hessian matrix
 template<typename REAL>
 TARGET CPOINT CPOINT::GradientDescent(void* Param, double (*func)(void* Param, CPOINT&, rmat&, rmat&), int dim, bool IsMinimize, double *Init)
@@ -420,7 +591,7 @@ TARGET CPOINT CPOINT::GradientDescent(void* Param, double (*func)(void* Param, C
 	constexpr REAL small_number = std::is_same_v<REAL, float> ? 1e-5 : 1e-8;
 
 	double sign = IsMinimize ? -1 : 1;
-
+	
 	Mat<double> x0(re0.unc_space, dim, 1, false, true);
 	Mat<double> x1(re1.unc_space, dim, 1, false, true);
 	SetVal(re0.unc_space, 1.0, dim);
@@ -432,7 +603,6 @@ TARGET CPOINT CPOINT::GradientDescent(void* Param, double (*func)(void* Param, C
 	
 	double f0 = 0, f1 = 0;
 	REAL grad_err0 = 0, grad_err1 = 0, rel_sol_change0 = 0, rel_sol_change1 = 0;
-
 	f0 = sign * func(Param, re0, G0, H0);
 	re1.neval++;
 
@@ -496,8 +666,7 @@ TARGET CPOINT CPOINT::DownHillSimplex(void* Param, double (*func)(void* Param, C
 		for (int searchcount = 0; ; ++searchcount)
 		{
 			CPOINT::Order(xx, dim);
-			if (searchcount >= MAX_ITER_DOWNHILL || 
-				(CPOINT::IsBreak(xx, dim, LIKELIHOOD_TERM) && abs(xx[0].real_space[0] - xx[1].real_space[0]) < LIKELIHOOD_TERM * 1e-3))
+			if (searchcount >= MAX_ITER_DOWNHILL || CPOINT::IsBreak(xx, dim, LIKELIHOOD_TERM))
 				break;
 
 			//Reflect
@@ -1752,11 +1921,11 @@ TARGET void InitAlpha()
 
 /* Calculate task in multiple threads */
 TARGET void RunThreads(void (*Func) (int), void (*GuardFunc1) (int), void (*GuardFunc2) (int),
-	int64 ntot, int64 nct, const char* info, int nthreads, bool isfirst, int nchars)
+	int64 ntot, int64 nct, string info, int nthreads, bool isfirst, int nchars)
 {
 	if (isfirst)
 	{
-		printf("%s", info);
+		printf("%s", info.c_str());
 		fflush(stdout);
 		PROGRESS_VALUE = PROGRESS_NOUTPUTED = PROGRESS_NOUTPUTED2 = 0;
 		PROGRESS_TOTAL = ntot;

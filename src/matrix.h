@@ -3,6 +3,14 @@
 #pragma once
 #include "vcfpop.h"
 
+/* Inverse of a matrix */
+template<typename REAL>
+TARGET rmat Inv(rmat& A);
+
+/* Inverse of a symmetric matrix */
+template<typename REAL>
+TARGET rmat InvSym(rmat& A);
+
 /* econ SVD decomposition, eigen values are in descending order */
 template<typename REAL>
 TARGET void Svd(rmat& A, rmat& U, rcol& S, rmat& V);

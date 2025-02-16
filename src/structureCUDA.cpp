@@ -56,34 +56,79 @@ decltype(&cusolverDnSgesvd_bufferSize) cusolverDnSgesvd_bufferSizeA;
 decltype(&cusolverDnDsyevd_bufferSize) cusolverDnDsyevd_bufferSizeA;
 decltype(&cusolverDnSsyevd_bufferSize) cusolverDnSsyevd_bufferSizeA;
 
+#ifndef _WIN64
+string ExecCommand(string cmd) 
+{
+    std::shared_ptr<FILE> pipe(popen(cmd.c_str(), "r"), pclose);
+    if (!pipe) return "Error: popen failed!";
+    char buffer[PATH_LEN];
+    std::string result;
+    while (fgets(buffer, sizeof(buffer), pipe.get()) != nullptr) 
+        result += buffer;
+    return result;
+}
+#endif
+
 TARGETCUDA void InitCUDA()
 {
-    string cudaPath = std::getenv("CUDA_PATH");
 #ifdef _WIN64
     #define LoadLib(x) LoadLibraryA(x)
+    #define CloseLib(x) FreeLibrary(x)
     #define LoadFunc(x,y) GetProcAddress(x,y)
-    #define LibExt ".dll"
     HMODULE hblas = NULL, hsolver = NULL;
-#else
-    #define LoadLib(x) dlopen(x, RTLD_LAZY)
-    #define LoadFunc(x,y) dlsym(x,y)
-    #define LibExt ".so"
-    void* hblas = NULL, *hsolver = NULL;
-#endif
+    string cudaPath = std::getenv("CUDA_PATH");
+    if (!FileExists(cudaPath)) 
+        Exit("\nError: cannot find cuda install path. Try to reinstall CUDA or manually set the environmental variable CUDA_PATH, e.g., 'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.5', and the required cublas64_xx.dll and cusolver 64_xx.dll are in the 'bin' subdirectory of CUDA_PATH.\n");
+    cudaPath = cudaPath + PATH_DELIM + "bin" + PATH_DELIM;
     
-    for (int i = 19; i >= 10; --i)
+    for (int i = 99; i >= 5; --i)
     {
-        string cublas = cudaPath + PATH_DELIM + "bin" + PATH_DELIM + "cublas64_" + std::to_string(i) + LibExt;
-        string cusolver = cudaPath + PATH_DELIM + "bin" + PATH_DELIM + "cusolver64_" + std::to_string(i) + LibExt;
-        if (!hblas && FileExists(cublas.c_str()))
+#ifdef _WIN64
+        string cublas = cudaPath + "cublas64_" + std::to_string(i) + ".dll";
+        string cusolver = cudaPath + "cusolver64_" + std::to_string(i) + ".dll";
+#else
+        string cublas = cudaPath + "libcublas.so." + std::to_string(i);
+        string cusolver = cudaPath + "libcusolver.so." + std::to_string(i);
+#endif
+        if (!hblas && FileExists(cublas))
             hblas = LoadLib(cublas.c_str());
-        if (!hsolver && FileExists(cusolver.c_str()))
+        if (!hsolver && FileExists(cusolver))
             hsolver = LoadLib(cusolver.c_str());
     }
-	
-    if (!hblas) Exit("\nError: cublas.dll is not found!\n");
-    if (!hsolver) Exit("\nError: cusolver.dll is not found!\n");
 
+#else
+    #define LoadLib(x) dlopen(x, RTLD_LAZY)
+    #define CloseLib(x) dlclose(x)
+    #define LoadFunc(x,y) dlsym(x,y)
+    void* hblas = NULL, *hsolver = NULL;
+    
+    string cublasPath = ExecCommand("find /usr/local/cuda* /usr/cuda* /usr/lib/cuda* /usr/lib64/cuda* /opt/cuda* -name \"libcublas.so*\"");
+    cublasPath = ReplaceStr(cublasPath, "\r\n", "\n");
+    vector<string> cublasfiles = SplitStr(cublasPath, "\n");
+    
+    string cusolverPath = ExecCommand("find /usr/local/cuda* /usr/cuda* /usr/lib/cuda* /usr/lib64/cuda* /opt/cuda* -name \"libcusolver.so*\"");
+    cusolverPath = ReplaceStr(cusolverPath, "\r\n", "\n");
+    vector<string> cusolverfiles = SplitStr(cusolverPath, "\n");
+    
+    for (string& file : cublasfiles)
+    {
+        string lwrfile = StrLwr(file);
+        if (!hblas && FileExists(file) && lwrfile.find("stubs") == string::npos)
+            hblas = LoadLib(file.c_str());
+    }
+    
+    for (string& file : cusolverfiles)
+    {
+        string lwrfile = StrLwr(file);
+        if (!hsolver && FileExists(file) && lwrfile.find("stubs") == string::npos)
+            hsolver = LoadLib(file.c_str());
+    }
+
+#endif
+    
+    if (!hblas  ) Exit("\nError: cublas.dll or cublas.so is not found!\n");
+    if (!hsolver) Exit("\nError: cusolver.dll or cusolver.so is not found!\n");
+    
     cublasCreateA  = (decltype(cublasCreateA)) LoadFunc(hblas, "cublasCreate_v2");
     cublasDestroyA = (decltype(cublasDestroyA))LoadFunc(hblas, "cublasDestroy_v2");
     cublasSgemmA   = (decltype(cublasSgemmA))  LoadFunc(hblas, "cublasSgemm_v2");
@@ -95,7 +140,7 @@ TARGETCUDA void InitCUDA()
     cusolverDnDgesvdA            = (decltype(cusolverDnDgesvdA))           LoadFunc(hsolver, "cusolverDnDgesvd");
     cusolverDnSgesvdA            = (decltype(cusolverDnSgesvdA))           LoadFunc(hsolver, "cusolverDnSgesvd");
     cusolverDnDsyevdA            = (decltype(cusolverDnDsyevdA))           LoadFunc(hsolver, "cusolverDnDsyevd");
-    cusolverDnSsyevdA            = (decltype(cusolverDnSsyevdA))           LoadFunc(hsolver, "cusolverDnSsyevdA");
+    cusolverDnSsyevdA            = (decltype(cusolverDnSsyevdA))           LoadFunc(hsolver, "cusolverDnSsyevd");
     cusolverDnDgesvd_bufferSizeA = (decltype(cusolverDnDgesvd_bufferSizeA))LoadFunc(hsolver, "cusolverDnDgesvd_bufferSize");
     cusolverDnSgesvd_bufferSizeA = (decltype(cusolverDnSgesvd_bufferSizeA))LoadFunc(hsolver, "cusolverDnSgesvd_bufferSize");
     cusolverDnDsyevd_bufferSizeA = (decltype(cusolverDnDsyevd_bufferSizeA))LoadFunc(hsolver, "cusolverDnDsyevd_bufferSize");
@@ -1309,13 +1354,13 @@ TARGETCUDA void Eig32CUDA(float* A, float* U, float* V, int64 n)
     if (stream) cudaStreamDestroy(stream);
 }
 
-TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* VT, int64 m, int64 n)
+TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* Vt, int64 m, int64 n)
 {
     cusolverDnHandle_t handle = NULL;
     cudaStream_t stream = NULL;
 
     int64 mn = std::min(m, n);
-    double* dA = nullptr, *dS = nullptr, *dU = nullptr, *dV = nullptr, *dwork = nullptr;
+    double* dA = nullptr, *dS = nullptr, *dU = nullptr, *dVt = nullptr, *dwork = nullptr;
     int* dinfo = nullptr, lwork = 0, info = 0;
 
     // Step 1: Create cusolver handle and bind a stream
@@ -1330,21 +1375,21 @@ TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* VT, int64 m, 
     cudaMalloc((void**)(&dA), sizeof(double) * (m * n + m * mn + mn + mn * n + lwork) + sizeof(int));
     dU = dA + m * n;
     dS = dU + m * mn;
-    dV = dS + mn;
-    dwork = dV + mn * n;
+    dVt = dS + mn;
+    dwork = dVt + mn * n;
     dinfo = (int*)(dwork + lwork);
 
     cudaMemcpyAsync(dA, A, sizeof(double) * m * n, cudaMemcpyHostToDevice, stream);
     cudaMemsetAsync(dinfo, 0, sizeof(int), stream); // Initialize dinfo to zero
 
     // Step 4: Compute SVD
-    cusolverStatus_t t1 = cusolverDnDgesvdA(handle, 'S', 'S', m, n, dA, m, dS, dU, m, dV, n, dwork, lwork, NULL, dinfo);
+    cusolverStatus_t t1 = cusolverDnDgesvdA(handle, 'S', 'S', m, n, dA, m, dS, dU, m, dVt, mn, dwork, lwork, NULL, dinfo);
     if (t1 != CUSOLVER_STATUS_SUCCESS) Exit("\nError: cusolverDnDgesvd failed.\n");
 
     // Step 5: Copy results back to host
     cudaMemcpyAsync(U, dU, sizeof(double) * m * mn, cudaMemcpyDeviceToHost, stream);
     cudaMemcpyAsync(S, dS, sizeof(double) * mn, cudaMemcpyDeviceToHost, stream);
-    cudaMemcpyAsync(VT, dV, sizeof(double) * mn * n, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(Vt, dVt, sizeof(double) * mn * n, cudaMemcpyDeviceToHost, stream);
     cudaMemcpyAsync(&info, dinfo, sizeof(int), cudaMemcpyDeviceToHost, stream);
 
     // Synchronize the stream to ensure all operations are complete
@@ -1357,13 +1402,13 @@ TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* VT, int64 m, 
     cudaStreamDestroy(stream);
 }
 
-TARGETCUDA void Svd32CUDA(float* A, float* U, float* S, float* VT, int64 m, int64 n)
+TARGETCUDA void Svd32CUDA(float* A, float* U, float* S, float* V, int64 m, int64 n)
 {
     cusolverDnHandle_t handle = NULL;
     cudaStream_t stream = NULL;
 
     int64 mn = std::min(m, n);
-    float* dA = nullptr, *dS = nullptr, *dU = nullptr, *dV = nullptr, *dwork = nullptr;
+    float* dA = nullptr, *dS = nullptr, *dU = nullptr, *dVt = nullptr, *dwork = nullptr;
     int* dinfo = nullptr, lwork = 0, info = 0;
 
     // Step 1: Create cusolver handle and bind a stream
@@ -1378,21 +1423,21 @@ TARGETCUDA void Svd32CUDA(float* A, float* U, float* S, float* VT, int64 m, int6
     cudaMalloc((void**)(&dA), sizeof(float) * (m * n + m * mn + mn + mn * n + lwork) + sizeof(int));
     dU = dA + m * n;
     dS = dU + m * mn;
-    dV = dS + mn;
-    dwork = dV + mn * n;
+    dVt = dS + mn;
+    dwork = dVt + mn * n;
     dinfo = (int*)(dwork + lwork);
 
     cudaMemcpyAsync(dA, A, sizeof(float) * m * n, cudaMemcpyHostToDevice, stream);
     cudaMemsetAsync(dinfo, 0, sizeof(int), stream); // Initialize dinfo to zero
 
     // Step 4: Compute SVD
-    cusolverStatus_t t1 = cusolverDnSgesvdA(handle, 'S', 'S', m, n, dA, m, dS, dU, m, dV, n, dwork, lwork, NULL, dinfo);
+    cusolverStatus_t t1 = cusolverDnSgesvdA(handle, 'S', 'S', m, n, dA, m, dS, dU, m, dVt, mn, dwork, lwork, NULL, dinfo);
     if (t1 != CUSOLVER_STATUS_SUCCESS) Exit("\nError: cusolverDnSgesvd failed.\n");
 
     // Step 5: Copy results back to host
     cudaMemcpyAsync(U, dU, sizeof(float) * m * mn, cudaMemcpyDeviceToHost, stream);
     cudaMemcpyAsync(S, dS, sizeof(float) * mn, cudaMemcpyDeviceToHost, stream);
-    cudaMemcpyAsync(VT, dV, sizeof(float) * mn * n, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(V, dVt, sizeof(float) * mn * n, cudaMemcpyDeviceToHost, stream);
     cudaMemcpyAsync(&info, dinfo, sizeof(int), cudaMemcpyDeviceToHost, stream);
 
     // Synchronize the stream to ensure all operations are complete
@@ -2417,9 +2462,9 @@ TARGETCUDA void Eig64CUDA(double* A, double* U, double* V, int64 n) { }
 
 TARGETCUDA void Eig32CUDA(float* A, float* U, float* V, int64 n) { }
 
-TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* VT, int64 m, int64 n) { }
+TARGETCUDA void Svd64CUDA(double* A, double* U, double* S, double* Vt, int64 m, int64 n) { }
 
-TARGETCUDA void Svd32CUDA(float* A, float* U, float* S, float* VT, int64 m, int64 n) { }
+TARGETCUDA void Svd32CUDA(float* A, float* U, float* S, float* Vt, int64 m, int64 n) { }
 
 TARGETCUDA void MatrixMul64CUDA(double* A, double* B, double* res, int64 m, int64 n, int64 p, bool Atrans, bool Btrans) { }
 

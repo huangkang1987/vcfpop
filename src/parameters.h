@@ -287,7 +287,7 @@ TARGET void SetParameters(bool isparfile);
 TARGET void ReleaseParameters();
 
 /* Write parameters to result file */
-TARGET void WriteParameters(FILE* f1, char* type, char* prefix);
+TARGET void WriteParameters(FILE* f1, string& type, string& prefix);
 
 /* Convert indtab into indtext*/
 TARGET void ConvertIndTable();

@@ -571,6 +571,14 @@ TARGET void StrLwr(char* str)
 	} while (*str++);
 }
 
+/* Convert to lower case characters */
+TARGET string StrLwr(string& str)
+{
+	string re = str;
+	StrLwr((char*)re.c_str());
+	return re;
+}
+
 /* Read an allele from spagedi files*/
 TARGET int ReadIntegerSpagedi(char*& str, int maxdigit)
 {

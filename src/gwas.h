@@ -80,7 +80,7 @@ struct GWAS
 	int ploidy[N_MAX_PLOIDY + 1];		//Ploidy levels
 	int ploidyidx[N_MAX_PLOIDY+1];		//Index of ploidy levels
 
-	byte* Gb;							//n*m		Share, Genotype array, debug
+	byte* Gb;							//n*m		Share, Genotype array, GWAS_DEBUG
 	rmat oG;							//n*m		Share, Genotype matrix in a batch
 	int64 oG_offset0;					//          Allele offset that the first col of oG
 

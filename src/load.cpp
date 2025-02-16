@@ -1396,7 +1396,7 @@ THREAD2(LoadPlink)
 	//load plink
 	INCBUFFER buf, locbuf;
 	char* bufp = buf.data;
-	char mapname[4096];
+	char mapname[PATH_LEN];
 	strcpy(mapname, g_input_val.c_str());
 	FILE* fmap = NULL;
 	int64 loc_pos = 0; //backup position
@@ -2186,18 +2186,16 @@ THREAD2(LoadVCF)
 					{
 						char* genostr = src1;
 						if (writed) *dst++ = ':';
-
-						while (*src1 != ':' && *src1 != '\0' && *src1 != '\t' && *src1 != '\n')
-							*dst++ = *src1++;
+						while (*src1 != ':' && *src1 != '\0' && *src1 != '\t' && *src1 != '\n') src1++;
+						int len = (int)(src1 - genostr);
 
 						if (gttag == i)
 						{
 							// genotype
-							int len = (int)(src1 - genostr);
 							int v = CountPloidy(genostr, len);
 							if (v <= 0 || v > N_MAX_PLOIDY)
-								Exit("\nError: ploidy level greater than %d in individual %s at %d-th locus.\n", N_MAX_PLOIDY, ainds<REAL>[count]->name, ii + 1);
-
+								Exit("\nError: ploidy level out of range in individual %s at %d-th locus.\n", ainds<REAL>[count]->name, ii + 1);
+							
 							//add missing at ploidy v
 							if (!usedploidy[v])
 							{
@@ -2206,16 +2204,16 @@ THREAD2(LoadVCF)
 								usedploidy[v] = true;
 								if (g_missingploidy_b) nploidy++;
 							}
-
+							
 							//add gfid if not missing
 							if (genostr[0] != '.' && !(usephase && ContainsChar(genostr, '/', len)))
 							{
 								ushort alleles[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
 								ReadVCFGenoString(alleles, genostr, v, ii, NULL);
-
+								
 								//phased, do not sort alleles
 								if (!usephase) Sort(alleles, v);
-
+								
 								HASH ha = HashGenotype(alleles, v);
 								if (!gfid.ContainsKey(ha))
 								{
@@ -2226,6 +2224,9 @@ THREAD2(LoadVCF)
 								}
 							}
 						}
+						
+						memmove(dst, genostr, len);
+						dst += len;
 
 						if (*src1 == '\t' || *src1 == '\n')
 						{
@@ -2725,7 +2726,7 @@ TARGET void IND<REAL>::spagedi(char* t, bool iscount, GENOTYPE** gtab, ushort** 
 			if (alleles[v] == 0)
 				ismissing = true;
 			if (++v > N_MAX_PLOIDY)
-				Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
+				Exit("\nError: ploidy level out of range in individual %s at locus %s.\n", name, locus[l].GetNameStr(t));
 		}
 		maxv = std::max(v, maxv);
 
@@ -2900,7 +2901,7 @@ TARGET void IND<REAL>::arlequin(char* t, bool iscount, GENOTYPE** gtab, ushort**
 		TABLE<HASH, uint>& gfid = nvcf_gfid[l];
 
 		if (v > N_MAX_PLOIDY)
-			Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
+			Exit("\nError: ploidy level out of range in individual %s at locus %s.\n", name, locus[l].GetNameStr(t));
 
 		ushort alleles[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
 		bool ismissing = false;
@@ -2991,7 +2992,7 @@ TARGET void IND<REAL>::structure(char* t, bool iscount, GENOTYPE** gtab, ushort*
 		TABLE<HASH, uint>& gfid = nvcf_gfid[l];
 
 		if (v > N_MAX_PLOIDY)
-			Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
+			Exit("\nError: ploidy level out of range in individual %s at locus %s.\n", name, locus[l].GetNameStr(t));
 
 		ushort alleles[N_MAX_PLOIDY] = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
 		bool ismissing = false;
@@ -3067,7 +3068,7 @@ TARGET void IND<REAL>::polygene(char* t, bool iscount, GENOTYPE** gtab, ushort**
 	genstr = StrNextIdx(genstr, '\t', 1) + 1;
 	int ploidy = ReadInteger(genstr);
 	if (ploidy <= 0 || ploidy > N_MAX_PLOIDY)
-		Exit("\nError: ploidy level greater than %d in individual %s.\n", N_MAX_PLOIDY, name);
+		Exit("\nError: ploidy level out of range in individual %s.\n", name);
 
 	for (int64 l = 0; l < nloc; ++l)
 	{
@@ -3172,7 +3173,7 @@ TARGET void IND<REAL>::polyrelatedness(char* t, bool iscount, GENOTYPE** gtab, u
 			if (alleles[v] == genotype_ambiguous)
 				Exit("\nError: do not support ambiguous alleles in individual %s at locus %s\n.", name, locus[l].GetNameStr(t));
 			if (++v > N_MAX_PLOIDY)
-				Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
+				Exit("\nError: ploidy level out of range in individual %s at locus %s.\n", name, locus[l].GetNameStr(t));
 		}
 
 		if (ismissing) SetFF(alleles, v);
@@ -3261,7 +3262,7 @@ TARGET void IND<REAL>::genodive(char* t, bool iscount, GENOTYPE** gtab, ushort**
 			if (alleles[v] == 0)
 				ismissing = true;
 			if (++v > N_MAX_PLOIDY)
-				Exit("\nError: ploidy level greater than %d in individual %s at locus %s.\n", N_MAX_PLOIDY, name, locus[l].GetNameStr(t));
+				Exit("\nError: ploidy level out of range in individual %s at locus %s.\n", name, locus[l].GetNameStr(t));
 		}
 		maxv = std::max(v, maxv);
 
@@ -3425,6 +3426,10 @@ TARGET void IND<REAL>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*
 	int v = 0;
 	ReadBCFGenoString(gtstr, alleles, phase, v, asize, vlen, l, name);
 
+	HASH mha = missing_hash[v]; uint mid = gfid[mha];
+	if (!gftab.ContainsKey(mha))
+		gftab[mha] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]);
+
 	//if use phased genotype, exclude unphased genotype as missing
 	if (usephase && !phase)
 	{
@@ -3437,12 +3442,7 @@ TARGET void IND<REAL>::AddBCFGenotype(int64 l, char*& gtstr, char*& gqstr, char*
 
 	/*******************************************************************/
 
-	HASH mha = missing_hash[v], hash = HashGenotype(alleles, v);
-	uint mid = gfid[mha], gid = gfid[hash];
-
-	if (!gftab.ContainsKey(mha))
-		gftab[mha] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]);
-
+	HASH hash = HashGenotype(alleles, v); uint gid = gfid[hash];
 	if (!gftab.ContainsKey(hash))
 		gftab[hash] = new(gtab++) GENOTYPE(gatab, alleles, v);
 
@@ -3518,8 +3518,12 @@ TARGET void IND<REAL>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<
 	char* genostr = GetTagValue(linebegin, gtid);
 	int v = CountPloidy(genostr);
 	if (v > N_MAX_PLOIDY) 
-		Exit("\nError: ploidy level greater than %d in individual %s at locus %s_%s.\n", N_MAX_PLOIDY, name, loc.GetChrom(), loc.GetNameStr(line));
+		Exit("\nError: ploidy level out of range in individual %s at locus %s_%s.\n", name, loc.GetChrom(), loc.GetNameStr(line));
 	
+	HASH mha = missing_hash[v]; uint mid = gfid[mha];
+	if (!gftab.ContainsKey(mha))
+		gftab[mha] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]);
+
 	//if use phased genotype, exclude unphased genotype as missing
 	if (usephase && ContainsChar(genostr, '/'))
 	{
@@ -3534,12 +3538,7 @@ TARGET void IND<REAL>::AddVCFGenotype(char*& line, int64 l, uint*& depth, TABLE<
 
 	/*******************************************************************/
 
-	HASH mha = missing_hash[v], hash = HashGenotype(alleles, v);
-	uint mid = gfid[mha], gid = gfid[hash];
-
-	if (!gftab.ContainsKey(mha))
-		gftab[mha] = new(gtab++) GENOTYPE(gatab, missing_genotype[v]);
-
+	HASH hash = HashGenotype(alleles, v); uint gid = gfid[hash];
 	if (!gftab.ContainsKey(hash))
 		gftab[hash] = new(gtab++) GENOTYPE(gatab, alleles, v);
 

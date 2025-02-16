@@ -651,11 +651,13 @@ TARGET void SetParameters(bool isparfile)
 			if (p_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
 			p_b = true;
 			p_val = ReplacePathDelim(argv[i], false);
-			if (FileExists(p_val.c_str()))
+			if (FileExists(p_val))
 			{
 				PARFILE = GetAbsPath(p_val);
 				CURDIR = GetParentPath(p_val);
 				SetCurDir(CURDIR);
+				if (!g_tmpdir_b)
+					g_tmpdir_val = CURDIR;
 			}
 			else
 				Exit("\nError: cannot find parameter file %s.\n", p_val.c_str());
@@ -805,9 +807,9 @@ TARGET void SetParameters(bool isparfile)
 				g_tmpdir_b = true;
 				g_tmpdir_val = ReplacePathDelim(argv[i], true);
 
-				if (!FileExists(g_tmpdir_val.c_str()))
-					DirectoryCreate(g_tmpdir_val.c_str());
-				if (!FileExists(g_tmpdir_val.c_str()))
+				if (!FileExists(g_tmpdir_val))
+					DirectoryCreate(g_tmpdir_val);
+				if (!FileExists(g_tmpdir_val))
 					Exit("\nError: cannot create temp directory %s.\n", g_tmpdir_val.c_str());
 			}
 			else if (!LwrLineCmp("-g_progress=", argv[i]))
@@ -855,8 +857,8 @@ TARGET void SetParameters(bool isparfile)
 				OUTFILE = GetAbsPath(g_output_val);
 				OUTDIR = GetParentPath(OUTFILE);
 				OUTDIR.push_back(PATH_DELIM);
-				if (!FileExists(OUTDIR.c_str()))
-					DirectoryCreate(OUTDIR.c_str());
+				if (!FileExists(OUTDIR))
+					DirectoryCreate(OUTDIR);
 			}
 			else if (!LwrLineCmp("-g_indtext=", argv[i]))
 			{
@@ -1001,7 +1003,7 @@ TARGET void SetParameters(bool isparfile)
 				if (gwas_input_b) Exit("\nError: parameter %s has been assigned twice.\n", argv[i].c_str());
 				gwas_input_b = true;
 				gwas_input_val = ReplacePathDelim(argv[i], false);
-				if (!FileExists(gwas_input_val.c_str()))
+				if (!FileExists(gwas_input_val))
 					Exit("\nError: GWAS input file is not found.\n");
 			}
 			else if (!LwrLineCmp("-gwas_pop=", argv[i]))
@@ -1371,7 +1373,7 @@ TARGET void SetParameters(bool isparfile)
 			popas_plot_val == 1 ||
 			gwas_plot_val == 1 ||
 			g_replot_val == 1) &&
-		!FileExists(g_rscript_val.c_str()))
+		!FileExists(g_rscript_val))
 		Exit("\nError: Rscript binary executable is not found.\n");
 }
 
@@ -1403,15 +1405,15 @@ TARGET void ReleaseParameters()
 }
 
 /* Write parameters to result file */
-TARGET void WriteParameters(FILE* f1, char* type, char* prefix)
+TARGET void WriteParameters(FILE* f1, string& type, string& prefix)
 {
-	fprintf(f1, "%s  Parameter: %s%s", prefix, argv[0].c_str(), g_linebreak_val);
+	fprintf(f1, "%s  Parameter: %s%s", prefix.c_str(), argv[0].c_str(), g_linebreak_val);
 	for (int i = 1; i < argv.size(); ++i)
 	{
 		if (f_filter &&!LwrLineCmp("-f_", argv[i]) || 
 			(LwrLineCmp("-g_", argv[i]) == 0 && LwrLineCmp("-g_indtext", argv[i]) != 0 && LwrLineCmp("-g_indtab", argv[i]) != 0) ||
 			LwrLineCmp(type, argv[i]) == 0)
-			fprintf(f1, "%s    %s%s", prefix, argv[i].c_str(), g_linebreak_val);
+			fprintf(f1, "%s    %s%s", prefix.c_str(), argv[i].c_str(), g_linebreak_val);
 	}
 }
 
